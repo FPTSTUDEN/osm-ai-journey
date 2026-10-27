@@ -1,4 +1,4 @@
-import { readGeocoderCache, writeGeocoderCache } from '../storage/geocoderCache'
+import { readCachedValue, writeCachedValue } from '../storage/geocoderCache'
 import type { Place, UserSettings } from '../types/domain'
 
 type GeocoderName = UserSettings['onlineGeocoder']
@@ -113,10 +113,10 @@ export async function searchOnlinePlaces(query: string, provider: GeocoderName):
   if (!normalized) return { places: [], cached: false }
 
   const cacheKey = `${provider}:${normalized}`
-  const cached = await readGeocoderCache<Place[]>(cacheKey)
+  const cached = await readCachedValue<Place[]>(cacheKey)
   if (cached) return { places: cached, cached: true }
 
   const places = await geocoderProviders[provider].search(normalized)
-  await writeGeocoderCache(cacheKey, places, Date.now() + CACHE_TTL)
+  await writeCachedValue(cacheKey, places, Date.now() + CACHE_TTL)
   return { places, cached: false }
 }

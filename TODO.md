@@ -29,8 +29,8 @@ The phases below are ordered around a usable single-user MVP. Each phase should 
 - [x] Add Photon adapter option
 - [x] Cache online geocoder results in IndexedDB
 - [x] Add cache-key normalization and expiry behavior
-- [ ] Add Wikipedia destination enrichment
-- [ ] Add Wikidata structured-fact enrichment
+- [x] Add Wikipedia destination enrichment
+- [x] Add Wikidata structured-fact enrichment
 - [ ] Label source-backed, cached, live, and user-created information
 
 ## Phase 3: Journey State

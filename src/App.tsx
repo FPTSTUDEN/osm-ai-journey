@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { MapCanvas } from './components/MapCanvas'
+import { enrichPlace, type PlaceContext } from './providers/enrichment'
 import { searchOnlinePlaces } from './providers/geocoder'
 import { searchLocalPlaces } from './providers/localPlaceIndex'
 import { loadSettings, saveSettings } from './storage/settings'
@@ -22,10 +23,33 @@ function App() {
   const [onlineState, setOnlineState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [onlineCached, setOnlineCached] = useState(false)
   const [onlineError, setOnlineError] = useState('')
+  const [placeContext, setPlaceContext] = useState<PlaceContext | null>(null)
+  const [contextState, setContextState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
+  const [contextCached, setContextCached] = useState(false)
 
   useEffect(() => {
     saveSettings(settings)
   }, [settings])
+
+  useEffect(() => {
+    let active = true
+    if (!selectedPlace) {
+      setPlaceContext(null)
+      setContextState('idle')
+      return () => { active = false }
+    }
+
+    setContextState('loading')
+    void enrichPlace(selectedPlace).then((response) => {
+      if (!active) return
+      setPlaceContext(response.context)
+      setContextCached(response.cached)
+      setContextState('ready')
+    }).catch(() => {
+      if (active) setContextState('error')
+    })
+    return () => { active = false }
+  }, [selectedPlace])
 
   const localResults = useMemo(() => searchLocalPlaces(places, query), [places, query])
 
@@ -127,6 +151,18 @@ function App() {
               {selectedPlace.osmType && selectedPlace.osmId && <div><dt>OSM feature</dt><dd>{selectedPlace.osmType}/{selectedPlace.osmId}</dd></div>}
               <div><dt>Source</dt><dd>{selectedPlace.source === 'online' ? `Online · ${settings.onlineGeocoder}` : 'Loaded OpenFreeMap data'}</dd></div>
             </dl>
+            {contextState === 'loading' && <p className="context-state">Loading Wikipedia and Wikidata context…</p>}
+            {contextState === 'error' && <p className="context-state">Optional destination context is unavailable.</p>}
+            {contextState === 'ready' && placeContext && <div className="place-context">
+              <p className="context-label">Source context · {contextCached ? 'cached' : 'live'}</p>
+              {placeContext.summary && <p className="context-summary">{placeContext.summary}</p>}
+              {placeContext.facts.length > 0 && <dl className="context-facts">{placeContext.facts.map((fact) => <div key={`${fact.label}-${fact.value}`}><dt>{fact.label}</dt><dd>{fact.value}</dd></div>)}</dl>}
+              <div className="context-links">
+                {placeContext.wikipediaUrl && <a href={placeContext.wikipediaUrl} target="_blank" rel="noreferrer">Wikipedia</a>}
+                {placeContext.wikidataId && <a href={`https://www.wikidata.org/wiki/${placeContext.wikidataId}`} target="_blank" rel="noreferrer">Wikidata</a>}
+              </div>
+              {!placeContext.summary && placeContext.facts.length === 0 && <p className="context-state">No source context found for this place.</p>}
+            </div>}
           </aside>}
           <div className="map-caption"><span>Map data © OpenStreetMap contributors</span><span>OpenFreeMap</span></div>
         </section>

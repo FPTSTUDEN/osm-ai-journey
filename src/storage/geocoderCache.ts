@@ -19,7 +19,7 @@ function openDatabase(): Promise<IDBDatabase> {
   })
 }
 
-export async function readGeocoderCache<T>(key: string): Promise<T | null> {
+export async function readCachedValue<T>(key: string): Promise<T | null> {
   try {
     const database = await openDatabase()
     const record = await new Promise<CacheRecord<T> | undefined>((resolve, reject) => {
@@ -35,7 +35,7 @@ export async function readGeocoderCache<T>(key: string): Promise<T | null> {
   }
 }
 
-export async function writeGeocoderCache<T>(key: string, value: T, expiresAt: number) {
+export async function writeCachedValue<T>(key: string, value: T, expiresAt: number) {
   try {
     const database = await openDatabase()
     await new Promise<void>((resolve, reject) => {
