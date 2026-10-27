@@ -15,6 +15,7 @@ function App() {
   const [message, setMessage] = useState('')
   const [messages, setMessages] = useState([starterMessage])
   const [showSettings, setShowSettings] = useState(false)
+  const [mapStatus, setMapStatus] = useState<'loading' | 'ready' | 'unavailable'>('loading')
 
   useEffect(() => {
     saveSettings(settings)
@@ -64,14 +65,28 @@ function App() {
               <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search loaded places" />
             </label>
           </div>
-          {query && localResults.length > 0 && (
+          {query && mapStatus === 'loading' && <div className="search-state">Loading places from the visible map…</div>}
+          {query && mapStatus === 'ready' && localResults.length > 0 && (
             <div className="search-results">
               <p className="result-label">From loaded map data</p>
               {localResults.map((place) => <button key={place.id} onClick={() => choosePlace(place)}>{place.name}<span>{place.category ?? 'Place'}</span></button>)}
             </div>
           )}
-          {query && localResults.length === 0 && <div className="online-search">No loaded places match. <button onClick={() => setMessages((current) => [...current, `Online search is ready for “${query}”.`])}>Search online</button></div>}
-          <MapCanvas onPlaceSelected={choosePlace} onPlacesLoaded={setPlaces} />
+          {query && mapStatus === 'ready' && localResults.length === 0 && <div className="online-search">No loaded places match. <button onClick={() => setMessages((current) => [...current, `Online search is ready for “${query}”.`])}>Search online</button></div>}
+          {query && mapStatus === 'unavailable' && <div className="search-state">Loaded map data is unavailable. Try moving the map or search online.</div>}
+          <MapCanvas selectedPlace={selectedPlace} onPlaceSelected={choosePlace} onPlacesLoaded={setPlaces} onMapStatusChange={setMapStatus} />
+          {selectedPlace && <aside className="place-detail" aria-label="Selected destination">
+            <div className="place-detail-header">
+              <div><p className="eyebrow">Selected destination</p><h3>{selectedPlace.name}</h3></div>
+              <button className="close-button" onClick={() => setSelectedPlace(null)} aria-label="Clear selected destination">×</button>
+            </div>
+            <p className="place-category">{selectedPlace.category ?? 'Place'}</p>
+            <dl className="place-facts">
+              <div><dt>Coordinates</dt><dd>{selectedPlace.coordinates[1].toFixed(5)}, {selectedPlace.coordinates[0].toFixed(5)}</dd></div>
+              {selectedPlace.osmType && selectedPlace.osmId && <div><dt>OSM feature</dt><dd>{selectedPlace.osmType}/{selectedPlace.osmId}</dd></div>}
+              <div><dt>Source</dt><dd>Loaded OpenFreeMap data</dd></div>
+            </dl>
+          </aside>}
           <div className="map-caption"><span>Map data © OpenStreetMap contributors</span><span>OpenFreeMap</span></div>
         </section>
 

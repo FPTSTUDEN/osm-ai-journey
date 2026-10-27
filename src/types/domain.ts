@@ -4,6 +4,8 @@ export type Place = {
   id: string
   name: string
   category?: string
+  osmType?: string
+  osmId?: string
   description?: string
   coordinates: Coordinates
   source: 'map' | 'online'

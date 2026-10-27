@@ -13,13 +13,13 @@ The phases below are ordered around a usable single-user MVP. Each phase should 
 
 ## Phase 1: Local Map Exploration
 
-- [ ] Extract and normalize place features from loaded vector tiles
-- [ ] Improve local place indexing and fuzzy matching
-- [ ] Deduplicate features across vector tiles
-- [ ] Add selected-place marker and map fly-to behavior
-- [ ] Add destination detail panel with coordinates and OSM metadata
-- [ ] Add clear local-search states for loading, empty, and unavailable data
-- [ ] Verify OpenFreeMap attribution and provider configuration
+- [x] Extract and normalize place features from loaded vector tiles
+- [x] Improve local place indexing and fuzzy matching
+- [x] Deduplicate features across vector tiles
+- [x] Add selected-place marker and map fly-to behavior
+- [x] Add destination detail panel with coordinates and OSM metadata
+- [x] Add clear local-search states for loading, empty, and unavailable data
+- [x] Verify OpenFreeMap attribution and provider configuration
 
 ## Phase 2: Online Search and Destination Context
 
