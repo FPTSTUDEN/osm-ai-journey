@@ -23,12 +23,12 @@ The phases below are ordered around a usable single-user MVP. Each phase should 
 
 ## Phase 2: Online Search and Destination Context
 
-- [ ] Add explicit online-search flow after local results are exhausted
-- [ ] Implement geocoder provider interface
-- [ ] Add Nominatim adapter with rate-limit-aware requests
-- [ ] Add Photon adapter option
-- [ ] Cache online geocoder results in IndexedDB
-- [ ] Add cache-key normalization and expiry behavior
+- [x] Add explicit online-search flow after local results are exhausted
+- [x] Implement geocoder provider interface
+- [x] Add Nominatim adapter with rate-limit-aware requests
+- [x] Add Photon adapter option
+- [x] Cache online geocoder results in IndexedDB
+- [x] Add cache-key normalization and expiry behavior
 - [ ] Add Wikipedia destination enrichment
 - [ ] Add Wikidata structured-fact enrichment
 - [ ] Label source-backed, cached, live, and user-created information
