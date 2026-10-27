@@ -3,11 +3,20 @@ import { MapCanvas } from './components/MapCanvas'
 import { enrichPlace, type PlaceContext } from './providers/enrichment'
 import { searchOnlinePlaces } from './providers/geocoder'
 import { searchLocalPlaces } from './providers/localPlaceIndex'
+import { deleteActiveJourney, loadActiveJourney, saveActiveJourney } from './storage/journey'
 import { loadSettings, saveSettings } from './storage/settings'
-import type { Place, UserSettings } from './types/domain'
+import type { JourneyState, NarrativeEvent, Place, UserSettings } from './types/domain'
 import './styles/app.css'
 
 const starterMessage = 'Choose a place on the map, or tell me what kind of journey you want to begin.'
+
+function newEvent(type: NarrativeEvent['type'], text: string, placeId?: string): NarrativeEvent {
+  return { id: crypto.randomUUID(), type, createdAt: new Date().toISOString(), text, placeId }
+}
+
+function emptyJourney(): JourneyState {
+  return { id: 'active', currentDestination: null, destinationHistory: [], currentScene: 1, messages: [starterMessage], knownPeople: [], knownEntities: [], userFacts: [], narrativeEvents: [] }
+}
 
 function App() {
   const [settings, setSettings] = useState<UserSettings>(loadSettings)
@@ -26,10 +35,41 @@ function App() {
   const [placeContext, setPlaceContext] = useState<PlaceContext | null>(null)
   const [contextState, setContextState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [contextCached, setContextCached] = useState(false)
+  const [destinationHistory, setDestinationHistory] = useState<Place[]>([])
+  const [currentScene, setCurrentScene] = useState(1)
+  const [narrativeEvents, setNarrativeEvents] = useState<NarrativeEvent[]>([])
+  const [journeyReady, setJourneyReady] = useState(false)
 
   useEffect(() => {
     saveSettings(settings)
   }, [settings])
+
+  useEffect(() => {
+    void loadActiveJourney().then((journey) => {
+      const restored = journey ?? emptyJourney()
+      setSelectedPlace(restored.currentDestination)
+      setDestinationHistory(restored.destinationHistory)
+      setCurrentScene(restored.currentScene)
+      setMessages(restored.messages.length ? restored.messages : [starterMessage])
+      setNarrativeEvents(restored.narrativeEvents)
+      setJourneyReady(true)
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!journeyReady) return
+    void saveActiveJourney({
+      id: 'active',
+      currentDestination: selectedPlace,
+      destinationHistory,
+      currentScene,
+      messages,
+      knownPeople: [],
+      knownEntities: [],
+      userFacts: [],
+      narrativeEvents,
+    })
+  }, [currentScene, destinationHistory, journeyReady, messages, narrativeEvents, selectedPlace])
 
   useEffect(() => {
     let active = true
@@ -58,7 +98,11 @@ function App() {
     setQuery('')
     setOnlineResults([])
     setOnlineState('idle')
-    setMessages((current) => [...current, `You arrive at ${place.name}.`])
+    setDestinationHistory((current) => current.some((item) => item.id === place.id) ? current : [...current, place])
+    setCurrentScene((current) => current + 1)
+    const arrival = `You arrive at ${place.name}.`
+    setMessages((current) => [...current, arrival])
+    setNarrativeEvents((current) => [...current, newEvent('destination-transition', arrival, place.id)])
   }
 
   function updateQuery(value: string) {
@@ -92,7 +136,25 @@ function App() {
     const trimmed = message.trim()
     if (!trimmed) return
     setMessages((current) => [...current, trimmed])
+    setNarrativeEvents((current) => [...current, newEvent('message', trimmed)])
     setMessage('')
+  }
+
+  function resetJourney() {
+    const journey = emptyJourney()
+    setSelectedPlace(journey.currentDestination)
+    setDestinationHistory(journey.destinationHistory)
+    setCurrentScene(journey.currentScene)
+    setMessages(journey.messages)
+    setNarrativeEvents(journey.narrativeEvents)
+    setQuery('')
+    setOnlineResults([])
+    setOnlineState('idle')
+  }
+
+  async function deleteJourney() {
+    await deleteActiveJourney()
+    resetJourney()
   }
 
   return (
@@ -173,7 +235,7 @@ function App() {
               <p className="eyebrow">Your companion</p>
               <h2>Begin anywhere</h2>
             </div>
-            <span className="scene-tag">Scene 01</span>
+            <span className="scene-tag">Scene {String(currentScene).padStart(2, '0')}</span>
           </div>
           <div className="conversation">
             {messages.map((item, index) => <div className={`message ${index % 2 ? 'user-message' : 'ai-message'}`} key={`${item}-${index}`}><span className="message-label">{index % 2 ? 'You' : 'Guide'}</span><p>{item}</p></div>)}
@@ -182,7 +244,7 @@ function App() {
             <textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Speak freely. Ask for a scene, a direction, or a different world." rows={2} />
             <button className="send-button" type="submit" aria-label="Send message">↗</button>
           </form>
-          <div className="journey-footer"><span>{selectedPlace ? `At ${selectedPlace.name}` : 'No destination selected'}</span><span>{settings.calculateWalkingRoutes ? 'Walking routes on' : 'Routes optional'}</span></div>
+          <div className="journey-footer"><span>{selectedPlace ? `At ${selectedPlace.name}` : 'No destination selected'}</span><span>{destinationHistory.length} destination{destinationHistory.length === 1 ? '' : 's'} · {settings.calculateWalkingRoutes ? 'Walking routes on' : 'Routes optional'}</span></div>
         </section>
       </section>
 
@@ -194,6 +256,8 @@ function App() {
         <label>Online geocoder<select value={settings.onlineGeocoder} onChange={(event) => setSettings({ ...settings, onlineGeocoder: event.target.value as UserSettings['onlineGeocoder'] })}><option value="nominatim">Nominatim</option><option value="photon">Photon</option></select></label>
         <label className="toggle-row"><span>Calculate walking routes by default</span><input type="checkbox" checked={settings.calculateWalkingRoutes} onChange={(event) => setSettings({ ...settings, calculateWalkingRoutes: event.target.checked })} /></label>
         <label className="toggle-row"><span>Enable optional live data</span><input type="checkbox" checked={settings.liveDataEnabled} onChange={(event) => setSettings({ ...settings, liveDataEnabled: event.target.checked })} /></label>
+        <p className="settings-note">Saved journey destinations: {destinationHistory.length}. Scene events: {narrativeEvents.length}.</p>
+        <div className="settings-actions"><button onClick={resetJourney}>Reset journey</button><button onClick={() => void deleteJourney()}>Delete saved journey</button></div>
         <p className="settings-note">Settings stay in this browser. API keys are not safe to share in a public static deployment.</p>
       </aside>}
     </main>

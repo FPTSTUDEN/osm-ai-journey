@@ -19,3 +19,23 @@ export type UserSettings = {
   calculateWalkingRoutes: boolean
   liveDataEnabled: boolean
 }
+
+export type NarrativeEvent = {
+  id: string
+  type: 'destination-transition' | 'message'
+  createdAt: string
+  text: string
+  placeId?: string
+}
+
+export type JourneyState = {
+  id: 'active'
+  currentDestination: Place | null
+  destinationHistory: Place[]
+  currentScene: number
+  messages: string[]
+  knownPeople: string[]
+  knownEntities: string[]
+  userFacts: string[]
+  narrativeEvents: NarrativeEvent[]
+}

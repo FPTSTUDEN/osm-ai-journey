@@ -35,13 +35,13 @@ The phases below are ordered around a usable single-user MVP. Each phase should 
 
 ## Phase 3: Journey State
 
-- [ ] Define persistent journey, destination, scene, and narrative event schemas
-- [ ] Add IndexedDB storage boundary
-- [ ] Persist and restore the active journey
-- [ ] Track current destination and destination history
+- [x] Define persistent journey, destination, scene, and narrative event schemas
+- [x] Add IndexedDB storage boundary
+- [x] Persist and restore the active journey
+- [x] Track current destination and destination history
 - [ ] Track current scene, known people, entities, and user-created facts
-- [ ] Add destination transition events
-- [ ] Add journey reset and delete controls
+- [x] Add destination transition events
+- [x] Add journey reset and delete controls
 
 ## Phase 4: LLM Roleplay
 
