@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { MapCanvas } from './components/MapCanvas'
 import { enrichPlace, type PlaceContext } from './providers/enrichment'
 import { searchOnlinePlaces } from './providers/geocoder'
+import { completeChat, testLlmConnection, type ChatMessage } from './providers/llm'
 import { searchLocalPlaces } from './providers/localPlaceIndex'
 import { deleteActiveJourney, loadActiveJourney, saveActiveJourney } from './storage/journey'
 import { loadSettings, saveSettings } from './storage/settings'
@@ -43,6 +44,10 @@ function App() {
   const [userFacts, setUserFacts] = useState<string[]>([])
   const [journeyItem, setJourneyItem] = useState({ people: '', entities: '', facts: '' })
   const [journeyReady, setJourneyReady] = useState(false)
+  const [llmState, setLlmState] = useState<'idle' | 'loading' | 'error'>('idle')
+  const [llmError, setLlmError] = useState('')
+  const [connectionState, setConnectionState] = useState<'idle' | 'testing' | 'ready' | 'error'>('idle')
+  const [connectionMessage, setConnectionMessage] = useState('')
 
   useEffect(() => {
     saveSettings(settings)
@@ -141,10 +146,37 @@ function App() {
   function sendMessage(event: React.FormEvent) {
     event.preventDefault()
     const trimmed = message.trim()
-    if (!trimmed) return
+    if (!trimmed || llmState === 'loading') return
     setMessages((current) => [...current, trimmed])
     setNarrativeEvents((current) => [...current, newEvent('message', trimmed)])
     setMessage('')
+    setLlmState('loading')
+    setLlmError('')
+    const chatMessages: ChatMessage[] = [
+      { role: 'system', content: `You are a helpful journey companion. Keep the response concise and imaginative. Current destination: ${selectedPlace?.name ?? 'none'}. Known people: ${knownPeople.join(', ') || 'none'}. Known entities: ${knownEntities.join(', ') || 'none'}. User facts: ${userFacts.join('; ') || 'none'}.` },
+      ...messages.slice(1).map((item, index) => ({ role: (index % 2 ? 'assistant' : 'user') as ChatMessage['role'], content: item })),
+      { role: 'user', content: trimmed },
+    ]
+    void completeChat({ baseUrl: settings.llmBaseUrl, model: settings.llmModel, apiKey: settings.llmApiKey }, chatMessages).then((reply) => {
+      setMessages((current) => [...current, reply])
+      setLlmState('idle')
+    }).catch((error) => {
+      setLlmState('error')
+      setLlmError(error instanceof Error ? error.message : 'The language model request failed')
+    })
+  }
+
+  async function checkLlmConnection() {
+    setConnectionState('testing')
+    setConnectionMessage('')
+    try {
+      await testLlmConnection({ baseUrl: settings.llmBaseUrl, model: settings.llmModel, apiKey: settings.llmApiKey })
+      setConnectionState('ready')
+      setConnectionMessage('Connection ready')
+    } catch (error) {
+      setConnectionState('error')
+      setConnectionMessage(error instanceof Error ? error.message : 'Connection failed')
+    }
   }
 
   function resetJourney() {
@@ -260,9 +292,10 @@ function App() {
             {messages.map((item, index) => <div className={`message ${index % 2 ? 'user-message' : 'ai-message'}`} key={`${item}-${index}`}><span className="message-label">{index % 2 ? 'You' : 'Guide'}</span><p>{item}</p></div>)}
           </div>
           <form className="composer" onSubmit={sendMessage}>
-            <textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Speak freely. Ask for a scene, a direction, or a different world." rows={2} />
-            <button className="send-button" type="submit" aria-label="Send message">↗</button>
+            <textarea disabled={llmState === 'loading'} value={message} onChange={(event) => setMessage(event.target.value)} placeholder={llmState === 'loading' ? 'The companion is thinking…' : 'Speak freely. Ask for a scene, a direction, or a different world.'} rows={2} />
+            <button className="send-button" disabled={llmState === 'loading'} type="submit" aria-label="Send message">↗</button>
           </form>
+          {llmState === 'error' && <p className="provider-error">{llmError}</p>}
           <div className="journey-footer"><span>{selectedPlace ? `At ${selectedPlace.name}` : 'No destination selected'}</span><span>{destinationHistory.length} destination{destinationHistory.length === 1 ? '' : 's'} · {settings.calculateWalkingRoutes ? 'Walking routes on' : 'Routes optional'}</span></div>
         </section>
       </section>
@@ -272,6 +305,7 @@ function App() {
         <label>LLM base URL<input value={settings.llmBaseUrl} onChange={(event) => setSettings({ ...settings, llmBaseUrl: event.target.value })} /></label>
         <label>Model<input value={settings.llmModel} onChange={(event) => setSettings({ ...settings, llmModel: event.target.value })} /></label>
         <label>API key<input type="password" value={settings.llmApiKey} onChange={(event) => setSettings({ ...settings, llmApiKey: event.target.value })} placeholder="Optional for local models" /></label>
+        <div className="connection-test"><button type="button" onClick={() => void checkLlmConnection()} disabled={connectionState === 'testing'}>{connectionState === 'testing' ? 'Testing…' : 'Test connection'}</button>{connectionMessage && <span className={connectionState === 'error' ? 'connection-error' : 'connection-ready'}>{connectionMessage}</span>}</div>
         <label>Online geocoder<select value={settings.onlineGeocoder} onChange={(event) => setSettings({ ...settings, onlineGeocoder: event.target.value as UserSettings['onlineGeocoder'] })}><option value="nominatim">Nominatim</option><option value="photon">Photon</option></select></label>
         <label className="toggle-row"><span>Calculate walking routes by default</span><input type="checkbox" checked={settings.calculateWalkingRoutes} onChange={(event) => setSettings({ ...settings, calculateWalkingRoutes: event.target.checked })} /></label>
         <label className="toggle-row"><span>Enable optional live data</span><input type="checkbox" checked={settings.liveDataEnabled} onChange={(event) => setSettings({ ...settings, liveDataEnabled: event.target.checked })} /></label>
