@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { MapCanvas } from './components/MapCanvas'
 import { enrichPlace, type PlaceContext } from './providers/enrichment'
 import { searchOnlinePlaces } from './providers/geocoder'
-import { streamChat, testLlmConnection, type ChatMessage } from './providers/llm'
+import { buildJourneyContext, buildSummaryMessages } from './providers/context'
+import { LLM_PROVIDER_PRESETS } from './providers/config'
+import { completeChat, streamChat, testLlmConnection } from './providers/llm'
 import { searchLocalPlaces } from './providers/localPlaceIndex'
 import { deleteActiveJourney, loadActiveJourney, saveActiveJourney } from './storage/journey'
 import { loadSettings, saveSettings } from './storage/settings'
@@ -16,7 +18,7 @@ function newEvent(type: NarrativeEvent['type'], text: string, placeId?: string):
 }
 
 function emptyJourney(): JourneyState {
-  return { id: 'active', currentDestination: null, destinationHistory: [], currentScene: 1, messages: [starterMessage], knownPeople: [], knownEntities: [], userFacts: [], narrativeEvents: [] }
+  return { id: 'active', currentDestination: null, destinationHistory: [], currentScene: 1, messages: [starterMessage], knownPeople: [], knownEntities: [], userFacts: [], narrativeEvents: [], conversationSummary: '' }
 }
 
 function App() {
@@ -44,6 +46,9 @@ function App() {
   const [userFacts, setUserFacts] = useState<string[]>([])
   const [journeyItem, setJourneyItem] = useState({ people: '', entities: '', facts: '' })
   const [journeyReady, setJourneyReady] = useState(false)
+  const [conversationSummary, setConversationSummary] = useState('')
+  const [summaryMessageCount, setSummaryMessageCount] = useState(0)
+  const [summaryState, setSummaryState] = useState<'idle' | 'loading'>('idle')
   const [llmState, setLlmState] = useState<'idle' | 'loading' | 'error'>('idle')
   const [llmError, setLlmError] = useState('')
   const [connectionState, setConnectionState] = useState<'idle' | 'testing' | 'ready' | 'error'>('idle')
@@ -64,6 +69,8 @@ function App() {
       setKnownPeople(restored.knownPeople)
       setKnownEntities(restored.knownEntities)
       setUserFacts(restored.userFacts)
+      setConversationSummary(restored.conversationSummary ?? '')
+      setSummaryMessageCount(restored.messages.length)
       setJourneyReady(true)
     })
   }, [])
@@ -80,8 +87,22 @@ function App() {
       knownEntities,
       userFacts,
       narrativeEvents,
+      conversationSummary,
     })
-  }, [currentScene, destinationHistory, journeyReady, knownEntities, knownPeople, messages, narrativeEvents, selectedPlace, userFacts])
+  }, [conversationSummary, currentScene, destinationHistory, journeyReady, knownEntities, knownPeople, messages, narrativeEvents, selectedPlace, userFacts])
+
+  useEffect(() => {
+    if (!journeyReady || summaryState === 'loading' || messages.length < 12 || messages.length - summaryMessageCount < 8) return
+    setSummaryState('loading')
+    void completeChat({ baseUrl: settings.llmBaseUrl, model: settings.llmModel, apiKey: settings.llmApiKey }, buildSummaryMessages(messages)).then((summary) => {
+      setConversationSummary(summary)
+      setSummaryMessageCount(messages.length)
+      setSummaryState('idle')
+    }).catch(() => {
+      setSummaryMessageCount(messages.length)
+      setSummaryState('idle')
+    })
+  }, [journeyReady, messages, settings, summaryMessageCount, summaryState])
 
   useEffect(() => {
     let active = true
@@ -152,11 +173,7 @@ function App() {
     setMessage('')
     setLlmState('loading')
     setLlmError('')
-    const chatMessages: ChatMessage[] = [
-      { role: 'system', content: `You are a helpful journey companion. Keep the response concise and imaginative. Current destination: ${selectedPlace?.name ?? 'none'}. Known people: ${knownPeople.join(', ') || 'none'}. Known entities: ${knownEntities.join(', ') || 'none'}. User facts: ${userFacts.join('; ') || 'none'}.` },
-      ...messages.slice(1).map((item, index) => ({ role: (index % 2 ? 'assistant' : 'user') as ChatMessage['role'], content: item })),
-      { role: 'user', content: trimmed },
-    ]
+    const chatMessages = buildJourneyContext({ settings, selectedPlace, messages, userMessage: trimmed, journey: { destinationHistory, currentScene, knownPeople, knownEntities, userFacts, conversationSummary } })
     let assistantStarted = false
     void streamChat({ baseUrl: settings.llmBaseUrl, model: settings.llmModel, apiKey: settings.llmApiKey }, chatMessages, (delta) => {
       const firstDelta = !assistantStarted
@@ -197,6 +214,9 @@ function App() {
     setKnownPeople(journey.knownPeople)
     setKnownEntities(journey.knownEntities)
     setUserFacts(journey.userFacts)
+    setConversationSummary('')
+    setSummaryMessageCount(0)
+    setSummaryState('idle')
     setJourneyItem({ people: '', entities: '', facts: '' })
     setQuery('')
     setOnlineResults([])
@@ -214,6 +234,15 @@ function App() {
     const add = kind === 'people' ? setKnownPeople : kind === 'entities' ? setKnownEntities : setUserFacts
     add((current) => current.includes(value) ? current : [...current, value])
     setJourneyItem((current) => ({ ...current, [kind]: '' }))
+  }
+
+  function changeProvider(provider: UserSettings['llmProvider']) {
+    if (provider === 'custom') {
+      setSettings({ ...settings, llmProvider: provider })
+      return
+    }
+    const preset = LLM_PROVIDER_PRESETS[provider]
+    setSettings({ ...settings, llmProvider: provider, llmBaseUrl: preset.baseUrl, llmModel: preset.model })
   }
 
   return (
@@ -310,14 +339,17 @@ function App() {
 
       {showSettings && <aside className="settings panel">
         <div className="settings-header"><div><p className="eyebrow">Local configuration</p><h2>Journey settings</h2></div><button className="close-button" onClick={() => setShowSettings(false)}>×</button></div>
-        <label>LLM base URL<input value={settings.llmBaseUrl} onChange={(event) => setSettings({ ...settings, llmBaseUrl: event.target.value })} /></label>
+        <label>LLM provider<select value={settings.llmProvider} onChange={(event) => changeProvider(event.target.value as UserSettings['llmProvider'])}><option value="ollama">Ollama</option><option value="openai">OpenAI</option><option value="lmstudio">LM Studio</option><option value="vllm">vLLM</option><option value="custom">Custom compatible server</option></select></label>
+        <label>LLM base URL<input value={settings.llmBaseUrl} onChange={(event) => setSettings({ ...settings, llmProvider: 'custom', llmBaseUrl: event.target.value })} /></label>
         <label>Model<input value={settings.llmModel} onChange={(event) => setSettings({ ...settings, llmModel: event.target.value })} /></label>
         <label>API key<input type="password" value={settings.llmApiKey} onChange={(event) => setSettings({ ...settings, llmApiKey: event.target.value })} placeholder="Optional for local models" /></label>
+        <label>Companion name<input value={settings.personaName} onChange={(event) => setSettings({ ...settings, personaName: event.target.value })} /></label>
+        <label>Companion instructions<textarea className="persona-input" value={settings.personaInstructions} onChange={(event) => setSettings({ ...settings, personaInstructions: event.target.value })} rows={3} /></label>
         <div className="connection-test"><button type="button" onClick={() => void checkLlmConnection()} disabled={connectionState === 'testing'}>{connectionState === 'testing' ? 'Testing…' : 'Test connection'}</button>{connectionMessage && <span className={connectionState === 'error' ? 'connection-error' : 'connection-ready'}>{connectionMessage}</span>}</div>
         <label>Online geocoder<select value={settings.onlineGeocoder} onChange={(event) => setSettings({ ...settings, onlineGeocoder: event.target.value as UserSettings['onlineGeocoder'] })}><option value="nominatim">Nominatim</option><option value="photon">Photon</option></select></label>
         <label className="toggle-row"><span>Calculate walking routes by default</span><input type="checkbox" checked={settings.calculateWalkingRoutes} onChange={(event) => setSettings({ ...settings, calculateWalkingRoutes: event.target.checked })} /></label>
         <label className="toggle-row"><span>Enable optional live data</span><input type="checkbox" checked={settings.liveDataEnabled} onChange={(event) => setSettings({ ...settings, liveDataEnabled: event.target.checked })} /></label>
-        <p className="settings-note">Saved journey destinations: {destinationHistory.length}. Scene events: {narrativeEvents.length}.</p>
+        <p className="settings-note">Saved journey destinations: {destinationHistory.length}. Scene events: {narrativeEvents.length}. {summaryState === 'loading' ? 'Updating conversation summary…' : conversationSummary ? 'Long-conversation summary available.' : ''}</p>
         <div className="journey-memory">
           <p className="memory-label">Journey memory</p>
           {(['people', 'entities', 'facts'] as const).map((kind) => {

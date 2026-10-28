@@ -12,9 +12,12 @@ export type Place = {
 }
 
 export type UserSettings = {
+  llmProvider: 'ollama' | 'openai' | 'lmstudio' | 'vllm' | 'custom'
   llmBaseUrl: string
   llmModel: string
   llmApiKey: string
+  personaName: string
+  personaInstructions: string
   onlineGeocoder: 'nominatim' | 'photon'
   calculateWalkingRoutes: boolean
   liveDataEnabled: boolean
@@ -38,4 +41,5 @@ export type JourneyState = {
   knownEntities: string[]
   userFacts: string[]
   narrativeEvents: NarrativeEvent[]
+  conversationSummary?: string
 }

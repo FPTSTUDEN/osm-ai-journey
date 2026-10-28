@@ -47,13 +47,13 @@ The phases below are ordered around a usable single-user MVP. Each phase should 
 
 - [x] Implement the unified OpenAI-compatible provider contract
 - [x] Add streaming chat responses
-- [ ] Support OpenAI, Ollama, LM Studio, vLLM, and compatible base URLs
+- [x] Support OpenAI, Ollama, LM Studio, vLLM, and compatible base URLs
 - [x] Add provider connection test and clear error states
-- [ ] Add user-created persona editor
-- [ ] Build context assembly from place, journey state, and conversation history
-- [ ] Keep normal chat available when no destination is selected
-- [ ] Preserve user freedom while keeping map and narrative transitions consistent
-- [ ] Add conversation summarization for long journeys
+- [x] Add user-created persona editor
+- [x] Build context assembly from place, journey state, and conversation history
+- [x] Keep normal chat available when no destination is selected
+- [x] Preserve user freedom while keeping map and narrative transitions consistent
+- [x] Add conversation summarization for long journeys
 
 ## Phase 5: Walking Journeys
 
