@@ -1,10 +1,13 @@
 import { useEffect, useRef } from 'react'
 import * as maplibregl from 'maplibre-gl'
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import type { GeoJSONFeature, Map as MapLibreMap, MapMouseEvent, Marker } from 'maplibre-gl'
 import { OPENFREEMAP_STYLE } from '../providers/config'
 import { deduplicatePlaces, placeFromFeature } from '../providers/localPlaceIndex'
 import type { Place, WalkingRoute } from '../types/domain'
 import 'maplibre-gl/dist/maplibre-gl.css'
+
+maplibregl.setWorkerUrl(maplibreWorkerUrl)
 
 type MapCanvasProps = {
   onPlaceSelected: (place: Place) => void
