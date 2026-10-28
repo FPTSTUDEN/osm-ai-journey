@@ -7,6 +7,7 @@ type ContextInput = {
   journey: Pick<JourneyState, 'destinationHistory' | 'currentScene' | 'knownPeople' | 'knownEntities' | 'userFacts' | 'conversationSummary'>
   messages: string[]
   userMessage: string
+  liveWeather?: string
 }
 
 export function buildJourneyContext(input: ContextInput): ChatMessage[] {
@@ -20,6 +21,7 @@ export function buildJourneyContext(input: ContextInput): ChatMessage[] {
     `Visited destinations: ${journey.destinationHistory.map((place) => place.name).join(', ') || 'none'}.`,
     `Known people: ${journey.knownPeople.join(', ') || 'none'}. Known entities: ${journey.knownEntities.join(', ') || 'none'}. User facts: ${journey.userFacts.join('; ') || 'none'}.`,
     journey.conversationSummary ? `Summary of earlier conversation: ${journey.conversationSummary}` : '',
+    input.liveWeather ? `Current weather data (${input.liveWeather}). Treat it as time-sensitive and distinguish it from static destination facts.` : '',
   ].filter(Boolean).join('\n')
   const history = messages.slice(1).map((content, index) => ({ role: (index % 2 ? 'assistant' : 'user') as ChatMessage['role'], content }))
   return [{ role: 'system', content: system }, ...history, { role: 'user', content: userMessage }]
