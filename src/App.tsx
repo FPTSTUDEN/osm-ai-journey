@@ -9,6 +9,7 @@ import { searchLocalPlaces } from './providers/localPlaceIndex'
 import { calculateWalkingRoute } from './providers/routing'
 import { fetchCurrentWeather, weatherLabel, type WeatherResult } from './providers/weather'
 import { deleteActiveJourney, loadActiveJourney, saveActiveJourney } from './storage/journey'
+import { clearOfflineCache, getOfflineCacheStatus, type OfflineCacheStatus } from './storage/offlineCache'
 import { loadSettings, saveSettings } from './storage/settings'
 import type { JourneyState, NarrativeEvent, Place, UserSettings, WalkingRoute } from './types/domain'
 import './styles/app.css'
@@ -62,10 +63,16 @@ function App() {
   const [weather, setWeather] = useState<WeatherResult | null>(null)
   const [weatherState, setWeatherState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [weatherError, setWeatherError] = useState('')
+  const [offlineStatus, setOfflineStatus] = useState<OfflineCacheStatus | null>(null)
 
   useEffect(() => {
     saveSettings(settings)
   }, [settings])
+
+  useEffect(() => {
+    if (!showSettings) return
+    void getOfflineCacheStatus().then(setOfflineStatus)
+  }, [showSettings])
 
   useEffect(() => {
     void loadActiveJourney().then((journey) => {
@@ -264,6 +271,15 @@ function App() {
     }
   }
 
+  async function refreshOfflineStatus() {
+    setOfflineStatus(await getOfflineCacheStatus())
+  }
+
+  async function clearOfflineData() {
+    await clearOfflineCache()
+    await refreshOfflineStatus()
+  }
+
   function resetJourney() {
     const journey = emptyJourney()
     setSelectedPlace(journey.currentDestination)
@@ -426,6 +442,7 @@ function App() {
         <label>Weather provider URL<input value={settings.weatherBaseUrl} onChange={(event) => setSettings({ ...settings, weatherBaseUrl: event.target.value })} /></label>
         <label className="toggle-row"><span>Calculate walking routes by default</span><input type="checkbox" checked={settings.calculateWalkingRoutes} onChange={(event) => setSettings({ ...settings, calculateWalkingRoutes: event.target.checked })} /></label>
         <label className="toggle-row"><span>Enable optional live data</span><input type="checkbox" checked={settings.liveDataEnabled} onChange={(event) => setSettings({ ...settings, liveDataEnabled: event.target.checked })} /></label>
+        <div className="offline-cache"><p className="memory-label">Offline cache</p><p className="settings-note">{offlineStatus ? `${offlineStatus.entries} cached resources across ${offlineStatus.cacheNames.length} cache${offlineStatus.cacheNames.length === 1 ? '' : 's'}.` : 'Checking cached resources…'}</p><div className="settings-actions"><button type="button" onClick={() => void refreshOfflineStatus()}>Refresh status</button><button type="button" onClick={() => void clearOfflineData()}>Clear cache</button></div></div>
         <p className="settings-note">Saved journey destinations: {destinationHistory.length}. Scene events: {narrativeEvents.length}. {summaryState === 'loading' ? 'Updating conversation summary…' : conversationSummary ? 'Long-conversation summary available.' : ''}</p>
         <div className="journey-memory">
           <p className="memory-label">Journey memory</p>

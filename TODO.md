@@ -76,15 +76,15 @@ The phases below are ordered around a usable single-user MVP. Each phase should 
 
 ## Phase 7: Offline and Deployment Polish
 
-- [ ] Cache application shell assets through the service worker
-- [ ] Cache recently viewed map styles, glyphs, sprites, and tiles
-- [ ] Add cache versioning and cleanup
-- [ ] Add cache status and clear-cache controls
-- [ ] Test the app while offline with previously viewed areas
-- [ ] Evaluate bounded area downloads against OpenFreeMap limits
+- [x] Cache application shell assets through the service worker
+- [x] Cache recently viewed map styles, glyphs, sprites, and tiles
+- [x] Add cache versioning and cleanup
+- [x] Add cache status and clear-cache controls
+- [x] Test the app while offline with previously viewed areas
+- [x] Evaluate bounded area downloads against OpenFreeMap limits
 - [ ] Add PMTiles support if stronger offline maps are required
-- [ ] Add deployment instructions for GitHub Pages or Cloudflare Pages
-- [ ] Add privacy guidance for browser-stored API keys
+- [x] Add deployment instructions for GitHub Pages or Cloudflare Pages
+- [x] Add privacy guidance for browser-stored API keys
 
 ## Phase 8: Quality
 
