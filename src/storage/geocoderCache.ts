@@ -1,6 +1,6 @@
 const DATABASE_NAME = 'osm-ai-journey'
 const STORE_NAME = 'geocoder-results'
-const DATABASE_VERSION = 2
+const DATABASE_VERSION = 3
 
 type CacheRecord<T> = {
   key: string
@@ -15,6 +15,7 @@ function openDatabase(): Promise<IDBDatabase> {
       const database = request.result
       if (!database.objectStoreNames.contains(STORE_NAME)) database.createObjectStore(STORE_NAME, { keyPath: 'key' })
       if (!database.objectStoreNames.contains('journeys')) database.createObjectStore('journeys', { keyPath: 'id' })
+      if (!database.objectStoreNames.contains('live-data')) database.createObjectStore('live-data', { keyPath: 'key' })
     }
     request.onsuccess = () => resolve(request.result)
     request.onerror = () => reject(request.error)

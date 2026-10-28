@@ -2,7 +2,7 @@ import type { JourneyState } from '../types/domain'
 
 const DATABASE_NAME = 'osm-ai-journey'
 const JOURNEY_STORE = 'journeys'
-const DATABASE_VERSION = 2
+const DATABASE_VERSION = 3
 
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -11,6 +11,7 @@ function openDatabase(): Promise<IDBDatabase> {
       const database = request.result
       if (!database.objectStoreNames.contains('geocoder-results')) database.createObjectStore('geocoder-results', { keyPath: 'key' })
       if (!database.objectStoreNames.contains(JOURNEY_STORE)) database.createObjectStore(JOURNEY_STORE, { keyPath: 'id' })
+      if (!database.objectStoreNames.contains('live-data')) database.createObjectStore('live-data', { keyPath: 'key' })
     }
     request.onsuccess = () => resolve(request.result)
     request.onerror = () => reject(request.error)

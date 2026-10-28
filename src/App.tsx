@@ -7,6 +7,7 @@ import { LLM_PROVIDER_PRESETS } from './providers/config'
 import { completeChat, streamChat, testLlmConnection } from './providers/llm'
 import { searchLocalPlaces } from './providers/localPlaceIndex'
 import { calculateWalkingRoute } from './providers/routing'
+import { fetchCurrentWeather, weatherLabel, type WeatherResult } from './providers/weather'
 import { deleteActiveJourney, loadActiveJourney, saveActiveJourney } from './storage/journey'
 import { loadSettings, saveSettings } from './storage/settings'
 import type { JourneyState, NarrativeEvent, Place, UserSettings, WalkingRoute } from './types/domain'
@@ -58,6 +59,9 @@ function App() {
   const [pendingDestination, setPendingDestination] = useState<Place | null>(null)
   const [routeState, setRouteState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [routeMessage, setRouteMessage] = useState('')
+  const [weather, setWeather] = useState<WeatherResult | null>(null)
+  const [weatherState, setWeatherState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
+  const [weatherError, setWeatherError] = useState('')
 
   useEffect(() => {
     saveSettings(settings)
@@ -114,8 +118,13 @@ function App() {
     if (!selectedPlace) {
       setPlaceContext(null)
       setContextState('idle')
+      setWeather(null)
+      setWeatherState('idle')
       return () => { active = false }
     }
+
+    setWeather(null)
+    setWeatherState('idle')
 
     setContextState('loading')
     void enrichPlace(selectedPlace).then((response) => {
@@ -201,6 +210,20 @@ function App() {
     }
   }
 
+  async function loadWeather(force = false) {
+    if (!selectedPlace || !settings.liveDataEnabled) return
+    setWeatherState('loading')
+    setWeatherError('')
+    try {
+      const result = await fetchCurrentWeather(selectedPlace, settings.weatherBaseUrl, force)
+      setWeather(result)
+      setWeatherState('ready')
+    } catch (error) {
+      setWeatherState('error')
+      setWeatherError(error instanceof Error ? error.message : 'Weather is unavailable')
+    }
+  }
+
   function sendMessage(event: React.FormEvent) {
     event.preventDefault()
     const trimmed = message.trim()
@@ -210,7 +233,7 @@ function App() {
     setMessage('')
     setLlmState('loading')
     setLlmError('')
-    const chatMessages = buildJourneyContext({ settings, selectedPlace, messages, userMessage: trimmed, journey: { destinationHistory, currentScene, knownPeople, knownEntities, userFacts, conversationSummary } })
+    const chatMessages = buildJourneyContext({ settings, selectedPlace, messages, userMessage: trimmed, liveWeather: weather ? `${weatherLabel(weather.data.weatherCode)}, ${weather.data.temperatureC}°C, ${weather.source}` : undefined, journey: { destinationHistory, currentScene, knownPeople, knownEntities, userFacts, conversationSummary } })
     let assistantStarted = false
     void streamChat({ baseUrl: settings.llmBaseUrl, model: settings.llmModel, apiKey: settings.llmApiKey }, chatMessages, (delta) => {
       const firstDelta = !assistantStarted
@@ -342,9 +365,17 @@ function App() {
             <p className="place-category">{selectedPlace.category ?? 'Place'}</p>
             <dl className="place-facts">
               <div><dt>Coordinates</dt><dd>{selectedPlace.coordinates[1].toFixed(5)}, {selectedPlace.coordinates[0].toFixed(5)}</dd></div>
-              {selectedPlace.osmType && selectedPlace.osmId && <div><dt>OSM feature</dt><dd>{selectedPlace.osmType}/{selectedPlace.osmId}</dd></div>}
+             {selectedPlace.osmType && selectedPlace.osmId && <div><dt>OSM feature</dt><dd>{selectedPlace.osmType}/{selectedPlace.osmId}</dd></div>}
               <div><dt>Source</dt><dd>{selectedPlace.source === 'online' ? `Online · ${settings.onlineGeocoder}` : 'Loaded OpenFreeMap data'}</dd></div>
             </dl>
+            <div className="weather-panel">
+              <div className="weather-heading"><p className="context-label">Current weather</p>{weather && <span className={`weather-source weather-${weather.source}`}>{weather.source}</span>}</div>
+              {!settings.liveDataEnabled && <p className="context-state">Enable optional live data in settings to request weather.</p>}
+              {settings.liveDataEnabled && weatherState === 'idle' && <button className="weather-button" onClick={() => void loadWeather()}>Load current weather</button>}
+              {weatherState === 'loading' && <p className="context-state">Fetching current conditions…</p>}
+              {weatherState === 'error' && <><p className="context-state">{weatherError}</p><button className="weather-button" onClick={() => void loadWeather(true)}>Try weather again</button></>}
+              {weatherState === 'ready' && weather && <><div className="weather-reading"><strong>{weather.data.temperatureC.toFixed(1)}°C</strong><span>{weatherLabel(weather.data.weatherCode)} · feels like {weather.data.apparentTemperatureC.toFixed(1)}°C</span></div><p className="weather-meta">Wind {weather.data.windSpeedKmh.toFixed(0)} km/h · observed {weather.data.observedAt.replace('T', ' ')}</p><button className="weather-button" onClick={() => void loadWeather(true)}>Refresh weather</button></>}
+            </div>
             {contextState === 'loading' && <p className="context-state">Loading Wikipedia and Wikidata context…</p>}
             {contextState === 'error' && <p className="context-state">Optional destination context is unavailable.</p>}
             {contextState === 'ready' && placeContext && <div className="place-context">
@@ -392,6 +423,7 @@ function App() {
         <div className="connection-test"><button type="button" onClick={() => void checkLlmConnection()} disabled={connectionState === 'testing'}>{connectionState === 'testing' ? 'Testing…' : 'Test connection'}</button>{connectionMessage && <span className={connectionState === 'error' ? 'connection-error' : 'connection-ready'}>{connectionMessage}</span>}</div>
         <label>Online geocoder<select value={settings.onlineGeocoder} onChange={(event) => setSettings({ ...settings, onlineGeocoder: event.target.value as UserSettings['onlineGeocoder'] })}><option value="nominatim">Nominatim</option><option value="photon">Photon</option></select></label>
         <label>Walking route server<input value={settings.routingBaseUrl} onChange={(event) => setSettings({ ...settings, routingBaseUrl: event.target.value })} /></label>
+        <label>Weather provider URL<input value={settings.weatherBaseUrl} onChange={(event) => setSettings({ ...settings, weatherBaseUrl: event.target.value })} /></label>
         <label className="toggle-row"><span>Calculate walking routes by default</span><input type="checkbox" checked={settings.calculateWalkingRoutes} onChange={(event) => setSettings({ ...settings, calculateWalkingRoutes: event.target.checked })} /></label>
         <label className="toggle-row"><span>Enable optional live data</span><input type="checkbox" checked={settings.liveDataEnabled} onChange={(event) => setSettings({ ...settings, liveDataEnabled: event.target.checked })} /></label>
         <p className="settings-note">Saved journey destinations: {destinationHistory.length}. Scene events: {narrativeEvents.length}. {summaryState === 'loading' ? 'Updating conversation summary…' : conversationSummary ? 'Long-conversation summary available.' : ''}</p>

@@ -29,6 +29,7 @@ export type UserSettings = {
   calculateWalkingRoutes: boolean
   routingBaseUrl: string
   liveDataEnabled: boolean
+  weatherBaseUrl: string
 }
 
 export type NarrativeEvent = {

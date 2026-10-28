@@ -67,12 +67,12 @@ The phases below are ordered around a usable single-user MVP. Each phase should 
 
 ## Phase 6: Optional Live Data
 
-- [ ] Add provider settings for live data integrations
-- [ ] Add weather adapter as the first optional integration
-- [ ] Fetch live data only when enabled and requested
-- [ ] Cache live responses with explicit freshness metadata
+- [x] Add provider settings for live data integrations
+- [x] Add weather adapter as the first optional integration
+- [x] Fetch live data only when enabled and requested
+- [x] Cache live responses with explicit freshness metadata
 - [ ] Add optional opening-hours, events, transport, and travel adapters
-- [ ] Ensure the AI distinguishes current data from cached and static facts
+- [x] Ensure the AI distinguishes current data from cached and static facts
 
 ## Phase 7: Offline and Deployment Polish
 
