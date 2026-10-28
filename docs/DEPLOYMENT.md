@@ -4,6 +4,8 @@
 
 The application is a Vite static build. Run `npm run build`, then publish the `dist/` directory to GitHub Pages, Cloudflare Pages, or another static host. The Vite base path is relative, so the generated assets work from a project subpath as well as a domain root.
 
+The repository includes a GitHub Actions workflow at `.github/workflows/deploy-pages.yml`. It builds and deploys `main` to GitHub Pages after each push, and can also be started manually from the Actions tab. In the repository settings, set **Pages > Build and deployment > Source** to **GitHub Actions**. The published project URL is `https://fptstuden.github.io/osm-ai-journey/`.
+
 The service worker is registered only in production. It caches the application shell and recently requested OpenFreeMap resources, serves the shell when a document request fails offline, and removes older `osm-ai-journey-*` cache versions during activation.
 
 ## Browser storage
