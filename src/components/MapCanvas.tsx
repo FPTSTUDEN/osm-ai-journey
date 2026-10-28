@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
-import maplibregl, { type Map as MapLibreMap, type MapMouseEvent, type Marker } from 'maplibre-gl'
+import * as maplibregl from 'maplibre-gl'
+import type { GeoJSONFeature, Map as MapLibreMap, MapMouseEvent, Marker } from 'maplibre-gl'
 import { OPENFREEMAP_STYLE } from '../providers/config'
 import { deduplicatePlaces, placeFromFeature } from '../providers/localPlaceIndex'
 import type { Place, WalkingRoute } from '../types/domain'
@@ -42,12 +43,12 @@ export function MapCanvas({ onPlaceSelected, onPlacesLoaded, onMapStatusChange, 
     const collectLoadedPlaces = () => {
       const places: Place[] = []
       const sources = Object.entries(map.getStyle().sources)
-        .filter(([, source]) => source.type === 'vector')
+        .filter(([, source]) => (source as { type?: string }).type === 'vector')
         .map(([sourceId]) => sourceId)
 
       for (const sourceId of sources) {
         try {
-          map.querySourceFeatures(sourceId).forEach((feature) => {
+            map.querySourceFeatures(sourceId).forEach((feature: GeoJSONFeature) => {
             const place = placeFromFeature(feature)
             if (place) places.push(place)
           })
@@ -60,7 +61,7 @@ export function MapCanvas({ onPlaceSelected, onPlacesLoaded, onMapStatusChange, 
     }
 
     const handleClick = (event: MapMouseEvent) => {
-      const feature = map.queryRenderedFeatures(event.point).map(placeFromFeature).find(Boolean)
+      const feature = map.queryRenderedFeatures(event.point).map((item) => placeFromFeature(item)).find(Boolean)
       if (feature) onPlaceSelectedRef.current(feature)
     }
 

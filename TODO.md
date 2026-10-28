@@ -88,11 +88,11 @@ The phases below are ordered around a usable single-user MVP. Each phase should 
 
 ## Phase 8: Quality
 
-- [ ] Add unit tests for provider adapters and local search
-- [ ] Add journey-state transition tests
-- [ ] Add browser tests for the core destination-to-roleplay flow
-- [ ] Test responsive layouts at mobile, tablet, and desktop widths
-- [ ] Test keyboard navigation and screen-reader labels
-- [ ] Add provider failure and offline scenarios to the test matrix
-- [ ] Reduce the initial bundle with code splitting where useful
-- [ ] Review npm audit findings and dependency updates
+- [x] Add unit tests for provider adapters and local search
+- [x] Add journey-state transition tests
+- [x] Add browser tests for the core destination-to-roleplay flow
+- [x] Test responsive layouts at mobile, tablet, and desktop widths
+- [x] Test keyboard navigation and screen-reader labels
+- [x] Add provider failure and offline scenarios to the test matrix
+- [x] Reduce the initial bundle with code splitting where useful
+- [x] Review npm audit findings and dependency updates
