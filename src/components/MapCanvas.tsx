@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import maplibregl, { type Map as MapLibreMap, type MapMouseEvent, type Marker } from 'maplibre-gl'
 import { OPENFREEMAP_STYLE } from '../providers/config'
 import { deduplicatePlaces, placeFromFeature } from '../providers/localPlaceIndex'
-import type { Place } from '../types/domain'
+import type { Place, WalkingRoute } from '../types/domain'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
 type MapCanvasProps = {
@@ -10,9 +10,10 @@ type MapCanvasProps = {
   onPlacesLoaded: (places: Place[]) => void
   onMapStatusChange: (status: 'loading' | 'ready' | 'unavailable') => void
   selectedPlace: Place | null
+  route: WalkingRoute | null
 }
 
-export function MapCanvas({ onPlaceSelected, onPlacesLoaded, onMapStatusChange, selectedPlace }: MapCanvasProps) {
+export function MapCanvas({ onPlaceSelected, onPlacesLoaded, onMapStatusChange, selectedPlace, route }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
   const markerRef = useRef<Marker | null>(null)
@@ -91,6 +92,31 @@ export function MapCanvas({ onPlaceSelected, onPlacesLoaded, onMapStatusChange, 
       .addTo(map)
     map.flyTo({ center: selectedPlace.coordinates, zoom: Math.max(map.getZoom(), 14), essential: true })
   }, [selectedPlace])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !route) return
+    const sourceId = 'walking-route'
+    const layerId = 'walking-route-line'
+    const removeRoute = () => {
+      if (map.getLayer(layerId)) map.removeLayer(layerId)
+      if (map.getSource(sourceId)) map.removeSource(sourceId)
+    }
+    const drawRoute = () => {
+      removeRoute()
+      map.addSource(sourceId, {
+        type: 'geojson',
+        data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: route.coordinates } },
+      })
+      map.addLayer({ id: layerId, type: 'line', source: sourceId, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#d5ef9a', 'line-width': 4, 'line-opacity': 0.9 } })
+    }
+    if (map.isStyleLoaded()) drawRoute()
+    else map.once('load', drawRoute)
+    return () => {
+      map.off('load', drawRoute)
+      removeRoute()
+    }
+  }, [route])
 
   return <div className="map-canvas" ref={containerRef} aria-label="Interactive OpenStreetMap map" role="application" />
 }

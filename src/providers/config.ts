@@ -12,6 +12,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   onlineGeocoder: 'nominatim',
   calculateWalkingRoutes: false,
   liveDataEnabled: false,
+  routingBaseUrl: 'https://router.project-osrm.org',
 }
 
 export const LLM_PROVIDER_PRESETS: Record<Exclude<UserSettings['llmProvider'], 'custom'>, { label: string; baseUrl: string; model: string }> = {

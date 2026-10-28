@@ -1,5 +1,12 @@
 export type Coordinates = [number, number]
 
+export type WalkingRoute = {
+  coordinates: Coordinates[]
+  distanceMeters: number
+  durationSeconds: number
+  provider: 'osrm'
+}
+
 export type Place = {
   id: string
   name: string
@@ -20,12 +27,13 @@ export type UserSettings = {
   personaInstructions: string
   onlineGeocoder: 'nominatim' | 'photon'
   calculateWalkingRoutes: boolean
+  routingBaseUrl: string
   liveDataEnabled: boolean
 }
 
 export type NarrativeEvent = {
   id: string
-  type: 'destination-transition' | 'message'
+  type: 'destination-transition' | 'routed-transition' | 'unrouted-transition' | 'message'
   createdAt: string
   text: string
   placeId?: string

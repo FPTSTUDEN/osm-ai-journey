@@ -57,13 +57,13 @@ The phases below are ordered around a usable single-user MVP. Each phase should 
 
 ## Phase 5: Walking Journeys
 
-- [ ] Implement routing provider interface
-- [ ] Add OSRM or OpenRouteService walking adapter
-- [ ] Add route preview and route geometry on the map
-- [ ] Allow route calculation to be skipped per transition
-- [ ] Add configurable default route preference
-- [ ] Continue the journey when routing is unavailable or fails
-- [ ] Add route and unrouted transition narrative events
+- [x] Implement routing provider interface
+- [x] Add OSRM or OpenRouteService walking adapter
+- [x] Add route preview and route geometry on the map
+- [x] Allow route calculation to be skipped per transition
+- [x] Add configurable default route preference
+- [x] Continue the journey when routing is unavailable or fails
+- [x] Add route and unrouted transition narrative events
 
 ## Phase 6: Optional Live Data
 

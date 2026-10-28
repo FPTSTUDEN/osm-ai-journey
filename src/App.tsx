@@ -6,9 +6,10 @@ import { buildJourneyContext, buildSummaryMessages } from './providers/context'
 import { LLM_PROVIDER_PRESETS } from './providers/config'
 import { completeChat, streamChat, testLlmConnection } from './providers/llm'
 import { searchLocalPlaces } from './providers/localPlaceIndex'
+import { calculateWalkingRoute } from './providers/routing'
 import { deleteActiveJourney, loadActiveJourney, saveActiveJourney } from './storage/journey'
 import { loadSettings, saveSettings } from './storage/settings'
-import type { JourneyState, NarrativeEvent, Place, UserSettings } from './types/domain'
+import type { JourneyState, NarrativeEvent, Place, UserSettings, WalkingRoute } from './types/domain'
 import './styles/app.css'
 
 const starterMessage = 'Choose a place on the map, or tell me what kind of journey you want to begin.'
@@ -53,6 +54,10 @@ function App() {
   const [llmError, setLlmError] = useState('')
   const [connectionState, setConnectionState] = useState<'idle' | 'testing' | 'ready' | 'error'>('idle')
   const [connectionMessage, setConnectionMessage] = useState('')
+  const [route, setRoute] = useState<WalkingRoute | null>(null)
+  const [pendingDestination, setPendingDestination] = useState<Place | null>(null)
+  const [routeState, setRouteState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
+  const [routeMessage, setRouteMessage] = useState('')
 
   useEffect(() => {
     saveSettings(settings)
@@ -126,7 +131,26 @@ function App() {
 
   const localResults = useMemo(() => searchLocalPlaces(places, query), [places, query])
 
-  function choosePlace(place: Place) {
+  async function completeTransition(place: Place, withRoute: boolean) {
+    const origin = selectedPlace
+    let walkingRoute: WalkingRoute | null = null
+    setPendingDestination(null)
+    setRouteMessage('')
+    if (withRoute && origin) {
+      setRouteState('loading')
+      try {
+        walkingRoute = await calculateWalkingRoute(origin, place, { baseUrl: settings.routingBaseUrl })
+        setRoute(walkingRoute)
+        setRouteState('ready')
+      } catch (error) {
+        setRoute(null)
+        setRouteState('error')
+        setRouteMessage(error instanceof Error ? error.message : 'Walking route unavailable')
+      }
+    } else {
+      setRoute(null)
+      setRouteState('idle')
+    }
     setSelectedPlace(place)
     setQuery('')
     setOnlineResults([])
@@ -134,8 +158,20 @@ function App() {
     setDestinationHistory((current) => current.some((item) => item.id === place.id) ? current : [...current, place])
     setCurrentScene((current) => current + 1)
     const arrival = `You arrive at ${place.name}.`
-    setMessages((current) => [...current, arrival])
-    setNarrativeEvents((current) => [...current, newEvent('destination-transition', arrival, place.id)])
+    const eventType = walkingRoute ? 'routed-transition' : 'unrouted-transition'
+    const eventText = walkingRoute ? `${arrival} Walking route calculated.` : `${arrival} Continuing without a walking route.`
+    setMessages((current) => [...current.slice(0, -1), eventText])
+    setNarrativeEvents((current) => [...current, newEvent(eventType, eventText, place.id)])
+  }
+
+  function choosePlace(place: Place) {
+    if (selectedPlace && selectedPlace.id !== place.id && settings.calculateWalkingRoutes) {
+      setPendingDestination(place)
+      setRouteState('idle')
+      setRouteMessage('')
+      return
+    }
+    void completeTransition(place, false)
   }
 
   function updateQuery(value: string) {
@@ -143,6 +179,7 @@ function App() {
     setOnlineResults([])
     setOnlineQuery('')
     setOnlineState('idle')
+    setPendingDestination(null)
     setOnlineError('')
   }
 
@@ -221,6 +258,9 @@ function App() {
     setQuery('')
     setOnlineResults([])
     setOnlineState('idle')
+    setRoute(null)
+    setPendingDestination(null)
+    setRouteState('idle')
   }
 
   async function deleteJourney() {
@@ -289,11 +329,15 @@ function App() {
           </div>}
           {query && onlineQuery === query.trim() && onlineState === 'ready' && onlineResults.length === 0 && <div className="online-search">No online places matched. <button onClick={() => void searchOnline()}>Try another search</button></div>}
           {query && mapStatus === 'unavailable' && <div className="search-state">Loaded map data is unavailable. Try moving the map or search online.</div>}
-          <MapCanvas selectedPlace={selectedPlace} onPlaceSelected={choosePlace} onPlacesLoaded={setPlaces} onMapStatusChange={setMapStatus} />
+          <MapCanvas selectedPlace={selectedPlace} route={route} onPlaceSelected={choosePlace} onPlacesLoaded={setPlaces} onMapStatusChange={setMapStatus} />
+          {pendingDestination && <div className="route-choice"><p className="eyebrow">Begin transition</p><strong>Walk from {selectedPlace?.name} to {pendingDestination.name}?</strong><p>Calculate an optional walking route before arriving.</p><div><button onClick={() => void completeTransition(pendingDestination, true)}>Walk there</button><button onClick={() => void completeTransition(pendingDestination, false)}>Arrive without route</button></div></div>}
+          {routeState === 'loading' && <div className="route-status">Calculating walking route…</div>}
+          {routeState === 'ready' && route && <div className="route-status">Walking route · {(route.distanceMeters / 1000).toFixed(1)} km · {Math.round(route.durationSeconds / 60)} min</div>}
+          {routeState === 'error' && <div className="route-status route-error">{routeMessage} Continuing without a route.</div>}
           {selectedPlace && <aside className="place-detail" aria-label="Selected destination">
             <div className="place-detail-header">
               <div><p className="eyebrow">Selected destination</p><h3>{selectedPlace.name}</h3></div>
-              <button className="close-button" onClick={() => setSelectedPlace(null)} aria-label="Clear selected destination">×</button>
+              <button className="close-button" onClick={() => { setSelectedPlace(null); setRoute(null) }} aria-label="Clear selected destination">×</button>
             </div>
             <p className="place-category">{selectedPlace.category ?? 'Place'}</p>
             <dl className="place-facts">
@@ -347,6 +391,7 @@ function App() {
         <label>Companion instructions<textarea className="persona-input" value={settings.personaInstructions} onChange={(event) => setSettings({ ...settings, personaInstructions: event.target.value })} rows={3} /></label>
         <div className="connection-test"><button type="button" onClick={() => void checkLlmConnection()} disabled={connectionState === 'testing'}>{connectionState === 'testing' ? 'Testing…' : 'Test connection'}</button>{connectionMessage && <span className={connectionState === 'error' ? 'connection-error' : 'connection-ready'}>{connectionMessage}</span>}</div>
         <label>Online geocoder<select value={settings.onlineGeocoder} onChange={(event) => setSettings({ ...settings, onlineGeocoder: event.target.value as UserSettings['onlineGeocoder'] })}><option value="nominatim">Nominatim</option><option value="photon">Photon</option></select></label>
+        <label>Walking route server<input value={settings.routingBaseUrl} onChange={(event) => setSettings({ ...settings, routingBaseUrl: event.target.value })} /></label>
         <label className="toggle-row"><span>Calculate walking routes by default</span><input type="checkbox" checked={settings.calculateWalkingRoutes} onChange={(event) => setSettings({ ...settings, calculateWalkingRoutes: event.target.checked })} /></label>
         <label className="toggle-row"><span>Enable optional live data</span><input type="checkbox" checked={settings.liveDataEnabled} onChange={(event) => setSettings({ ...settings, liveDataEnabled: event.target.checked })} /></label>
         <p className="settings-note">Saved journey destinations: {destinationHistory.length}. Scene events: {narrativeEvents.length}. {summaryState === 'loading' ? 'Updating conversation summary…' : conversationSummary ? 'Long-conversation summary available.' : ''}</p>
