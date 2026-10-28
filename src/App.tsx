@@ -38,6 +38,10 @@ function App() {
   const [destinationHistory, setDestinationHistory] = useState<Place[]>([])
   const [currentScene, setCurrentScene] = useState(1)
   const [narrativeEvents, setNarrativeEvents] = useState<NarrativeEvent[]>([])
+  const [knownPeople, setKnownPeople] = useState<string[]>([])
+  const [knownEntities, setKnownEntities] = useState<string[]>([])
+  const [userFacts, setUserFacts] = useState<string[]>([])
+  const [journeyItem, setJourneyItem] = useState({ people: '', entities: '', facts: '' })
   const [journeyReady, setJourneyReady] = useState(false)
 
   useEffect(() => {
@@ -52,6 +56,9 @@ function App() {
       setCurrentScene(restored.currentScene)
       setMessages(restored.messages.length ? restored.messages : [starterMessage])
       setNarrativeEvents(restored.narrativeEvents)
+      setKnownPeople(restored.knownPeople)
+      setKnownEntities(restored.knownEntities)
+      setUserFacts(restored.userFacts)
       setJourneyReady(true)
     })
   }, [])
@@ -64,12 +71,12 @@ function App() {
       destinationHistory,
       currentScene,
       messages,
-      knownPeople: [],
-      knownEntities: [],
-      userFacts: [],
+      knownPeople,
+      knownEntities,
+      userFacts,
       narrativeEvents,
     })
-  }, [currentScene, destinationHistory, journeyReady, messages, narrativeEvents, selectedPlace])
+  }, [currentScene, destinationHistory, journeyReady, knownEntities, knownPeople, messages, narrativeEvents, selectedPlace, userFacts])
 
   useEffect(() => {
     let active = true
@@ -147,6 +154,10 @@ function App() {
     setCurrentScene(journey.currentScene)
     setMessages(journey.messages)
     setNarrativeEvents(journey.narrativeEvents)
+    setKnownPeople(journey.knownPeople)
+    setKnownEntities(journey.knownEntities)
+    setUserFacts(journey.userFacts)
+    setJourneyItem({ people: '', entities: '', facts: '' })
     setQuery('')
     setOnlineResults([])
     setOnlineState('idle')
@@ -155,6 +166,14 @@ function App() {
   async function deleteJourney() {
     await deleteActiveJourney()
     resetJourney()
+  }
+
+  function addJourneyItem(kind: 'people' | 'entities' | 'facts') {
+    const value = journeyItem[kind].trim()
+    if (!value) return
+    const add = kind === 'people' ? setKnownPeople : kind === 'entities' ? setKnownEntities : setUserFacts
+    add((current) => current.includes(value) ? current : [...current, value])
+    setJourneyItem((current) => ({ ...current, [kind]: '' }))
   }
 
   return (
@@ -257,6 +276,14 @@ function App() {
         <label className="toggle-row"><span>Calculate walking routes by default</span><input type="checkbox" checked={settings.calculateWalkingRoutes} onChange={(event) => setSettings({ ...settings, calculateWalkingRoutes: event.target.checked })} /></label>
         <label className="toggle-row"><span>Enable optional live data</span><input type="checkbox" checked={settings.liveDataEnabled} onChange={(event) => setSettings({ ...settings, liveDataEnabled: event.target.checked })} /></label>
         <p className="settings-note">Saved journey destinations: {destinationHistory.length}. Scene events: {narrativeEvents.length}.</p>
+        <div className="journey-memory">
+          <p className="memory-label">Journey memory</p>
+          {(['people', 'entities', 'facts'] as const).map((kind) => {
+            const values = kind === 'people' ? knownPeople : kind === 'entities' ? knownEntities : userFacts
+            const label = kind === 'people' ? 'Known people' : kind === 'entities' ? 'Known entities' : 'Your facts'
+            return <div className="memory-group" key={kind}><label>{label}<div className="memory-entry"><input value={journeyItem[kind]} onChange={(event) => setJourneyItem({ ...journeyItem, [kind]: event.target.value })} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addJourneyItem(kind) } }} placeholder={`Add ${label.toLowerCase()}`} /><button type="button" onClick={() => addJourneyItem(kind)}>Add</button></div></label>{values.length > 0 && <p className="memory-values">{values.join(' · ')}</p>}</div>
+          })}
+        </div>
         <div className="settings-actions"><button onClick={resetJourney}>Reset journey</button><button onClick={() => void deleteJourney()}>Delete saved journey</button></div>
         <p className="settings-note">Settings stay in this browser. API keys are not safe to share in a public static deployment.</p>
       </aside>}

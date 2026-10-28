@@ -39,7 +39,7 @@ The phases below are ordered around a usable single-user MVP. Each phase should 
 - [x] Add IndexedDB storage boundary
 - [x] Persist and restore the active journey
 - [x] Track current destination and destination history
-- [ ] Track current scene, known people, entities, and user-created facts
+- [x] Track current scene, known people, entities, and user-created facts
 - [x] Add destination transition events
 - [x] Add journey reset and delete controls
 
