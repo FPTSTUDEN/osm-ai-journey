@@ -448,7 +448,7 @@ function App() {
           <p className="memory-label">Journey memory</p>
           {(['people', 'entities', 'facts'] as const).map((kind) => {
             const values = kind === 'people' ? knownPeople : kind === 'entities' ? knownEntities : userFacts
-            const label = kind === 'people' ? 'Known people' : kind === 'entities' ? 'Known entities' : 'Your facts'
+            const label = kind === 'people' ? 'User-created people' : kind === 'entities' ? 'User-created entities' : 'User-created facts'
             return <div className="memory-group" key={kind}><label>{label}<div className="memory-entry"><input value={journeyItem[kind]} onChange={(event) => setJourneyItem({ ...journeyItem, [kind]: event.target.value })} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addJourneyItem(kind) } }} placeholder={`Add ${label.toLowerCase()}`} /><button type="button" onClick={() => addJourneyItem(kind)}>Add</button></div></label>{values.length > 0 && <p className="memory-values">{values.join(' · ')}</p>}</div>
           })}
         </div>

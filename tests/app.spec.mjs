@@ -42,7 +42,7 @@ test('shows a provider failure without breaking normal chat UI', async ({ page }
 test('supports keyboard journey memory and accessible controls', async ({ page }) => {
   await resetBrowser(page)
   await page.getByRole('button', { name: 'Toggle settings' }).click()
-  const people = page.getByPlaceholder('Add known people')
+  const people = page.getByPlaceholder('Add user-created people')
   await people.fill('Ada')
   await people.press('Enter')
   await expect(page.getByText('Ada', { exact: true })).toBeVisible()

@@ -31,7 +31,7 @@ The phases below are ordered around a usable single-user MVP. Each phase should 
 - [x] Add cache-key normalization and expiry behavior
 - [x] Add Wikipedia destination enrichment
 - [x] Add Wikidata structured-fact enrichment
-- [ ] Label source-backed, cached, live, and user-created information
+- [x] Label source-backed, cached, live, and user-created information
 
 ## Phase 3: Journey State
 
