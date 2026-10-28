@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { MapCanvas } from './components/MapCanvas'
 import { enrichPlace, type PlaceContext } from './providers/enrichment'
 import { searchOnlinePlaces } from './providers/geocoder'
-import { completeChat, testLlmConnection, type ChatMessage } from './providers/llm'
+import { streamChat, testLlmConnection, type ChatMessage } from './providers/llm'
 import { searchLocalPlaces } from './providers/localPlaceIndex'
 import { deleteActiveJourney, loadActiveJourney, saveActiveJourney } from './storage/journey'
 import { loadSettings, saveSettings } from './storage/settings'
@@ -157,8 +157,16 @@ function App() {
       ...messages.slice(1).map((item, index) => ({ role: (index % 2 ? 'assistant' : 'user') as ChatMessage['role'], content: item })),
       { role: 'user', content: trimmed },
     ]
-    void completeChat({ baseUrl: settings.llmBaseUrl, model: settings.llmModel, apiKey: settings.llmApiKey }, chatMessages).then((reply) => {
-      setMessages((current) => [...current, reply])
+    let assistantStarted = false
+    void streamChat({ baseUrl: settings.llmBaseUrl, model: settings.llmModel, apiKey: settings.llmApiKey }, chatMessages, (delta) => {
+      const firstDelta = !assistantStarted
+      assistantStarted = true
+      setMessages((current) => {
+        if (firstDelta) return [...current, delta]
+        const last = current[current.length - 1] ?? ''
+        return [...current.slice(0, -1), last + delta]
+      })
+    }).then(() => {
       setLlmState('idle')
     }).catch((error) => {
       setLlmState('error')

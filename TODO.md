@@ -46,7 +46,7 @@ The phases below are ordered around a usable single-user MVP. Each phase should 
 ## Phase 4: LLM Roleplay
 
 - [x] Implement the unified OpenAI-compatible provider contract
-- [ ] Add streaming chat responses
+- [x] Add streaming chat responses
 - [ ] Support OpenAI, Ollama, LM Studio, vLLM, and compatible base URLs
 - [x] Add provider connection test and clear error states
 - [ ] Add user-created persona editor
