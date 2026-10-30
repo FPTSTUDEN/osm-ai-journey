@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo, useEffect, useRef } from 'react'
 import * as maplibregl from 'maplibre-gl'
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import type { GeoJSONFeature, Map as MapLibreMap, MapMouseEvent, Marker } from 'maplibre-gl'
@@ -20,7 +20,7 @@ type MapCanvasProps = {
   route: WalkingRoute | null
 }
 
-export function MapCanvas({ onPlaceSelected, onPlacesLoaded, onMapStatusChange, selectedPlace, initialViewport, onViewportChange, route }: MapCanvasProps) {
+export const MapCanvas = memo(function MapCanvas({ onPlaceSelected, onPlacesLoaded, onMapStatusChange, selectedPlace, initialViewport, onViewportChange, route }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
   const markerRef = useRef<Marker | null>(null)
@@ -154,4 +154,4 @@ export function MapCanvas({ onPlaceSelected, onPlacesLoaded, onMapStatusChange, 
   }, [route])
 
   return <div className="map-canvas" ref={containerRef} aria-label="Interactive OpenStreetMap map" role="application" />
-}
+})
