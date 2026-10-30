@@ -4,7 +4,8 @@ import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&ur
 import type { GeoJSONFeature, Map as MapLibreMap, MapMouseEvent, Marker } from 'maplibre-gl'
 import { OPENFREEMAP_STYLE } from '../providers/config'
 import { deduplicatePlaces, placeFromFeature } from '../providers/localPlaceIndex'
-import type { Place, WalkingRoute } from '../types/domain'
+import { getInitialMapViewport } from './mapViewport'
+import type { MapViewport, Place, WalkingRoute } from '../types/domain'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
 maplibregl.setWorkerUrl(maplibreWorkerUrl)
@@ -14,10 +15,12 @@ type MapCanvasProps = {
   onPlacesLoaded: (places: Place[]) => void
   onMapStatusChange: (status: 'loading' | 'ready' | 'unavailable') => void
   selectedPlace: Place | null
+  initialViewport: MapViewport | null
+  onViewportChange: (viewport: MapViewport) => void
   route: WalkingRoute | null
 }
 
-export function MapCanvas({ onPlaceSelected, onPlacesLoaded, onMapStatusChange, selectedPlace, route }: MapCanvasProps) {
+export function MapCanvas({ onPlaceSelected, onPlacesLoaded, onMapStatusChange, selectedPlace, initialViewport, onViewportChange, route }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
   const markerRef = useRef<Marker | null>(null)
@@ -25,24 +28,32 @@ export function MapCanvas({ onPlaceSelected, onPlacesLoaded, onMapStatusChange, 
   const onPlaceSelectedRef = useRef(onPlaceSelected)
   const onPlacesLoadedRef = useRef(onPlacesLoaded)
   const onMapStatusChangeRef = useRef(onMapStatusChange)
+  const onViewportChangeRef = useRef(onViewportChange)
 
   onPlaceSelectedRef.current = onPlaceSelected
   onPlacesLoadedRef.current = onPlacesLoaded
   onMapStatusChangeRef.current = onMapStatusChange
+  onViewportChangeRef.current = onViewportChange
 
   useEffect(() => {
     if (!containerRef.current) return
     onMapStatusChangeRef.current('loading')
 
+    const viewport = getInitialMapViewport(selectedPlace, initialViewport)
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: OPENFREEMAP_STYLE,
-      center: selectedPlace?.coordinates ?? [2.3522, 48.8566],
-      zoom: selectedPlace ? 14 : 11.5,
+      center: viewport.center,
+      zoom: viewport.zoom,
     })
     let mapLoaded = false
     mapRef.current = map
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
+
+    const saveViewport = () => {
+      const center = map.getCenter()
+      onViewportChangeRef.current({ center: [center.lng, center.lat], zoom: map.getZoom() })
+    }
 
     const collectLoadedPlaces = () => {
       const places: Place[] = []
@@ -72,8 +83,10 @@ export function MapCanvas({ onPlaceSelected, onPlacesLoaded, onMapStatusChange, 
     map.on('load', () => {
       mapLoaded = true
       onMapStatusChangeRef.current('ready')
+      saveViewport()
       collectLoadedPlaces()
     })
+    map.on('moveend', saveViewport)
     map.on('idle', collectLoadedPlaces)
     map.on('click', handleClick)
     map.on('error', () => {

@@ -1,5 +1,10 @@
 export type Coordinates = [number, number]
 
+export type MapViewport = {
+  center: Coordinates
+  zoom: number
+}
+
 export type WalkingRoute = {
   coordinates: Coordinates[]
   distanceMeters: number
@@ -43,6 +48,7 @@ export type NarrativeEvent = {
 export type JourneyState = {
   id: 'active'
   currentDestination: Place | null
+  mapViewport?: MapViewport | null
   destinationHistory: Place[]
   currentScene: number
   messages: string[]

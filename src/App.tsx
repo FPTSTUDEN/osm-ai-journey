@@ -11,7 +11,7 @@ import { fetchCurrentWeather, weatherLabel, type WeatherResult } from './provide
 import { deleteActiveJourney, loadActiveJourney, saveActiveJourney } from './storage/journey'
 import { clearOfflineCache, getOfflineCacheStatus, type OfflineCacheStatus } from './storage/offlineCache'
 import { loadSettings, saveSettings } from './storage/settings'
-import type { JourneyState, NarrativeEvent, Place, UserSettings, WalkingRoute } from './types/domain'
+import type { JourneyState, MapViewport, NarrativeEvent, Place, UserSettings, WalkingRoute } from './types/domain'
 import './styles/app.css'
 
 const starterMessage = 'Choose a place on the map, or tell me what kind of journey you want to begin.'
@@ -21,13 +21,14 @@ function newEvent(type: NarrativeEvent['type'], text: string, placeId?: string):
 }
 
 function emptyJourney(): JourneyState {
-  return { id: 'active', currentDestination: null, destinationHistory: [], currentScene: 1, messages: [starterMessage], knownPeople: [], knownEntities: [], userFacts: [], narrativeEvents: [], conversationSummary: '' }
+  return { id: 'active', currentDestination: null, mapViewport: null, destinationHistory: [], currentScene: 1, messages: [starterMessage], knownPeople: [], knownEntities: [], userFacts: [], narrativeEvents: [], conversationSummary: '' }
 }
 
 function App() {
   const [settings, setSettings] = useState<UserSettings>(loadSettings)
   const [places, setPlaces] = useState<Place[]>([])
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null)
+  const [mapViewport, setMapViewport] = useState<MapViewport | null>(null)
   const [query, setQuery] = useState('')
   const [message, setMessage] = useState('')
   const [messages, setMessages] = useState([starterMessage])
@@ -78,6 +79,7 @@ function App() {
     void loadActiveJourney().then((journey) => {
       const restored = journey ?? emptyJourney()
       setSelectedPlace(restored.currentDestination)
+      setMapViewport(restored.mapViewport ?? null)
       setDestinationHistory(restored.destinationHistory)
       setCurrentScene(restored.currentScene)
       setMessages(restored.messages.length ? restored.messages : [starterMessage])
@@ -96,6 +98,7 @@ function App() {
     void saveActiveJourney({
       id: 'active',
       currentDestination: selectedPlace,
+      mapViewport,
       destinationHistory,
       currentScene,
       messages,
@@ -105,7 +108,7 @@ function App() {
       narrativeEvents,
       conversationSummary,
     })
-  }, [conversationSummary, currentScene, destinationHistory, journeyReady, knownEntities, knownPeople, messages, narrativeEvents, selectedPlace, userFacts])
+  }, [conversationSummary, currentScene, destinationHistory, journeyReady, knownEntities, knownPeople, mapViewport, messages, narrativeEvents, selectedPlace, userFacts])
 
   useEffect(() => {
     if (!journeyReady || summaryState === 'loading' || messages.length < 12 || messages.length - summaryMessageCount < 8) return
@@ -369,7 +372,7 @@ function App() {
           {query && onlineQuery === query.trim() && onlineState === 'ready' && onlineResults.length === 0 && <div className="online-search">No online places matched. <button onClick={() => void searchOnline()}>Try another search</button></div>}
           {query && mapStatus === 'unavailable' && <div className="search-state">Loaded map data is unavailable. <button onClick={() => void searchOnline()}>Search online</button></div>}
           {journeyReady
-            ? <Suspense fallback={<div className="map-loading">Loading map…</div>}><MapCanvas selectedPlace={selectedPlace} route={route} onPlaceSelected={choosePlace} onPlacesLoaded={setPlaces} onMapStatusChange={setMapStatus} /></Suspense>
+            ? <Suspense fallback={<div className="map-loading">Loading map…</div>}><MapCanvas selectedPlace={selectedPlace} initialViewport={mapViewport} onViewportChange={setMapViewport} route={route} onPlaceSelected={choosePlace} onPlacesLoaded={setPlaces} onMapStatusChange={setMapStatus} /></Suspense>
             : <div className="map-loading">Restoring journey…</div>}
           {pendingDestination && <div className="route-choice"><p className="eyebrow">Begin transition</p><strong>Walk from {selectedPlace?.name} to {pendingDestination.name}?</strong><p>Calculate an optional walking route before arriving.</p><div><button onClick={() => void completeTransition(pendingDestination, true)}>Walk there</button><button onClick={() => void completeTransition(pendingDestination, false)}>Arrive without route</button></div></div>}
           {routeState === 'loading' && <div className="route-status">Calculating walking route…</div>}

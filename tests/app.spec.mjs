@@ -19,6 +19,25 @@ async function chooseOnlinePlace(page) {
   await page.getByRole('button', { name: /Test Destination/ }).click()
 }
 
+async function readActiveMapViewport(page) {
+  return page.evaluate(() => new Promise((resolve, reject) => {
+    const request = indexedDB.open('osm-ai-journey')
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => {
+      const database = request.result
+      const getJourney = database.transaction('journeys', 'readonly').objectStore('journeys').get('active')
+      getJourney.onsuccess = () => {
+        database.close()
+        resolve(getJourney.result?.mapViewport ?? null)
+      }
+      getJourney.onerror = () => {
+        database.close()
+        reject(getJourney.error)
+      }
+    }
+  }))
+}
+
 test('completes and restores an online destination journey', async ({ page }) => {
   test.setTimeout(60000)
   await mockSearch(page)
@@ -58,6 +77,41 @@ test('completes and restores an online destination journey', async ({ page }) =>
   await expect(page.getByText(/1 destination/)).toBeVisible()
   await expect.poll(() => page.evaluate(() => window.__restoredMapMarkerOffset), { timeout: 15000 }).not.toBeNull()
   expect(await page.evaluate(() => window.__restoredMapMarkerOffset)).toBeLessThan(30)
+})
+
+test('restores the last explored map viewport when no destination is selected', async ({ page }) => {
+  test.setTimeout(60000)
+  await resetBrowser(page)
+  const map = page.locator('.map-canvas')
+  await expect(map.locator('canvas')).toBeVisible({ timeout: 15000 })
+  const bounds = await map.boundingBox()
+  expect(bounds).not.toBeNull()
+  const startX = bounds.x + bounds.width / 2
+  const startY = bounds.y + bounds.height / 2
+  await page.mouse.move(startX, startY)
+  await page.mouse.down()
+  await page.mouse.move(startX + 120, startY + 70, { steps: 6 })
+  await page.mouse.up()
+
+  await expect.poll(async () => {
+    const viewport = await readActiveMapViewport(page)
+    if (!viewport) return 0
+    return Math.hypot(viewport.center[0] - 2.3522, viewport.center[1] - 48.8566)
+  }, { timeout: 15000 }).toBeGreaterThan(0.01)
+  const savedViewport = await readActiveMapViewport(page)
+  expect(savedViewport).not.toBeNull()
+
+  await page.reload()
+  await expect(page.locator('.map-canvas canvas')).toBeVisible({ timeout: 15000 })
+  await expect.poll(async () => {
+    const viewport = await readActiveMapViewport(page)
+    if (!viewport) return Number.POSITIVE_INFINITY
+    const centerDifference = Math.hypot(
+      viewport.center[0] - savedViewport.center[0],
+      viewport.center[1] - savedViewport.center[1],
+    )
+    return Math.max(centerDifference, Math.abs(viewport.zoom - savedViewport.zoom))
+  }, { timeout: 15000 }).toBeLessThan(0.0001)
 })
 
 test('shows a provider failure without breaking normal chat UI', async ({ page }) => {
