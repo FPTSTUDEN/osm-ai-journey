@@ -88,13 +88,27 @@ export function MapCanvas({ onPlaceSelected, onPlacesLoaded, onMapStatusChange, 
 
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !selectedPlace) return
+    if (!map) return
+
+    if (!selectedPlace) {
+      markerRef.current?.remove()
+      markerRef.current = null
+      return
+    }
 
     markerRef.current?.remove()
     markerRef.current = new maplibregl.Marker({ color: '#d5ef9a' })
       .setLngLat(selectedPlace.coordinates)
       .addTo(map)
-    map.flyTo({ center: selectedPlace.coordinates, zoom: Math.max(map.getZoom(), 14), essential: true })
+
+    const focusSelectedPlace = () => {
+      map.flyTo({ center: selectedPlace.coordinates, zoom: Math.max(map.getZoom(), 14), essential: true })
+    }
+
+    if (map.isStyleLoaded()) focusSelectedPlace()
+    else map.once('load', focusSelectedPlace)
+
+    return () => { map.off('load', focusSelectedPlace) }
   }, [selectedPlace])
 
   useEffect(() => {

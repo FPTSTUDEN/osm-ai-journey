@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-const place = { osm_type: 'node', osm_id: 314, name: 'Test Destination', display_name: 'Test Destination, Test City', type: 'museum', lat: '48.85', lon: '2.35' }
+const place = { osm_type: 'node', osm_id: 314, name: 'Test Destination', display_name: 'Test Destination, Test City', type: 'museum', lat: '35.6762', lon: '139.6503' }
 
 async function resetBrowser(page) {
   await page.goto('/')
@@ -20,10 +20,21 @@ async function chooseOnlinePlace(page) {
 }
 
 test('completes and restores an online destination journey', async ({ page }) => {
+  test.setTimeout(60000)
   await mockSearch(page)
   await resetBrowser(page)
   await chooseOnlinePlace(page)
   await expect(page.getByRole('complementary', { name: 'Selected destination' }).getByRole('heading', { name: 'Test Destination' })).toBeVisible()
+  await expect.poll(() => page.locator('.map-canvas').evaluate((map) => {
+    const marker = map.querySelector('.maplibregl-marker')
+    if (!marker) return Number.POSITIVE_INFINITY
+    const mapBounds = map.getBoundingClientRect()
+    const markerBounds = marker.getBoundingClientRect()
+    return Math.hypot(
+      markerBounds.left + markerBounds.width / 2 - (mapBounds.left + mapBounds.width / 2),
+      markerBounds.top + markerBounds.height / 2 - (mapBounds.top + mapBounds.height / 2),
+    )
+  }), { timeout: 15000 }).toBeLessThan(30)
   await page.reload()
   await expect(page.getByRole('complementary', { name: 'Selected destination' }).getByRole('heading', { name: 'Test Destination' })).toBeVisible()
   await expect(page.getByText(/1 destination/)).toBeVisible()
