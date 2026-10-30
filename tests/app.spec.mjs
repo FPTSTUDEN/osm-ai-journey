@@ -35,9 +35,29 @@ test('completes and restores an online destination journey', async ({ page }) =>
       markerBounds.top + markerBounds.height / 2 - (mapBounds.top + mapBounds.height / 2),
     )
   }), { timeout: 15000 }).toBeLessThan(30)
+  await page.addInitScript(() => {
+    window.__restoredMapMarkerOffset = null
+    const captureInitialMarkerPosition = () => {
+      const map = document.querySelector('.map-canvas')
+      const marker = map?.querySelector('.maplibregl-marker')
+      if (map && marker) {
+        const mapBounds = map.getBoundingClientRect()
+        const markerBounds = marker.getBoundingClientRect()
+        window.__restoredMapMarkerOffset = Math.hypot(
+          markerBounds.left + markerBounds.width / 2 - (mapBounds.left + mapBounds.width / 2),
+          markerBounds.top + markerBounds.height / 2 - (mapBounds.top + mapBounds.height / 2),
+        )
+        return
+      }
+      requestAnimationFrame(captureInitialMarkerPosition)
+    }
+    requestAnimationFrame(captureInitialMarkerPosition)
+  })
   await page.reload()
   await expect(page.getByRole('complementary', { name: 'Selected destination' }).getByRole('heading', { name: 'Test Destination' })).toBeVisible()
   await expect(page.getByText(/1 destination/)).toBeVisible()
+  await expect.poll(() => page.evaluate(() => window.__restoredMapMarkerOffset), { timeout: 15000 }).not.toBeNull()
+  expect(await page.evaluate(() => window.__restoredMapMarkerOffset)).toBeLessThan(30)
 })
 
 test('shows a provider failure without breaking normal chat UI', async ({ page }) => {

@@ -368,7 +368,9 @@ function App() {
           </div>}
           {query && onlineQuery === query.trim() && onlineState === 'ready' && onlineResults.length === 0 && <div className="online-search">No online places matched. <button onClick={() => void searchOnline()}>Try another search</button></div>}
           {query && mapStatus === 'unavailable' && <div className="search-state">Loaded map data is unavailable. <button onClick={() => void searchOnline()}>Search online</button></div>}
-          <Suspense fallback={<div className="map-loading">Loading map…</div>}><MapCanvas selectedPlace={selectedPlace} route={route} onPlaceSelected={choosePlace} onPlacesLoaded={setPlaces} onMapStatusChange={setMapStatus} /></Suspense>
+          {journeyReady
+            ? <Suspense fallback={<div className="map-loading">Loading map…</div>}><MapCanvas selectedPlace={selectedPlace} route={route} onPlaceSelected={choosePlace} onPlacesLoaded={setPlaces} onMapStatusChange={setMapStatus} /></Suspense>
+            : <div className="map-loading">Restoring journey…</div>}
           {pendingDestination && <div className="route-choice"><p className="eyebrow">Begin transition</p><strong>Walk from {selectedPlace?.name} to {pendingDestination.name}?</strong><p>Calculate an optional walking route before arriving.</p><div><button onClick={() => void completeTransition(pendingDestination, true)}>Walk there</button><button onClick={() => void completeTransition(pendingDestination, false)}>Arrive without route</button></div></div>}
           {routeState === 'loading' && <div className="route-status">Calculating walking route…</div>}
           {routeState === 'ready' && route && <div className="route-status">Walking route · {(route.distanceMeters / 1000).toFixed(1)} km · {Math.round(route.durationSeconds / 60)} min</div>}

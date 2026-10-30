@@ -21,6 +21,7 @@ export function MapCanvas({ onPlaceSelected, onPlacesLoaded, onMapStatusChange, 
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
   const markerRef = useRef<Marker | null>(null)
+  const previousSelectedPlaceIdRef = useRef(selectedPlace?.id ?? null)
   const onPlaceSelectedRef = useRef(onPlaceSelected)
   const onPlacesLoadedRef = useRef(onPlacesLoaded)
   const onMapStatusChangeRef = useRef(onMapStatusChange)
@@ -36,8 +37,8 @@ export function MapCanvas({ onPlaceSelected, onPlacesLoaded, onMapStatusChange, 
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: OPENFREEMAP_STYLE,
-      center: [2.3522, 48.8566],
-      zoom: 11.5,
+      center: selectedPlace?.coordinates ?? [2.3522, 48.8566],
+      zoom: selectedPlace ? 14 : 11.5,
     })
     let mapLoaded = false
     mapRef.current = map
@@ -87,6 +88,8 @@ export function MapCanvas({ onPlaceSelected, onPlacesLoaded, onMapStatusChange, 
   }, [])
 
   useEffect(() => {
+    const previousSelectedPlaceId = previousSelectedPlaceIdRef.current
+    previousSelectedPlaceIdRef.current = selectedPlace?.id ?? null
     const map = mapRef.current
     if (!map) return
 
@@ -102,6 +105,7 @@ export function MapCanvas({ onPlaceSelected, onPlacesLoaded, onMapStatusChange, 
       .addTo(map)
 
     const focusSelectedPlace = () => {
+      if (previousSelectedPlaceId === selectedPlace.id) return
       map.flyTo({ center: selectedPlace.coordinates, zoom: Math.max(map.getZoom(), 14), essential: true })
     }
 
