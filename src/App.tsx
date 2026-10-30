@@ -1,12 +1,8 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 const MapCanvas = lazy(() => import('./components/MapCanvas').then((module) => ({ default: module.MapCanvas })))
-import { enrichPlace, type PlaceContext } from './providers/enrichment'
-import { searchOnlinePlaces } from './providers/geocoder'
-import { buildJourneyContext, buildSummaryMessages } from './providers/context'
+import type { PlaceContext } from './providers/enrichment'
 import { LLM_PROVIDER_PRESETS } from './providers/config'
-import { completeChat, streamChat, testLlmConnection } from './providers/llm'
 import { searchLocalPlaces } from './providers/localPlaceIndex'
-import { calculateWalkingRoute } from './providers/routing'
 import { fetchCurrentWeather, weatherLabel, type WeatherResult } from './providers/weather'
 import { deleteActiveJourney, loadActiveJourney, saveActiveJourney } from './storage/journey'
 import { clearOfflineCache, getOfflineCacheStatus, type OfflineCacheStatus } from './storage/offlineCache'
@@ -113,7 +109,7 @@ function App() {
   useEffect(() => {
     if (!journeyReady || summaryState === 'loading' || messages.length < 12 || messages.length - summaryMessageCount < 8) return
     setSummaryState('loading')
-    void completeChat({ baseUrl: settings.llmBaseUrl, model: settings.llmModel, apiKey: settings.llmApiKey }, buildSummaryMessages(messages)).then((summary) => {
+    void import('./providers/context').then(({ buildSummaryMessages }) => import('./providers/llm').then(({ completeChat }) => completeChat({ baseUrl: settings.llmBaseUrl, model: settings.llmModel, apiKey: settings.llmApiKey }, buildSummaryMessages(messages)))).then((summary) => {
       setConversationSummary(summary)
       setSummaryMessageCount(messages.length)
       setSummaryState('idle')
@@ -137,7 +133,7 @@ function App() {
     setWeatherState('idle')
 
     setContextState('loading')
-    void enrichPlace(selectedPlace).then((response) => {
+    void import('./providers/enrichment').then(({ enrichPlace }) => enrichPlace(selectedPlace)).then((response) => {
       if (!active) return
       setPlaceContext(response.context)
       setContextCached(response.cached)
@@ -158,6 +154,7 @@ function App() {
     if (withRoute && origin) {
       setRouteState('loading')
       try {
+        const { calculateWalkingRoute } = await import('./providers/routing')
         walkingRoute = await calculateWalkingRoute(origin, place, { baseUrl: settings.routingBaseUrl })
         setRoute(walkingRoute)
         setRouteState('ready')
@@ -209,6 +206,7 @@ function App() {
     setOnlineState('loading')
     setOnlineError('')
     try {
+      const { searchOnlinePlaces } = await import('./providers/geocoder')
       const response = await searchOnlinePlaces(trimmed, settings.onlineGeocoder)
       setOnlineResults(response.places)
       setOnlineCached(response.cached)
@@ -243,16 +241,18 @@ function App() {
     setMessage('')
     setLlmState('loading')
     setLlmError('')
-    const chatMessages = buildJourneyContext({ settings, selectedPlace, messages, userMessage: trimmed, liveWeather: weather ? `${weatherLabel(weather.data.weatherCode)}, ${weather.data.temperatureC}°C, ${weather.source}` : undefined, journey: { destinationHistory, currentScene, knownPeople, knownEntities, userFacts, conversationSummary } })
     let assistantStarted = false
-    void streamChat({ baseUrl: settings.llmBaseUrl, model: settings.llmModel, apiKey: settings.llmApiKey }, chatMessages, (delta) => {
-      const firstDelta = !assistantStarted
-      assistantStarted = true
-      setMessages((current) => {
-        if (firstDelta) return [...current, delta]
-        const last = current[current.length - 1] ?? ''
-        return [...current.slice(0, -1), last + delta]
-      })
+    void import('./providers/context').then(({ buildJourneyContext }) => {
+      const chatMessages = buildJourneyContext({ settings, selectedPlace, messages, userMessage: trimmed, liveWeather: weather ? `${weatherLabel(weather.data.weatherCode)}, ${weather.data.temperatureC}°C, ${weather.source}` : undefined, journey: { destinationHistory, currentScene, knownPeople, knownEntities, userFacts, conversationSummary } })
+      return import('./providers/llm').then(({ streamChat }) => streamChat({ baseUrl: settings.llmBaseUrl, model: settings.llmModel, apiKey: settings.llmApiKey }, chatMessages, (delta) => {
+        const firstDelta = !assistantStarted
+        assistantStarted = true
+        setMessages((current) => {
+          if (firstDelta) return [...current, delta]
+          const last = current[current.length - 1] ?? ''
+          return [...current.slice(0, -1), last + delta]
+        })
+      }))
     }).then(() => {
       setLlmState('idle')
     }).catch((error) => {
@@ -265,6 +265,7 @@ function App() {
     setConnectionState('testing')
     setConnectionMessage('')
     try {
+      const { testLlmConnection } = await import('./providers/llm')
       await testLlmConnection({ baseUrl: settings.llmBaseUrl, model: settings.llmModel, apiKey: settings.llmApiKey })
       setConnectionState('ready')
       setConnectionMessage('Connection ready')
