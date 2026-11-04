@@ -1,9 +1,8 @@
 # Immersive / Visual-Novel Redesign
 
-Status: **design proposal — not yet implemented.** This folder holds the UX/UI
-direction and static HTML mockups to execute later. Nothing here is wired to the
-app; the mockups use placeholder gradients for the map and Unsplash images for
-destination photos.
+Status: **implemented.** This document records the shipped presentation direction;
+the static HTML mockups remain visual references. The mockups use placeholder
+gradients for the map and Unsplash images for destination photos.
 
 ## Why
 
@@ -35,9 +34,10 @@ optional character illustration, and narration reads as prose in a dialogue box.
 
 ## Core moves
 
-1. **Full-bleed map as the stage.** Map fills the viewport; everything else floats
-   over it as translucent, blurred glass. Replace the `1.4fr / 0.7fr`
-   `.workspace` grid in `app.css`.
+1. **Full-bleed stage.** The map or selected illustrative photo fills the
+   viewport; narration and navigation panels float over it. Opening Map from the
+   dock explicitly moves the live map into a compact panel while the stage remains
+   visible. Keyboard focus and blur do not resize the map.
 2. **Destination photo = scene art (VN).** The selected place's photo becomes the
    full background, feathered over the dimmed live map. Promote the first
    `destinationPhotos` photo to a full-bleed hero/scene image.
@@ -48,11 +48,11 @@ optional character illustration, and narration reads as prose in a dialogue box.
 4. **Togglable character illustration.** Optional companion/NPC sprite, shown or
    hidden via a toggle. Multi-character scenes swap the sprite + nameplate to the
    active speaker (see mockup 05).
-5. **Togglable Map & Destination panels inside the story view.** A left-side dock
-   opens the Map (navigate / search / travel to other places — drives
-   `choosePlace` / `completeTransition`) and the Destination panel (image gallery
-   that can set the scene background, plus source context). Lets the user move
-   between places and images without leaving Story mode (see mockup 06).
+5. **Independent navigation panels inside the story view.** Dock actions open
+   Map, Place, and Journal panels independently. Map and Place can be open
+   together; explicitly closing one leaves the other open. Map search and travel
+   use the existing `choosePlace` / `completeTransition` flows, and photo choices
+   set the scene background (see mockup 06).
 6. **Field notes drawer.** Tuck provenance-heavy data (coordinates, OSM feature,
    source, cache status) behind an "examine" drawer instead of always-on facts.
 7. **Travelogue spine.** Reframe `narrativeEvents` as a journal path of visited
@@ -90,15 +90,10 @@ Options, in suggested order:
    (generated, not real).
 4. **Small curated archetype set** the AI maps NPCs onto.
 
-## Suggested implementation slices
+## Implementation notes
 
-1. Full-bleed stage + narration (moves 1, 3) — carries most of the "immersive"
-   feeling. Rework `.workspace`/`.panel` layout and the `.conversation` renderer.
-2. Scene art + VN dialogue box + illustration toggle (moves 2, 4).
-3. Togglable Map & Destination panels in Story mode (move 5), wired to existing
-   `choosePlace` / `completeTransition` and `destinationPhotos`.
-4. Field notes drawer + travelogue spine (moves 6, 7).
-5. Cinematic arrivals + Explore/Story toggle (moves 8, 9).
-
-Do NOT add tests or new dependencies for the presentation layer unless asked.
-Keep provider contracts and the journey-state model unchanged.
+- Dock panel state is explicit and independent; focus and blur do not trigger layout changes.
+- MapLibre remains mounted when its container becomes compact and uses `ResizeObserver` to refresh its rendering after size changes.
+- The Journal panel reads existing `narrativeEvents`; no journey schema changes are required.
+- Browser coverage for panel toggles, focus stability, and mobile layout lives in `tests/app.spec.mjs`.
+- Provider contracts and the journey-state model remain unchanged.

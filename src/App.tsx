@@ -12,6 +12,7 @@ import type { JourneyState, MapViewport, NarrativeEvent, Place, PlacePhoto, User
 import './styles/app.css'
 
 const starterMessage = 'Choose a place on the map, or tell me what kind of journey you want to begin.'
+type StoryPanel = 'map' | 'destination' | 'travelogue'
 
 function newEvent(type: NarrativeEvent['type'], text: string, placeId?: string): NarrativeEvent {
   return { id: crypto.randomUUID(), type, createdAt: new Date().toISOString(), text, placeId }
@@ -82,7 +83,7 @@ function App() {
   const [selectedPhoto, setSelectedPhoto] = useState<PlacePhoto | null>(null)
   const [showCompanion, setShowCompanion] = useState(false)
   const [storyMode, setStoryMode] = useState(true)
-  const [storyPanel, setStoryPanel] = useState<'map' | 'destination' | null>(null)
+  const [storyPanels, setStoryPanels] = useState<StoryPanel[]>([])
   const [fieldNotesOpen, setFieldNotesOpen] = useState(false)
   const [arrivalCard, setArrivalCard] = useState<string | null>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
@@ -409,6 +410,14 @@ function App() {
     setJourneyItem((current) => ({ ...current, [kind]: '' }))
   }
 
+  function toggleStoryPanel(panel: StoryPanel) {
+    setStoryPanels((current) => current.includes(panel) ? current.filter((item) => item !== panel) : [...current, panel])
+  }
+
+  function closeStoryPanel(panel: StoryPanel) {
+    setStoryPanels((current) => current.filter((item) => item !== panel))
+  }
+
   function changeProvider(provider: UserSettings['llmProvider']) {
     if (provider === 'custom') {
       setSettings({ ...settings, llmProvider: provider })
@@ -419,7 +428,7 @@ function App() {
   }
 
   return (
-    <main className={`app-shell ${storyMode ? 'story-mode' : 'explore-mode'}`}>
+    <main className={`app-shell ${storyMode ? 'story-mode' : 'explore-mode'} ${storyMode && storyPanels.includes('map') && storyPanels.includes('destination') ? 'story-map-and-destination' : ''} ${storyMode && storyPanels.includes('destination') && storyPanels.includes('travelogue') ? 'story-panels-stacked' : ''}`}>
       <header className="topbar">
         <div className="brand-lockup">
           <div className="brand-mark" aria-hidden="true">✦</div>
@@ -430,7 +439,7 @@ function App() {
         </div>
         <div className="topbar-actions">
           <span className="status-pill"><span className="status-dot" /> Local-first</span>
-          <button className="mode-toggle" type="button" onClick={() => { setStoryMode((active) => !active); setStoryPanel(null) }} aria-pressed={storyMode}>
+          <button className="mode-toggle" type="button" onClick={() => { setStoryMode((active) => !active); setStoryPanels([]); setFieldNotesOpen(false) }} aria-pressed={storyMode}>
             {storyMode ? 'Story' : 'Explore'}
           </button>
           <button className="icon-button" onClick={() => setShowSettings((visible) => !visible)} aria-label="Toggle settings">⚙</button>
@@ -438,8 +447,14 @@ function App() {
       </header>
 
       <section className="workspace">
-        <section className="map-panel panel">
-          {selectedPhoto && <div className="scene-art" aria-label="Illustrative destination scene art">
+        {storyMode && selectedPhoto && <div className="scene-art" aria-label="Illustrative destination scene art">
+          <img src={selectedPhoto.imageUrl} alt="" />
+          <div className="scene-art-shade" />
+          <p className="scene-art-note">Illustrative photo · not a live view · <a href={selectedPhoto.sourceUrl} target="_blank" rel="noreferrer">source</a></p>
+        </div>}
+        <div id="story-map-panel" className={`map-layout ${storyMode && storyPanels.includes('map') ? 'map-layout--compact' : ''}`}>
+        <section className={`map-panel panel ${storyMode && storyPanels.includes('map') ? 'map-panel--compact' : ''}`}>
+          {!storyMode && selectedPhoto && <div className="scene-art scene-art--explore" aria-label="Illustrative destination scene art">
             <img src={selectedPhoto.imageUrl} alt="" />
             <div className="scene-art-shade" />
             <p className="scene-art-note">Illustrative photo · not a live view · <a href={selectedPhoto.sourceUrl} target="_blank" rel="noreferrer">source</a></p>
@@ -447,7 +462,7 @@ function App() {
           <div className="map-toolbar">
             <div>
               <p className="eyebrow">Explore a place</p>
-              <h2>{selectedPlace?.name ?? 'The world is open'}</h2>
+              <h2>{selectedPlace?.name ?? (storyMode && storyPanels.includes('map') ? 'Explore map' : 'The world is open')}</h2>
             </div>
             <label className="search-box">
               <span aria-hidden="true">⌕</span>
@@ -537,32 +552,73 @@ function App() {
           </aside>}
           <div className="map-caption"><span>Map data © OpenStreetMap contributors</span><span>OpenFreeMap</span></div>
         </section>
+        {storyMode && storyPanels.includes('map') && <aside className="map-history-panel panel" aria-label="Visited places">
+          <div className="story-dock-header">
+            <div><p className="eyebrow">Navigate</p><h3>Map</h3></div>
+            <button className="close-button" type="button" onClick={() => closeStoryPanel('map')} aria-label="Close map panel">×</button>
+          </div>
+          <label className="dock-search"><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => updateQuery(event.target.value)} placeholder="Search places" /></label>
+          {destinationHistory.length > 0 && <div className="dock-history"><p className="result-label">Visited places</p>{destinationHistory.slice().reverse().map((place) => <button key={place.id} type="button" onClick={() => choosePlace(place)}>{place.name}<span>{place.category ?? 'Place'}</span></button>)}</div>}
+          {!selectedPlace && destinationHistory.length === 0 && <p className="dock-empty">Search the map or click a place to begin.</p>}
+          <p className="dock-hint">Free map panning and search remain available.</p>
+        </aside>}
+        </div>
+        {storyMode && selectedPhoto && !storyPanels.includes('map') && <div className="map-caption stage-map-caption"><span>Map data © OpenStreetMap contributors</span><span>OpenFreeMap</span></div>}
 
         {storyMode && <nav className="story-dock" aria-label="Story navigation">
-          <button className={storyPanel === 'map' ? 'active' : ''} type="button" onClick={() => setStoryPanel((panel) => panel === 'map' ? null : 'map')}>⌖ <span>Map</span></button>
-          <button className={storyPanel === 'destination' ? 'active' : ''} type="button" onClick={() => setStoryPanel((panel) => panel === 'destination' ? null : 'destination')}>✦ <span>Place</span></button>
+          <button className={storyPanels.includes('map') ? 'active' : ''} type="button" onClick={() => toggleStoryPanel('map')} aria-pressed={storyPanels.includes('map')} aria-controls="story-map-panel" aria-expanded={storyPanels.includes('map')}>⌖ <span>Map</span></button>
+          <button className={storyPanels.includes('destination') ? 'active' : ''} type="button" onClick={() => toggleStoryPanel('destination')} aria-pressed={storyPanels.includes('destination')} aria-controls="story-destination-panel" aria-expanded={storyPanels.includes('destination')}>✦ <span>Place</span></button>
+          <button className={storyPanels.includes('travelogue') ? 'active' : ''} type="button" onClick={() => toggleStoryPanel('travelogue')} aria-pressed={storyPanels.includes('travelogue')} aria-controls="story-travelogue-panel" aria-expanded={storyPanels.includes('travelogue')}>◷ <span>Journal</span></button>
         </nav>}
-        {storyMode && storyPanel && <aside className="story-dock-panel" aria-label={`${storyPanel === 'map' ? 'Map' : 'Destination'} panel`}>
+        {storyMode && storyPanels.includes('destination') && <aside id="story-destination-panel" className="story-dock-panel destination-dock-panel" aria-label="Destination panel">
           <div className="story-dock-header">
-            <div><p className="eyebrow">{storyPanel === 'map' ? 'Navigate' : 'Examine'}</p><h3>{storyPanel === 'map' ? 'Map' : selectedPlace?.name ?? 'Destination'}</h3></div>
-            <button className="close-button" type="button" onClick={() => setStoryPanel(null)} aria-label="Close story panel">×</button>
+            <div><p className="eyebrow">Examine</p><h3>{selectedPlace?.name ?? 'Destination'}</h3></div>
+            <button className="close-button" type="button" onClick={() => closeStoryPanel('destination')} aria-label="Close destination panel">×</button>
           </div>
-          {storyPanel === 'map' && <>
-            <label className="dock-search"><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => updateQuery(event.target.value)} placeholder="Search places" /></label>
-            {destinationHistory.length > 0 && <div className="dock-history"><p className="result-label">Visited places</p>{destinationHistory.slice().reverse().map((place) => <button key={place.id} type="button" onClick={() => { choosePlace(place); setStoryPanel(null) }}>{place.name}<span>{place.category ?? 'Place'}</span></button>)}</div>}
-            {!selectedPlace && destinationHistory.length === 0 && <p className="dock-empty">Search the map or click a place to begin.</p>}
-            <p className="dock-hint">Free map panning and search remain available behind the story.</p>
-          </>}
-          {storyPanel === 'destination' && selectedPlace && <>
+          {selectedPlace ? <>
             <p className="dock-category">{selectedPlace.category ?? 'Place'}</p>
-            <p className="dock-copy">Choose an illustrative image to change the scene art without leaving the story.</p>
-            {destinationPhotos.length > 0
-              ? <div className="dock-gallery">{destinationPhotos.map((photo) => <button key={photo.id} type="button" className={selectedPhoto?.id === photo.id ? 'selected' : ''} onClick={() => setSelectedPhoto(photo)}><img src={photo.thumbnailUrl} alt={photo.title} /><span>{photo.title}</span></button>)}</div>
-              : <p className="dock-empty">{photosState === 'loading' ? 'Finding illustrative photos…' : 'No illustrative photos found.'}</p>}
-            {selectedPlace && <button className="field-notes-button" type="button" onClick={() => setFieldNotesOpen(true)}>Open field notes</button>}
-            <p className="dock-hint">Illustrative photos are not live views. Source metadata remains available in the destination card.</p>
-          </>}
-          {storyPanel === 'destination' && !selectedPlace && <p className="dock-empty">Choose a place first, then return here to examine it.</p>}
+            <dl className="place-facts dock-facts">
+              <div><dt>Coordinates</dt><dd>{selectedPlace.coordinates[1].toFixed(5)}, {selectedPlace.coordinates[0].toFixed(5)}</dd></div>
+              <div><dt>Source</dt><dd>{selectedPlace.source === 'online' ? `Online · ${settings.onlineGeocoder}` : 'OpenStreetMap'}</dd></div>
+            </dl>
+            {contextState === 'loading' && <p className="context-state">Loading destination context…</p>}
+            {contextState === 'error' && <p className="context-state">Optional destination context is unavailable.</p>}
+            {contextState === 'ready' && placeContext && <div className="place-context">
+              <p className="context-label">Source context · {contextCached ? 'cached' : 'live'}</p>
+              {placeContext.summary && <p className="context-summary">{placeContext.summary}</p>}
+              {placeContext.facts.length > 0 && <dl className="context-facts">{placeContext.facts.map((fact) => <div key={`${fact.label}-${fact.value}`}><dt>{fact.label}</dt><dd>{fact.value}</dd></div>)}</dl>}
+              <div className="context-links">
+                {placeContext.wikipediaUrl && <a href={placeContext.wikipediaUrl} target="_blank" rel="noreferrer">Wikipedia</a>}
+                {placeContext.wikidataId && <a href={`https://www.wikidata.org/wiki/${placeContext.wikidataId}`} target="_blank" rel="noreferrer">Wikidata</a>}
+              </div>
+            </div>}
+            <div className="weather-panel">
+              <div className="weather-heading"><p className="context-label">Current weather</p>{weather && <span className={`weather-source weather-${weather.source}`}>{weather.source}</span>}</div>
+              {!settings.liveDataEnabled && <p className="context-state">Enable optional live data in settings to request weather.</p>}
+              {settings.liveDataEnabled && weatherState === 'idle' && <button className="weather-button" type="button" onClick={() => void loadWeather()}>Load current weather</button>}
+              {weatherState === 'loading' && <p className="context-state">Fetching current conditions…</p>}
+              {weatherState === 'error' && <p className="context-state">{weatherError}</p>}
+              {weatherState === 'ready' && weather && <p className="context-summary">{weather.data.temperatureC.toFixed(1)}°C · {weatherLabel(weather.data.weatherCode)}</p>}
+            </div>
+            <div className="place-photos">
+              <div className="weather-heading"><p className="context-label">Nearby photos · scene art</p>{photosCached && <span className="weather-source weather-cached">cached</span>}</div>
+              {photosState === 'loading' && <p className="context-state">Finding nearby photos…</p>}
+              {photosState === 'error' && <p className="context-state">Photos are unavailable.</p>}
+              {photosState === 'ready' && destinationPhotos.length === 0 && <p className="context-state">No nearby photos found.</p>}
+              {destinationPhotos.length > 0 && <div className="dock-gallery">{destinationPhotos.map((photo) => <button key={photo.id} type="button" className={selectedPhoto?.id === photo.id ? 'selected' : ''} onClick={() => setSelectedPhoto(photo)} aria-pressed={selectedPhoto?.id === photo.id}><img src={photo.thumbnailUrl} alt={photo.title} /><span>{photo.title}</span></button>)}</div>}
+              {selectedPhoto && <div className="selected-scene-photo"><span>Scene art · illustrative, not a live view</span><a href={selectedPhoto.sourceUrl} target="_blank" rel="noreferrer">Photo source</a></div>}
+            </div>
+            <button className="field-notes-button" type="button" onClick={() => setFieldNotesOpen(true)}>Open field notes</button>
+          </> : <p className="dock-empty">Choose a place first, then return here to examine it.</p>}
+        </aside>}
+        {storyMode && storyPanels.includes('travelogue') && <aside id="story-travelogue-panel" className="story-dock-panel travelogue-panel" aria-label="Travelogue panel">
+          <div className="story-dock-header">
+            <div><p className="eyebrow">Journey journal</p><h3>Travelogue</h3></div>
+            <button className="close-button" type="button" onClick={() => closeStoryPanel('travelogue')} aria-label="Close travelogue panel">×</button>
+          </div>
+          {narrativeEvents.length === 0
+            ? <p className="dock-empty">Arrivals and story beats will appear here.</p>
+            : <ol className="travelogue-events">{narrativeEvents.slice().reverse().map((event) => <li key={event.id}><span className="timeline-dot" aria-hidden="true" /><div><strong>{event.type.replaceAll('-', ' ')}</strong><p>{event.text}</p><time dateTime={event.createdAt}>{new Date(event.createdAt).toLocaleString()}</time></div></li>)}</ol>}
         </aside>}
         {arrivalCard && <div className="arrival-card" role="status" aria-live="polite">
           <p className="eyebrow">Scene {String(currentScene).padStart(2, '0')} · arrival</p>

@@ -2,7 +2,7 @@
 
 :root { color: #e6ece5; background: #101917; font-family: 'Manrope', sans-serif; font-synthesis: none; }
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; background: #101917; }
+body { margin: 0; min-width: 0; background: #101917; }
 button, input, textarea { font: inherit; }
 button { cursor: pointer; }
 .app-shell { min-height: 100vh; padding: 24px; background: radial-gradient(circle at 80% -10%, #29423a 0, transparent 35%), #101917; }
@@ -140,4 +140,129 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
   .conversation { max-height: 58vh; padding-right: 7px; padding-left: 7px; }
   .message p { font-size: 16px; }
   .journey-timeline, .composer, .journey-footer { margin-right: 7px; margin-left: 7px; }
+}
+
+/* Dock panels are explicit views; keyboard focus alone never changes the layout. */
+.scene-art { position: fixed; z-index: 1; inset: 0; }
+.scene-art--explore { position: absolute; }
+.scene-art-note a { pointer-events: auto; }
+.stage-map-caption { position: fixed; z-index: 2; right: 12px; bottom: 7px; left: auto; display: grid; justify-items: end; gap: 2px; }
+.map-layout--compact {
+  position: fixed;
+  z-index: 6;
+  isolation: isolate;
+  top: 84px;
+  left: 94px;
+  display: grid;
+  grid-template-rows: auto auto;
+  gap: 12px;
+  width: min(360px, calc(100vw - 130px));
+  height: auto;
+  pointer-events: none;
+}
+.map-layout--compact::before { position: fixed; z-index: -1; inset: 0; background: radial-gradient(circle at 30% 24%, #29423a 0, transparent 40%), radial-gradient(circle at 76% 70%, #203b3d 0, transparent 44%), #101917; content: ''; pointer-events: none; }
+.map-panel--compact {
+  position: relative;
+  z-index: 0;
+  inset: auto;
+  width: 100%;
+  height: clamp(180px, 30vh, 280px);
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid #496b5a;
+  border-radius: 16px;
+  background: #12201ceb;
+  pointer-events: auto;
+}
+.map-panel--compact::after { background: linear-gradient(180deg, #07110d22, transparent 55%, #07110d55); }
+.map-panel--compact .map-toolbar { top: 0; right: 0; left: 0; height: 46px; padding: 8px 12px; }
+.map-panel--compact .map-toolbar > div { padding: 0; border: 0; background: transparent; backdrop-filter: none; }
+.map-panel--compact .map-toolbar .eyebrow { display: none; }
+.map-panel--compact .map-toolbar h2 { margin: 0; font-size: 13px; }
+.map-panel--compact .map-toolbar .search-box { display: none; }
+.map-panel--compact .map-canvas,
+.map-panel--compact .map-canvas.maplibregl-map { inset: 46px 0 0; }
+.map-panel--compact .map-caption { right: 8px; bottom: 5px; left: 8px; font-size: 8px; }
+.map-panel--compact .place-detail { display: none; }
+.map-panel--compact .search-results,
+.map-panel--compact .online-search,
+.map-panel--compact .search-state { top: 50px; right: 8px; left: 8px; width: auto; max-height: 45%; overflow-y: auto; }
+.map-panel--compact .map-loading { inset: 46px 0 0; }
+.map-history-panel {
+  min-height: 0;
+  max-height: min(18vh, 160px);
+  overflow-y: auto;
+  padding: 14px;
+  border-radius: 14px;
+  pointer-events: auto;
+}
+.map-history-panel .story-dock-header { padding-bottom: 9px; }
+.map-history-panel .dock-search { margin-top: 10px; }
+.map-history-panel .dock-hint { margin-bottom: 2px; }
+.story-dock { z-index: 7; }
+.story-dock-panel { z-index: 8; }
+.destination-dock-panel { top: 84px; right: 24px; left: auto; width: min(340px, calc(100vw - 130px)); max-height: min(48vh, calc(100vh - 110px)); transform: none; }
+.destination-dock-panel .dock-facts { margin-top: 10px; }
+.destination-dock-panel .place-facts div { align-items: flex-start; }
+.destination-dock-panel .place-facts dd { max-width: 65%; overflow-wrap: anywhere; }
+.selected-scene-photo { display: flex; justify-content: space-between; gap: 10px; margin-top: 10px; color: #9bb6a5; font: 9px 'DM Mono', monospace; }
+.selected-scene-photo a { color: #d5ef9a; }
+.story-mode .field-notes { top: 84px; max-height: min(48vh, calc(100vh - 110px)); }
+.travelogue-panel { top: 84px; right: 24px; bottom: auto; left: auto; width: min(370px, calc(100vw - 130px)); max-height: min(48vh, calc(100vh - 110px)); transform: none; }
+.travelogue-events { display: grid; gap: 12px; margin: 12px 0 0; padding: 0; list-style: none; }
+.travelogue-events li { display: flex; gap: 9px; }
+.travelogue-events strong { color: #9bb6a5; font: 9px 'DM Mono', monospace; text-transform: uppercase; }
+.travelogue-events p { margin-top: 3px; color: #c8d7ca; font-size: 11px; line-height: 1.4; }
+.travelogue-events time { display: block; margin-top: 3px; color: #708b7c; font: 9px 'DM Mono', monospace; }
+.story-panels-stacked .destination-dock-panel { max-height: calc(26vh - 10px); }
+.story-panels-stacked .travelogue-panel { top: calc(84px + 26vh); bottom: auto; max-height: calc(22vh - 12px); overflow-y: auto; }
+.journey-panel { position: fixed; z-index: 3; bottom: 18px; left: 50%; width: min(900px, calc(100vw - 180px)); max-height: calc(100vh - 110px); margin: 0; transform: translateX(-50%); }
+.journey-heading { padding-top: 0; }
+.story-mode .journey-timeline { display: none; }
+.conversation { max-height: 34vh; }
+
+@media (max-width: 900px) {
+  .map-layout--compact { left: 82px; width: min(330px, calc(50vw - 56px)); }
+  .destination-dock-panel { right: 14px; width: min(320px, calc(50vw - 72px)); }
+  .travelogue-panel { right: 14px; width: min(340px, calc(50vw - 72px)); }
+  .journey-panel { width: calc(100vw - 40px); }
+  .conversation { max-height: 26vh; }
+}
+@media (max-width: 520px) {
+  .map-layout--compact { top: 68px; right: 14px; bottom: calc(34vh + 104px); left: 14px; grid-template-rows: minmax(180px, 26vh) minmax(0, 1fr); width: auto; height: auto; }
+  .map-panel--compact { height: 100%; min-height: 0; }
+  .destination-dock-panel { top: 68px; right: 14px; bottom: calc(34vh + 104px); left: 14px; width: auto; max-height: none; }
+  .travelogue-panel { top: 68px; right: 14px; bottom: calc(34vh + 104px); left: 14px; width: auto; max-height: none; }
+  .story-panels-stacked .destination-dock-panel { bottom: calc(50vh + 140px); max-height: none; }
+  .story-panels-stacked .travelogue-panel { top: calc(68px + 26vh + 12px); bottom: calc(34vh + 104px); max-height: none; }
+  .journey-panel { right: 7px; bottom: 74px; left: 7px; width: auto; max-height: 32vh; transform: none; }
+  .journey-heading { padding-bottom: 8px; }
+  .journey-heading h2 { font-size: 15px; }
+  .conversation { max-height: 12vh; padding: 8px 7px; }
+  .message { margin-bottom: 8px; }
+  .message p { font-size: 14px; line-height: 1.45; }
+  .journey-timeline { display: none; }
+  .journey-footer { display: none; }
+  .story-dock { bottom: 10px; }
+  .story-dock button { width: 54px; min-height: 54px; }
+  .field-notes { top: 62px; right: 14px; bottom: calc(34vh + 104px); left: 14px; width: auto; max-height: none; }
+  .story-map-and-destination .map-layout--compact { top: 68px; right: 14px; bottom: auto; left: 14px; grid-template-rows: 24vh; height: 24vh; }
+  .story-map-and-destination .map-history-panel { display: none; }
+  .story-map-and-destination .map-panel--compact { height: 100%; }
+  .story-map-and-destination .map-panel--compact .map-toolbar > div { display: none; }
+  .story-map-and-destination .map-panel--compact .map-toolbar .search-box { display: flex; width: calc(100% - 24px); margin: 0; }
+  .story-map-and-destination .destination-dock-panel { top: calc(68px + 24vh + 12px); right: 14px; bottom: calc(34vh + 104px); left: 14px; max-height: none; }
+}
+@media (max-height: 650px) and (min-width: 521px) {
+  .map-panel--compact { height: 150px; }
+  .map-history-panel { max-height: 100px; padding: 10px; }
+  .map-history-panel .story-dock-header, .map-history-panel .dock-hint { display: none; }
+  .map-history-panel .dock-search { margin-top: 0; }
+  .destination-dock-panel, .travelogue-panel { max-height: 40vh; }
+  .journey-panel { bottom: 12px; max-height: 30vh; }
+  .journey-heading, .journey-footer { display: none; }
+  .conversation { max-height: 13vh; padding-top: 6px; padding-bottom: 6px; }
+  .message { margin-bottom: 7px; }
+  .story-panels-stacked .destination-dock-panel { max-height: calc(26vh - 10px); }
+  .story-panels-stacked .travelogue-panel { top: calc(84px + 26vh); max-height: calc(22vh - 12px); }
 }

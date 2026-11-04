@@ -47,6 +47,8 @@ export const MapCanvas = memo(function MapCanvas({ onPlaceSelected, onPlacesLoad
     })
     let mapLoaded = false
     mapRef.current = map
+    const resizeObserver = new ResizeObserver(() => map.resize())
+    resizeObserver.observe(containerRef.current)
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
 
     const saveViewport = () => {
@@ -93,6 +95,7 @@ export const MapCanvas = memo(function MapCanvas({ onPlaceSelected, onPlacesLoad
     })
 
     return () => {
+      resizeObserver.disconnect()
       markerRef.current?.remove()
       map.remove()
       mapRef.current = null

@@ -141,3 +141,51 @@ test('does not overflow a narrow mobile viewport', async ({ page }) => {
   const dimensions = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: window.innerWidth }))
   expect(dimensions.width).toBeLessThanOrEqual(dimensions.viewport)
 })
+
+test('story panels open independently and ignore keyboard focus changes', async ({ page }) => {
+  await resetBrowser(page)
+  const dockButtons = page.locator('.story-dock button')
+  const mapToggle = dockButtons.nth(0)
+  const placeToggle = dockButtons.nth(1)
+  const journalToggle = dockButtons.nth(2)
+  const composer = page.getByPlaceholder(/Speak freely/)
+
+  await composer.focus()
+  await expect(mapToggle).toHaveAttribute('aria-pressed', 'false')
+  await expect(page.locator('.map-panel')).not.toHaveClass(/map-panel--compact/)
+
+  await mapToggle.click()
+  await expect(mapToggle).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('complementary', { name: 'Visited places' })).toBeVisible()
+  const compactMapWidth = await page.locator('.map-panel').evaluate((map) => map.getBoundingClientRect().width)
+  await composer.fill('Focus should not change the map layout')
+  expect(await page.locator('.map-panel').evaluate((map) => map.getBoundingClientRect().width)).toBe(compactMapWidth)
+
+  await placeToggle.click()
+  await expect(page.getByRole('complementary', { name: 'Destination panel' })).toBeVisible()
+  await expect(page.getByRole('complementary', { name: 'Visited places' })).toBeVisible()
+  await placeToggle.click()
+  await expect(page.getByRole('complementary', { name: 'Destination panel' })).toHaveCount(0)
+  await expect(page.getByRole('complementary', { name: 'Visited places' })).toBeVisible()
+
+  await mapToggle.click()
+  await expect(mapToggle).toHaveAttribute('aria-pressed', 'false')
+  await journalToggle.click()
+  await expect(page.getByRole('complementary', { name: 'Travelogue panel' })).toBeVisible()
+})
+
+test('map and destination panels remain usable together on mobile', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await resetBrowser(page)
+  const dockButtons = page.locator('.story-dock button')
+  await dockButtons.nth(0).click()
+  await dockButtons.nth(1).click()
+
+  const mapBounds = await page.locator('.map-panel').boundingBox()
+  const placeBounds = await page.getByRole('complementary', { name: 'Destination panel' }).boundingBox()
+  expect(mapBounds).not.toBeNull()
+  expect(placeBounds).not.toBeNull()
+  expect(placeBounds.y).toBeGreaterThanOrEqual(mapBounds.y + mapBounds.height)
+  const dimensions = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: window.innerWidth }))
+  expect(dimensions.width).toBeLessThanOrEqual(dimensions.viewport)
+})

@@ -99,40 +99,15 @@ The phases below are ordered around a usable single-user MVP. Each phase should 
 - [x] Reduce the initial bundle with code splitting where useful
 - [x] Review npm audit findings and dependency updates
 
-## Immersive redesign phases
+## Immersive redesign (implemented)
 
-These phases execute the presentation direction in `IMMERSIVE_REDESIGN.md`
-without changing provider contracts or journey-state schemas.
+The interface follows [mockups/05-two-characters.html](./mockups/05-two-characters.html) and [mockups/06-map-and-destination-panels.html](./mockups/06-map-and-destination-panels.html), without changing journey state or provider contracts.
 
-### Phase 1: Full-bleed stage and narration
-
-- [ ] Replace the dashboard split with a full-viewport map stage
-- [ ] Render companion output as flowing serif narration
-- [ ] Render user turns as quiet italic actions
-- [ ] Keep free-form composition available before and after destination selection
-- [ ] Preserve map controls, provenance, timeline, and local-first behavior
-
-### Phase 2: Scene art and character presence
-
-- [x] Promote the selected illustrative destination photo to scene art
-- [x] Add an explicit illustrative-photo / not-live-view marker
-- [x] Add an off-by-default companion or NPC illustration toggle
-- [x] Preserve photo source metadata and links
-
-### Phase 3: Story-mode navigation panels
-
-- [x] Add a story-mode dock for Map and Destination panels
-- [x] Wire panel navigation to existing place selection and transition flows
-- [x] Add a destination image gallery that can change scene art
-
-### Phase 4: Field notes and travelogue
-
-- [x] Move provenance-heavy destination facts into a field-notes drawer
-- [x] Reframe the journey timeline as a travelogue spine
-- [x] Keep source, cache, live, and user-created labels visible
-
-### Phase 5: Cinematic arrivals and mode toggle
-
-- [x] Add arrival fade, vignette, and chapter-card transitions
-- [x] Add an Explore/Story toggle
-- [x] Keep free map panning and clicking available in Explore mode
+- [x] Keep the scene and narration as a stable, full-screen stage behind navigation panels.
+- [x] Make Map, Place, and Journal/Travelogue dock actions explicitly open and close their panels; do not change layout on focus or blur.
+- [x] Show the interactive map in a compact panel while the scene stage remains visible, retaining search, place selection, and route flows.
+- [x] Show destination context and nearby photos in a separate panel; selecting a photo updates the scene art and keeps its source attribution available.
+- [x] Allow Map and Place panels to remain open together; closing one must not implicitly close the other.
+- [x] Keep narration and the chat composer available without losing their state when panels open or close.
+- [x] Make dock and panel placement responsive and keyboard-accessible; ensure the map redraws correctly when its panel is resized.
+- [x] Add UI coverage for explicit panel toggles, simultaneous panels, close behavior, focus/blur stability, and narrow screens.
