@@ -93,6 +93,8 @@ test('completes and restores an online destination journey', async ({ page }) =>
     requestAnimationFrame(captureInitialMarkerPosition)
   })
   await page.reload()
+  await page.locator('.story-dock button').nth(0).click()
+  await expect(page.locator('.map-canvas canvas')).toBeVisible({ timeout: 15000 })
   await page.locator('.story-dock button').nth(1).click()
   await expect(page.getByRole('complementary', { name: 'Destination panel' }).getByRole('heading', { name: 'Test Destination' })).toBeVisible()
   await expect(page.getByText(/1 destination/)).toBeVisible()
@@ -172,11 +174,13 @@ test('story panels open independently and ignore keyboard focus changes', async 
   const placeToggle = dockButtons.nth(1)
   const journalToggle = dockButtons.nth(2)
   const composer = page.getByPlaceholder(/Speak freely/)
+  await expect(page.locator('.conversation')).toHaveCSS('pointer-events', 'auto')
+  await expect(page.locator('.conversation')).toHaveCSS('overflow-y', 'auto')
 
   await composer.focus()
   await expect(mapToggle).toHaveAttribute('aria-pressed', 'false')
-  await expect(page.locator('.map-panel')).not.toHaveClass(/map-panel--compact/)
-  await expect(page.locator('.map-canvas')).toBeHidden()
+  await expect(page.locator('.map-panel')).toHaveCount(0)
+  await expect(page.locator('.map-canvas')).toHaveCount(0)
 
   await mapToggle.click()
   await expect(mapToggle).toHaveAttribute('aria-pressed', 'true')
@@ -210,8 +214,8 @@ test('Explore opens the map panel without putting the map behind the scene', asy
   await expect(page.locator('.journey-panel')).toBeHidden()
 
   await page.getByRole('button', { name: 'Explore' }).click()
-  await expect(page.locator('.map-canvas')).toBeHidden()
-  await expect(page.locator('.map-panel')).not.toHaveClass(/map-panel--compact/)
+  await expect(page.locator('.map-canvas')).toHaveCount(0)
+  await expect(page.locator('.map-panel')).toHaveCount(0)
 })
 
 test('selected photo replaces the ambient background while the map stays panel-only', async ({ page }) => {
@@ -224,14 +228,14 @@ test('selected photo replaces the ambient background while the map stays panel-o
   const photoChoice = page.getByRole('button', { name: /Test scene\.jpg/ })
   await expect(photoChoice).toBeVisible()
   await expect(page.locator('.scene-art')).toHaveCount(0)
-  await expect(page.locator('.map-canvas')).toBeHidden()
+  await expect(page.locator('.map-canvas')).toHaveCount(0)
   await photoChoice.click()
 
   const sceneArt = page.locator('.scene-art')
   await expect(sceneArt).toBeVisible()
   await expect(sceneArt.locator('img')).toHaveAttribute('src', 'https://images.test/full.jpg')
   await expect(sceneArt).toHaveCount(1)
-  await expect(page.locator('.map-canvas')).toBeHidden()
+  await expect(page.locator('.map-canvas')).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Photo source' })).toHaveAttribute('href', 'https://commons.wikimedia.org/wiki/File:Test_scene.jpg')
 
   await page.locator('.story-dock button').nth(0).click()

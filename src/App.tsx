@@ -453,11 +453,12 @@ function App() {
           <p className="scene-art-note">Illustrative photo · not a live view · <a href={selectedPhoto.sourceUrl} target="_blank" rel="noreferrer">source</a></p>
         </div>}
         <div id="story-map-panel" className={`map-layout ${storyPanels.includes('map') ? 'map-layout--compact' : ''}`}>
-        <section className={`map-panel panel ${storyPanels.includes('map') ? 'map-panel--compact' : ''}`}>
+        {storyPanels.includes('map') && <>
+        <section className="map-panel panel map-panel--compact">
           <div className="map-toolbar">
             <div>
               <p className="eyebrow">Explore a place</p>
-              <h2>{selectedPlace?.name ?? (storyMode && storyPanels.includes('map') ? 'Explore map' : 'The world is open')}</h2>
+              <h2>{selectedPlace?.name ?? 'Explore map'}</h2>
             </div>
             <label className="search-box">
               <span aria-hidden="true">⌕</span>
@@ -547,7 +548,7 @@ function App() {
           </aside>}
           <div className="map-caption"><span>Map data © OpenStreetMap contributors</span><span>OpenFreeMap</span></div>
         </section>
-        {storyPanels.includes('map') && <aside className="map-history-panel panel" aria-label="Map navigation panel">
+        <aside className="map-history-panel panel" aria-label="Map navigation panel">
           <div className="story-dock-header">
             <div><p className="eyebrow">Navigate</p><h3>Map</h3></div>
             <button className="close-button" type="button" onClick={() => { if (storyMode) closeStoryPanel('map'); else { setStoryPanels([]); setStoryMode(true) } }} aria-label={storyMode ? 'Close map panel' : 'Return to story'}>×</button>
@@ -556,7 +557,8 @@ function App() {
           {destinationHistory.length > 0 && <div className="dock-history"><p className="result-label">Visited places</p>{destinationHistory.slice().reverse().map((place) => <button key={place.id} type="button" onClick={() => choosePlace(place)}>{place.name}<span>{place.category ?? 'Place'}</span></button>)}</div>}
           {!selectedPlace && destinationHistory.length === 0 && <p className="dock-empty">Search the map or click a place to begin.</p>}
           <p className="dock-hint">Free map panning and search remain available.</p>
-        </aside>}
+        </aside>
+        </>}
         </div>
 
         {storyMode && <nav className="story-dock" aria-label="Story navigation">

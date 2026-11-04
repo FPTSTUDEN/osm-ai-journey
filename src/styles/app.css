@@ -88,7 +88,7 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
 .companion-sprite span { color: #e0edbc; font-size: 34px; }
 .companion-sprite p { margin-top: 8px; color: #f0f4e9; font: 11px Georgia, 'Times New Roman', serif; }
 .companion-sprite small { margin-top: 5px; color: #b7cbb9; font: 8px 'DM Mono', monospace; line-height: 1.3; }
-.conversation { flex: 0 1 auto; max-height: 55vh; padding: 24px 12px 18px; overflow: auto; pointer-events: none; -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 38px, #000 92%, transparent 100%); mask-image: linear-gradient(180deg, transparent 0, #000 38px, #000 92%, transparent 100%); }
+.conversation { flex: 0 1 auto; max-height: 55vh; padding: 24px 12px 18px; overflow: auto; pointer-events: auto; -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 38px, #000 92%, transparent 100%); mask-image: linear-gradient(180deg, transparent 0, #000 38px, #000 92%, transparent 100%); }
 .message { max-width: 100%; margin: 0 0 20px; }
 .message p { font: 400 17px/1.72 Georgia, 'Times New Roman', serif; color: #eef4e6; text-shadow: 0 2px 18px #07110dcc; }
 .message.narration p { color: #eef4e6; }
@@ -146,8 +146,6 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
 .app-shell { background: radial-gradient(circle at 80% -10%, #29423a 0, transparent 35%), radial-gradient(circle at 10% 85%, #203b3d 0, transparent 42%), #101917; }
 .scene-art { position: fixed; z-index: 1; inset: 0; }
 .scene-art-note a { pointer-events: auto; }
-.map-layout:not(.map-layout--compact) .map-panel { visibility: hidden; pointer-events: none; }
-.map-layout.map-layout--compact .map-panel--compact { visibility: visible; pointer-events: auto; }
 .map-layout--compact {
   position: fixed;
   z-index: 6;

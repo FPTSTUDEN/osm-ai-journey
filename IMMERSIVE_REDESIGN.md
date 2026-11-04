@@ -97,7 +97,7 @@ Options, in suggested order:
 - Dock panel state is explicit and independent; focus and blur do not trigger layout changes.
 - The ambient gradient is the default stage. An explicitly selected illustrative photo replaces it; the live map is hidden unless its compact panel is open, and is never a layer beneath the photo.
 - Explore opens the compact Map panel. Returning to Story closes it.
-- MapLibre remains mounted when its container becomes compact and uses `ResizeObserver` to refresh its rendering after size changes.
+- The live map is mounted only while its dock panel is open; it is removed from the DOM when closed. `ResizeObserver` keeps its rendering correct as the panel resizes.
 - The Journal panel reads existing `narrativeEvents`; no journey schema changes are required.
 - Browser coverage for panel toggles, focus stability, and mobile layout lives in `tests/app.spec.mjs`.
 - Provider contracts and the journey-state model remain unchanged.
