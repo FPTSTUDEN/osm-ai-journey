@@ -14,6 +14,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   liveDataEnabled: false,
   routingBaseUrl: 'https://router.project-osrm.org',
   weatherBaseUrl: 'https://api.open-meteo.com/v1/forecast',
+  companionImage: false,
 }
 
 export const LLM_PROVIDER_PRESETS: Record<Exclude<UserSettings['llmProvider'], 'custom'>, { label: string; baseUrl: string; model: string }> = {

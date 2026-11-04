@@ -118,7 +118,8 @@ export const MapCanvas = memo(function MapCanvas({ onPlaceSelected, onPlacesLoad
       .setLngLat(selectedPlace.coordinates)
       .addTo(map)
 
-    map.jumpTo({ center: selectedPlace.coordinates, zoom: Math.max(map.getZoom(), 14) })
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    map.flyTo({ center: selectedPlace.coordinates, zoom: Math.max(map.getZoom(), 14), duration: reducedMotion ? 0 : 1000 })
   }, [selectedPlace])
 
   useEffect(() => {
@@ -137,6 +138,10 @@ export const MapCanvas = memo(function MapCanvas({ onPlaceSelected, onPlacesLoad
         data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: route.coordinates } },
       })
       map.addLayer({ id: layerId, type: 'line', source: sourceId, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#d5ef9a', 'line-width': 4, 'line-opacity': 0.9 } })
+      if (route.coordinates.length > 1) {
+        const bounds = route.coordinates.reduce((result, coordinate) => result.extend(coordinate), new maplibregl.LngLatBounds(route.coordinates[0], route.coordinates[0]))
+        map.fitBounds(bounds, { padding: 48, maxZoom: 14, duration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 1000 })
+      }
     }
     if (map.isStyleLoaded()) drawRoute()
     else map.once('load', drawRoute)

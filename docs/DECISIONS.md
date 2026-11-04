@@ -19,3 +19,15 @@ Narrative movement should not depend on routing availability. Users can skip wal
 ## Optional live data
 
 Live integrations are useful but add API keys, quotas, freshness concerns, and failure modes. They are configured and fetched only when explicitly enabled or requested.
+
+## Map is panel-only
+
+The map is rendered only inside an explicitly opened Map panel. It is never a scene background; destination photos are illustrative scene art and retain source attribution.
+
+## Structured chat messages
+
+Conversation entries store explicit `user`, `assistant`, or `event` roles with stable IDs and timestamps. Role inference from array position is reserved for migration of legacy journey data.
+
+## Browser-local companion art
+
+Uploaded companion illustrations are stored as image Blobs in IndexedDB and never uploaded. The feature is off by default, uses a dedicated store, and accepts only JPEG, PNG, and WebP files.

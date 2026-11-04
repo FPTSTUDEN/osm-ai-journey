@@ -19,21 +19,38 @@ export type EnrichmentResponse = {
   cached: boolean
 }
 
-export interface EnrichmentProvider {
-  enrich(place: Place): Promise<Partial<PlaceContext>>
-}
-
 const CACHE_TTL = 7 * 24 * 60 * 60 * 1000
 
-type WikipediaSearchResponse = [string, string[], string[], string[]]
+type WikipediaGeoSearchResponse = { query?: { geosearch?: Array<{ title?: string; dist?: number }> } }
 type WikipediaSummary = { title?: string; extract?: string; content_urls?: { desktop?: { page?: string } } }
 
+function normalizedTitle(title: string) {
+  return title.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase().replace(/[_\s]+/g, ' ').replace(/[^\p{L}\p{N} ]/gu, '').trim()
+}
+
+function isMatchingTitle(placeName: string, title: string) {
+  const name = normalizedTitle(placeName)
+  const candidate = normalizedTitle(title)
+  return candidate === name || candidate.startsWith(`${name} `) || name.startsWith(`${candidate} `)
+}
+
 async function fetchWikipedia(place: Place): Promise<Partial<PlaceContext>> {
-  const searchUrl = `https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(place.name)}&limit=1&namespace=0&format=json&origin=*`
-  const searchResponse = await fetch(searchUrl)
-  if (!searchResponse.ok) throw new Error(`Wikipedia search returned HTTP ${searchResponse.status}`)
-  const [, titles] = await searchResponse.json() as WikipediaSearchResponse
-  const title = titles[0]
+  let title = place.wikipediaTitle
+  if (!title) {
+    const params = new URLSearchParams({
+      action: 'query',
+      list: 'geosearch',
+      gscoord: `${place.coordinates[1]}|${place.coordinates[0]}`,
+      gsradius: '500',
+      gslimit: '10',
+      format: 'json',
+      origin: '*',
+    })
+    const searchResponse = await fetch(`https://en.wikipedia.org/w/api.php?${params}`)
+    if (!searchResponse.ok) throw new Error(`Wikipedia search returned HTTP ${searchResponse.status}`)
+    const search = await searchResponse.json() as WikipediaGeoSearchResponse
+    title = search.query?.geosearch?.find((item) => item.title && (item.dist === undefined || item.dist <= 500) && isMatchingTitle(place.name, item.title))?.title
+  }
   if (!title) return {}
 
   const summaryResponse = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`)
@@ -46,22 +63,18 @@ async function fetchWikipedia(place: Place): Promise<Partial<PlaceContext>> {
   }
 }
 
-type WikidataSearchResponse = { search?: Array<{ id?: string }> }
 type WikidataEntity = {
   id?: string
   labels?: Record<string, { value?: string }>
+  sitelinks?: { enwiki?: { title?: string } }
   claims?: Record<string, Array<{ mainsnak?: { datavalue?: { value?: { id?: string } | string } } }>>
 }
 
 async function fetchWikidata(place: Place): Promise<Partial<PlaceContext>> {
-  const searchUrl = `https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${encodeURIComponent(place.name)}&language=en&format=json&limit=1&origin=*`
-  const searchResponse = await fetch(searchUrl)
-  if (!searchResponse.ok) throw new Error(`Wikidata search returned HTTP ${searchResponse.status}`)
-  const search = await searchResponse.json() as WikidataSearchResponse
-  const id = search.search?.[0]?.id
+  const id = place.wikidataId
   if (!id) return {}
 
-  const entityResponse = await fetch(`https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${encodeURIComponent(id)}&props=labels|claims&languages=en&format=json&origin=*`)
+  const entityResponse = await fetch(`https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${encodeURIComponent(id)}&props=labels|claims|sitelinks&languages=en&format=json&origin=*`)
   if (!entityResponse.ok) throw new Error(`Wikidata entity returned HTTP ${entityResponse.status}`)
   const entityData = await entityResponse.json() as { entities?: Record<string, WikidataEntity> }
   const entity = entityData.entities?.[id]
@@ -84,6 +97,7 @@ async function fetchWikidata(place: Place): Promise<Partial<PlaceContext>> {
 
   return {
     wikidataId: entity.id || id,
+    wikipediaTitle: entity.sitelinks?.enwiki?.title,
     facts,
   }
 }
@@ -95,13 +109,8 @@ async function fetchWikidataLabels(ids: string[]) {
   return new Map(Object.entries(data.entities ?? {}).map(([id, entity]) => [id, entity.labels?.en?.value || id]))
 }
 
-const providers: EnrichmentProvider[] = [
-  { enrich: fetchWikipedia },
-  { enrich: fetchWikidata },
-]
-
 function cacheKey(place: Place) {
-  return `context:${place.name.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase().trim()}:${place.coordinates.map((coordinate) => coordinate.toFixed(3)).join(':')}`
+  return `enrich:v2:${place.wikidataId ?? ''}:${place.wikipediaTitle ?? ''}:${place.name.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase().trim()}:${place.coordinates.map((coordinate) => coordinate.toFixed(3)).join(':')}`
 }
 
 export async function enrichPlace(place: Place): Promise<EnrichmentResponse> {
@@ -109,13 +118,10 @@ export async function enrichPlace(place: Place): Promise<EnrichmentResponse> {
   const cached = await readCachedValue<PlaceContext>(key)
   if (cached) return { context: cached, cached: true }
 
-  const results = await Promise.allSettled(providers.map((provider) => provider.enrich(place)))
-  const context = results.reduce<PlaceContext>((merged, result) => {
-    if (result.status === 'fulfilled') {
-      merged = { ...merged, ...result.value, facts: [...merged.facts, ...(result.value.facts ?? [])] }
-    }
-    return merged
-  }, { facts: [] })
+  const wikidata: Partial<PlaceContext> = await fetchWikidata(place).catch((): Partial<PlaceContext> => ({}))
+  const wikipediaPlace = { ...place, wikipediaTitle: place.wikipediaTitle ?? wikidata.wikipediaTitle }
+  const wikipedia: Partial<PlaceContext> = await fetchWikipedia(wikipediaPlace).catch((): Partial<PlaceContext> => ({}))
+  const context: PlaceContext = { ...wikipedia, ...wikidata, facts: wikidata.facts ?? [] }
   await writeCachedValue(key, context, Date.now() + CACHE_TTL)
   return { context, cached: false }
 }

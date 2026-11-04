@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { DEFAULT_MAP_VIEWPORT, getInitialMapViewport } from '../src/components/mapViewport'
-import { deduplicatePlaces, searchLocalPlaces } from '../src/providers/localPlaceIndex'
+import { deduplicatePlaces, placeFromFeature, searchLocalPlaces } from '../src/providers/localPlaceIndex'
 import { buildJourneyContext } from '../src/providers/context'
 import { weatherLabel } from '../src/providers/weather'
+import { enrichPlace } from '../src/providers/enrichment'
+import { parseWikimediaPhotos } from '../src/providers/photos'
+import { revealedTextLength } from '../src/components/typewriter'
+import { shouldSummarize } from '../src/hooks/chat'
 import { journeyJson, parseJourneyJson } from '../src/storage/journeyTransfer'
 import { normalizeMessages } from '../src/storage/messages'
 import type { ChatEntry, Place } from '../src/types/domain'
@@ -17,6 +21,15 @@ test('local search ranks prefix matches and requires all terms', () => {
 
 test('place indexing removes duplicate feature ids', () => {
   assert.equal(deduplicatePlaces([place('same', 'One'), place('same', 'Replacement'), place('other', 'Two')]).length, 2)
+})
+
+test('places preserve Wikidata IDs and Wikipedia sitelinks from loaded features', () => {
+  const mapped = placeFromFeature({
+    geometry: { type: 'Point', coordinates: [2.35, 48.85] },
+    properties: { name: 'Central Library', wikidata: 'Q12345', wikipedia: 'en:Central_Library' },
+  })
+  assert.equal(mapped?.wikidataId, 'Q12345')
+  assert.equal(mapped?.wikipediaTitle, 'Central Library')
 })
 
 test('initial map viewport restores free exploration and prioritizes a selected destination', () => {
@@ -112,4 +125,77 @@ test('source context is sent as untrusted grounding text', () => {
   assert.match(out[0].content, /Built in 1762/)
   assert.match(out[0].content, /Architect: Salvi/)
   assert.match(out[0].content, /untrusted/)
+})
+
+test('Wikidata IDs are resolved directly without a name search', async () => {
+  const originalFetch = globalThis.fetch
+  const requests: string[] = []
+  globalThis.fetch = async (input) => {
+    const url = String(input)
+    requests.push(url)
+    if (url.includes('wbgetentities')) {
+      return Response.json({ entities: { Q123: { id: 'Q123', claims: {}, sitelinks: { enwiki: { title: 'Matching Place' } } } } })
+    }
+    return Response.json({ title: 'Matching Place', extract: 'A grounded description.' })
+  }
+  try {
+    const result = await enrichPlace({ ...place('grounded', 'Matching Place'), wikidataId: 'Q123' })
+    assert.equal(result.context.summary, 'A grounded description.')
+    assert.equal(requests.some((url) => url.includes('wbsearchentities') || url.includes('opensearch')), false)
+    assert.ok(requests.some((url) => url.includes('ids=Q123')))
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('Wikipedia geosearch rejects a similarly named article outside the radius', async () => {
+  const originalFetch = globalThis.fetch
+  let summaryRequested = false
+  globalThis.fetch = async (input) => {
+    const url = String(input)
+    if (url.includes('action=query')) {
+      return Response.json({ query: { geosearch: [{ title: 'Central Station', dist: 12000 }] } })
+    }
+    summaryRequested = true
+    return Response.json({ title: 'Central Station', extract: 'Wrong place.' })
+  }
+  try {
+    const result = await enrichPlace(place('station', 'Central Station'))
+    assert.equal(result.context.summary, undefined)
+    assert.equal(summaryRequested, false)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('typewriter reveal advances with elapsed time and never exceeds the message', () => {
+  assert.equal(revealedTextLength('abcdefghij', 100, 20), 2)
+  assert.equal(revealedTextLength('abc', 10000), 3)
+  assert.equal(revealedTextLength('abc', -10), 0)
+})
+
+test('conversation summaries respect minimum history and growth thresholds', () => {
+  assert.equal(shouldSummarize(11, 0), false)
+  assert.equal(shouldSummarize(20, 13), false)
+  assert.equal(shouldSummarize(20, 12), true)
+})
+
+test('Wikimedia photo parsing filters unsupported MIME types and sorts by distance', () => {
+  const photoInfo = (mime: string, title: string) => ({
+    thumburl: `https://images.test/thumb/1600px-${title}`,
+    descriptionurl: `https://commons.wikimedia.org/wiki/File:${title}`,
+    mime,
+    extmetadata: { LicenseShortName: { value: 'CC BY-SA 4.0' }, LicenseUrl: { value: 'https://creativecommons.org/licenses/by-sa/4.0/' }, AttributionRequired: { value: 'true' } },
+  })
+
+  const photos = parseWikimediaPhotos({ query: { pages: {
+    near: { pageid: 1, title: 'File:Near.jpg', imageinfo: [photoInfo('image/jpeg', 'Near.jpg')], coordinates: [{ lat: 48.8501, lon: 2.3501 }] },
+    far: { pageid: 2, title: 'File:Far.jpg', imageinfo: [photoInfo('image/webp', 'Far.jpg')], coordinates: [{ lat: 48.9, lon: 2.4 }] },
+    invalid: { pageid: 3, title: 'File:Vector.svg', imageinfo: [photoInfo('image/svg+xml', 'Vector.svg')] },
+  } } }, place('museum', 'Museum'))
+  assert.deepEqual(photos.map((photo) => photo.id), ['1', '2'])
+  assert.equal(photos[0].license, 'CC BY-SA 4.0')
+  assert.equal(photos[0].licenseUrl, 'https://creativecommons.org/licenses/by-sa/4.0/')
+  assert.equal(photos[0].attributionRequired, true)
+  assert.match(photos[0].thumbnailUrl, /640px-Near\.jpg/)
 })

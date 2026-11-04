@@ -5,6 +5,9 @@ type WikimediaMetadata = {
   ImageDescription?: { value?: string }
   Artist?: { value?: string }
   DateTimeOriginal?: { value?: string }
+  LicenseShortName?: { value?: string }
+  LicenseUrl?: { value?: string }
+  AttributionRequired?: { value?: string }
 }
 
 type WikimediaPage = {
@@ -12,7 +15,7 @@ type WikimediaPage = {
   title?: string
   imageinfo?: Array<{
     thumburl?: string
-    url?: string
+    mime?: string
     descriptionurl?: string
     extmetadata?: WikimediaMetadata
   }>
@@ -26,7 +29,7 @@ type WikimediaResponse = {
 const CACHE_TTL = 7 * 24 * 60 * 60 * 1000
 
 function cacheKey(place: Place) {
-  return `photos:v2:${place.name.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase().trim()}:${place.coordinates.map((coordinate) => coordinate.toFixed(3)).join(':')}`
+  return `photos:v3:${place.name.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase().trim()}:${place.coordinates.map((coordinate) => coordinate.toFixed(3)).join(':')}`
 }
 
 function cleanHtml(value?: string) {
@@ -51,6 +54,50 @@ function calculateDistance(coord1: [number, number], coord2: [number, number]): 
   return R * c
 }
 
+function thumbnailAtWidth(url: string, width: number) {
+  const parsed = new URL(url)
+  const filename = parsed.pathname.split('/').pop() ?? ''
+  const resized = filename.match(/^\d+px-(.+)$/)
+  if (resized) parsed.pathname = parsed.pathname.replace(/\/\d+px-[^/]+$/, `/${width}px-${resized[1]}`)
+  return parsed.toString()
+}
+
+export function parseWikimediaPhotos(payload: WikimediaResponse, place: Place): PlacePhoto[] {
+  const photos = Object.values(payload.query?.pages ?? {}).flatMap((page): PlacePhoto[] => {
+    const info = page.imageinfo?.[0]
+    if (!page.pageid || !page.title || !info?.thumburl || !info.descriptionurl || !['image/jpeg', 'image/png', 'image/webp'].includes(info.mime ?? '')) return []
+    const metadata = info.extmetadata
+
+    let distanceMeters: number | undefined
+    let photoCoordinates: [number, number] | undefined
+    if (page.coordinates?.length) {
+      photoCoordinates = [page.coordinates[0].lon, page.coordinates[0].lat]
+      distanceMeters = calculateDistance(place.coordinates, photoCoordinates)
+    }
+
+    const sceneUrl = info.thumburl
+    return [{
+      id: String(page.pageid),
+      title: page.title.replace(/^File:/, ''),
+      description: cleanHtml(metadata?.ImageDescription?.value),
+      author: cleanHtml(metadata?.Artist?.value),
+      publishedAt: metadata?.DateTimeOriginal?.value,
+      license: cleanHtml(metadata?.LicenseShortName?.value),
+      licenseUrl: metadata?.LicenseUrl?.value,
+      attributionRequired: metadata?.AttributionRequired?.value?.toLocaleLowerCase() === 'true',
+      imageUrl: sceneUrl,
+      sceneUrl,
+      thumbnailUrl: thumbnailAtWidth(sceneUrl, 640),
+      sourceUrl: info.descriptionurl,
+      source: 'wikimedia-commons',
+      distanceMeters,
+      photoCoordinates,
+    }]
+  })
+
+  return photos.sort((first, second) => (first.distanceMeters ?? Number.POSITIVE_INFINITY) - (second.distanceMeters ?? Number.POSITIVE_INFINITY))
+}
+
 export async function fetchPlacePhotos(place: Place, force = false): Promise<{ photos: PlacePhoto[]; cached: boolean }> {
   const key = cacheKey(place)
   if (!force) {
@@ -68,41 +115,15 @@ export async function fetchPlacePhotos(place: Place, force = false): Promise<{ p
     ggslimit: '8',
     ggscoord: `${latitude}|${longitude}`,
     prop: 'imageinfo|coordinates',
-    iiprop: 'url|extmetadata',
-    iiurlwidth: '640',
+    iiprop: 'url|extmetadata|mime',
+    iiurlwidth: '1600',
     format: 'json',
     origin: '*',
   })
   const response = await fetch(`https://commons.wikimedia.org/w/api.php?${params}`)
   if (!response.ok) throw new Error(`Wikimedia Commons returned HTTP ${response.status}`)
   const payload = await response.json() as WikimediaResponse
-  const photos = Object.values(payload.query?.pages ?? {}).flatMap((page): PlacePhoto[] => {
-    const info = page.imageinfo?.[0]
-    if (!page.pageid || !page.title || !info?.thumburl || !info.url || !info.descriptionurl) return []
-    const metadata = info.extmetadata
-    
-    // Calculate distance and extract coordinates if available
-    let distanceMeters: number | undefined
-    let photoCoordinates: [number, number] | undefined
-    if (page.coordinates && page.coordinates.length > 0) {
-      photoCoordinates = [page.coordinates[0].lon, page.coordinates[0].lat]
-      distanceMeters = calculateDistance(place.coordinates, photoCoordinates)
-    }
-    
-    return [{
-      id: String(page.pageid),
-      title: page.title.replace(/^File:/, ''),
-      description: cleanHtml(metadata?.ImageDescription?.value),
-      author: cleanHtml(metadata?.Artist?.value),
-      publishedAt: metadata?.DateTimeOriginal?.value,
-      imageUrl: info.url,
-      thumbnailUrl: info.thumburl,
-      sourceUrl: info.descriptionurl,
-      source: 'wikimedia-commons',
-      distanceMeters,
-      photoCoordinates,
-    }]
-  })
+  const photos = parseWikimediaPhotos(payload, place)
   await writeCachedValue(key, photos, Date.now() + CACHE_TTL)
   return { photos, cached: false }
 }

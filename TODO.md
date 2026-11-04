@@ -99,7 +99,7 @@ The phases below are ordered around a usable single-user MVP. Each phase should 
 - [x] Reduce the initial bundle with code splitting where useful
 - [x] Review npm audit findings and dependency updates
 
-## Immersive redesign (implemented)
+## Immersive redesign (partly implemented)
 
 The interface follows [mockups/05-two-characters.html](./mockups/05-two-characters.html) and [mockups/06-map-and-destination-panels.html](./mockups/06-map-and-destination-panels.html), without changing journey state or provider contracts.
 
@@ -112,3 +112,19 @@ The interface follows [mockups/05-two-characters.html](./mockups/05-two-characte
 - [x] Keep narration and the chat composer available without losing their state when panels open or close.
 - [x] Make dock and panel placement responsive and keyboard-accessible; ensure the map redraws correctly when its panel is resized.
 - [x] Add UI coverage for explicit panel toggles, simultaneous panels, close behavior, focus/blur stability, and narrow screens.
+- [x] Add opening screen, dialogue nameplate, expanded log, Stop/Retry controls, and free-text composer.
+- [x] Keep the companion toggle in the top bar and support browser-local illustration uploads.
+- [x] Add streamed typewriter display with reduced-motion support and optional prompt suggestions.
+- [x] Add Escape-to-close and focus return for story panels.
+- [x] Move journey persistence/state and chat streaming/summary into `useJourney` and `useChat` (WP-R1).
+- [x] Consolidate place/context/weather/photo details in `PlaceDetails`, used by the map, Place panel, and Field notes (WP-R1).
+- [ ] Extract remaining map/search and panel ownership; reduce `App.tsx` to the WP-R1 target of 250 lines.
+
+## Reliability follow-ups
+
+- [x] Run typecheck and unit tests in CI; run browser tests on pull requests.
+- [x] Use a shared IndexedDB connection and migrate the v3 database to v4 without dropping existing stores.
+- [x] Bound map-resource caching and refresh documents with a network-first strategy.
+- [x] Match place context by explicit Wikidata IDs or nearby, title-matched Wikipedia pages.
+- [x] Filter unsupported Wikimedia file types and preserve photo licence/attribution metadata.
+- [ ] Review remaining accessibility and browser cache edge cases.

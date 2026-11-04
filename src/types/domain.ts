@@ -18,6 +18,8 @@ export type Place = {
   category?: string
   osmType?: string
   osmId?: string
+  wikidataId?: string
+  wikipediaTitle?: string
   description?: string
   coordinates: Coordinates
   source: 'map' | 'online'
@@ -29,7 +31,11 @@ export type PlacePhoto = {
   description?: string
   author?: string
   publishedAt?: string
+  license?: string
+  licenseUrl?: string
+  attributionRequired?: boolean
   imageUrl: string
+  sceneUrl?: string
   thumbnailUrl: string
   sourceUrl: string
   source: 'wikimedia-commons'
@@ -49,6 +55,7 @@ export type UserSettings = {
   routingBaseUrl: string
   liveDataEnabled: boolean
   weatherBaseUrl: string
+  companionImage: boolean
 }
 
 export type NarrativeEvent = {
