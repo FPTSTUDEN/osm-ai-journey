@@ -264,3 +264,5 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
   .story-panels-stacked .destination-dock-panel { max-height: calc(26vh - 10px); }
   .story-panels-stacked .travelogue-panel { top: calc(84px + 26vh); max-height: calc(22vh - 12px); }
 }
+
+.message.event p { color: #9db5a5; font-size: 14px; font-style: normal; letter-spacing: .01em; }

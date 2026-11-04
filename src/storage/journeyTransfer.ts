@@ -1,4 +1,5 @@
 import type { JourneyState, Place } from '../types/domain'
+import { normalizeMessages } from './messages'
 
 function isPlace(value: unknown): value is Place {
   if (!value || typeof value !== 'object') return false
@@ -18,7 +19,8 @@ export function parseJourneyJson(value: unknown): JourneyState {
   if (!isPlace(journey.currentDestination) && journey.currentDestination !== null) throw new Error('Journey file has an invalid current destination')
   if (!Array.isArray(journey.destinationHistory) || !journey.destinationHistory.every(isPlace)) throw new Error('Journey file has invalid destination history')
   if (typeof journey.currentScene !== 'number' || !Number.isInteger(journey.currentScene) || journey.currentScene < 1) throw new Error('Journey file has an invalid scene')
-  if (!Array.isArray(journey.messages) || !journey.messages.every((item) => typeof item === 'string')) throw new Error('Journey file has invalid messages')
+  const messages = normalizeMessages(journey.messages)
+  if (!messages) throw new Error('Journey file has invalid messages')
   if (!Array.isArray(journey.knownPeople) || !journey.knownPeople.every((item) => typeof item === 'string')) throw new Error('Journey file has invalid people')
   if (!Array.isArray(journey.knownEntities) || !journey.knownEntities.every((item) => typeof item === 'string')) throw new Error('Journey file has invalid entities')
   if (!Array.isArray(journey.userFacts) || !journey.userFacts.every((item) => typeof item === 'string')) throw new Error('Journey file has invalid facts')
@@ -29,7 +31,7 @@ export function parseJourneyJson(value: unknown): JourneyState {
     mapViewport: journey.mapViewport ?? null,
     destinationHistory: journey.destinationHistory,
     currentScene: journey.currentScene,
-    messages: journey.messages.length ? journey.messages : ['Choose a place on the map, or tell me what kind of journey you want to begin.'],
+    messages,
     knownPeople: journey.knownPeople,
     knownEntities: journey.knownEntities,
     userFacts: journey.userFacts,

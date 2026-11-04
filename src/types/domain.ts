@@ -59,13 +59,21 @@ export type NarrativeEvent = {
   placeId?: string
 }
 
+export type ChatEntry = {
+  id: string
+  /** `event` entries are app-generated narration (e.g. arrivals); they are never sent to the model as a user turn. */
+  role: 'user' | 'assistant' | 'event'
+  text: string
+  createdAt: string
+}
+
 export type JourneyState = {
   id: 'active'
   currentDestination: Place | null
   mapViewport?: MapViewport | null
   destinationHistory: Place[]
   currentScene: number
-  messages: string[]
+  messages: ChatEntry[]
   knownPeople: string[]
   knownEntities: string[]
   userFacts: string[]

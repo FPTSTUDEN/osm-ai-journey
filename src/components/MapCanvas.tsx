@@ -87,7 +87,8 @@ export const MapCanvas = memo(function MapCanvas({ onPlaceSelected, onPlacesLoad
       saveViewport()
       collectLoadedPlaces()
     })
-    map.on('move', saveViewport)
+    // `moveend`, not `move`: `move` fires every frame and re-rendered the whole app while panning.
+    map.on('moveend', saveViewport)
     map.on('idle', collectLoadedPlaces)
     map.on('click', handleClick)
     map.on('error', () => {
@@ -117,13 +118,7 @@ export const MapCanvas = memo(function MapCanvas({ onPlaceSelected, onPlacesLoad
       .setLngLat(selectedPlace.coordinates)
       .addTo(map)
 
-    const focusSelectedPlace = () => {
-      map.jumpTo({ center: selectedPlace.coordinates, zoom: Math.max(map.getZoom(), 14) })
-    }
-
-    focusSelectedPlace()
-
-    return () => { map.off('load', focusSelectedPlace) }
+    map.jumpTo({ center: selectedPlace.coordinates, zoom: Math.max(map.getZoom(), 14) })
   }, [selectedPlace])
 
   useEffect(() => {

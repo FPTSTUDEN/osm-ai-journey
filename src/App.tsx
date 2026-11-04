@@ -8,10 +8,10 @@ import { deleteActiveJourney, loadActiveJourney, saveActiveJourney } from './sto
 import { clearOfflineCache, getOfflineCacheStatus, type OfflineCacheStatus } from './storage/offlineCache'
 import { loadSettings, saveSettings } from './storage/settings'
 import { journeyJson, parseJourneyJson } from './storage/journeyTransfer'
-import type { JourneyState, MapViewport, NarrativeEvent, Place, PlacePhoto, UserSettings, WalkingRoute } from './types/domain'
+import { newEntry, starterEntries, STARTER_MESSAGE } from './storage/messages'
+import type { ChatEntry, JourneyState, MapViewport, NarrativeEvent, Place, PlacePhoto, UserSettings, WalkingRoute } from './types/domain'
 import './styles/app.css'
 
-const starterMessage = 'Choose a place on the map, or tell me what kind of journey you want to begin.'
 type StoryPanel = 'map' | 'destination' | 'travelogue'
 
 function newEvent(type: NarrativeEvent['type'], text: string, placeId?: string): NarrativeEvent {
@@ -19,7 +19,7 @@ function newEvent(type: NarrativeEvent['type'], text: string, placeId?: string):
 }
 
 function emptyJourney(): JourneyState {
-  return { id: 'active', currentDestination: null, mapViewport: null, destinationHistory: [], currentScene: 1, messages: [starterMessage], knownPeople: [], knownEntities: [], userFacts: [], narrativeEvents: [], conversationSummary: '' }
+  return { id: 'active', currentDestination: null, mapViewport: null, destinationHistory: [], currentScene: 1, messages: starterEntries(), knownPeople: [], knownEntities: [], userFacts: [], narrativeEvents: [], conversationSummary: '' }
 }
 
 function photoToPlace(photo: PlacePhoto, fallback: Place): Place {
@@ -41,7 +41,7 @@ function App() {
   const [mapViewport, setMapViewport] = useState<MapViewport | null>(null)
   const [query, setQuery] = useState('')
   const [message, setMessage] = useState('')
-  const [messages, setMessages] = useState([starterMessage])
+  const [messages, setMessages] = useState<ChatEntry[]>(starterEntries)
   const [showSettings, setShowSettings] = useState(false)
   const [mapStatus, setMapStatus] = useState<'loading' | 'ready' | 'unavailable'>('loading')
   const [onlineResults, setOnlineResults] = useState<Place[]>([])
@@ -87,6 +87,10 @@ function App() {
   const [fieldNotesOpen, setFieldNotesOpen] = useState(false)
   const [arrivalCard, setArrivalCard] = useState<string | null>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
+  const arrivalTimer = useRef<number | undefined>(undefined)
+  const chatAbort = useRef<AbortController | null>(null)
+
+  useEffect(() => () => { window.clearTimeout(arrivalTimer.current); chatAbort.current?.abort() }, [])
 
   useEffect(() => {
     saveSettings(settings)
@@ -104,7 +108,7 @@ function App() {
       setMapViewport(restored.mapViewport ?? null)
       setDestinationHistory(restored.destinationHistory)
       setCurrentScene(restored.currentScene)
-      setMessages(restored.messages.length ? restored.messages : [starterMessage])
+      setMessages(restored.messages.length ? restored.messages : starterEntries())
       setNarrativeEvents(restored.narrativeEvents)
       setKnownPeople(restored.knownPeople)
       setKnownEntities(restored.knownEntities)
@@ -117,19 +121,23 @@ function App() {
 
   useEffect(() => {
     if (!journeyReady) return
-    void saveActiveJourney({
-      id: 'active',
-      currentDestination: selectedPlace,
-      mapViewport,
-      destinationHistory,
-      currentScene,
-      messages,
-      knownPeople,
-      knownEntities,
-      userFacts,
-      narrativeEvents,
-      conversationSummary,
-    })
+    // Debounced: streaming replies change `messages` on every token and the map reports viewport changes.
+    const timer = window.setTimeout(() => {
+      void saveActiveJourney({
+        id: 'active',
+        currentDestination: selectedPlace,
+        mapViewport,
+        destinationHistory,
+        currentScene,
+        messages,
+        knownPeople,
+        knownEntities,
+        userFacts,
+        narrativeEvents,
+        conversationSummary,
+      })
+    }, 400)
+    return () => window.clearTimeout(timer)
   }, [conversationSummary, currentScene, destinationHistory, journeyReady, knownEntities, knownPeople, mapViewport, messages, narrativeEvents, selectedPlace, userFacts])
 
   useEffect(() => {
@@ -213,7 +221,8 @@ function App() {
     }
     setSelectedPlace(place)
     setArrivalCard(place.name)
-    window.setTimeout(() => setArrivalCard(null), 2600)
+    window.clearTimeout(arrivalTimer.current)
+    arrivalTimer.current = window.setTimeout(() => setArrivalCard(null), 2600)
     setQuery('')
     setOnlineResults([])
     setOnlineState('idle')
@@ -222,7 +231,8 @@ function App() {
     const arrival = `You arrive at ${place.name}.`
     const eventType = walkingRoute ? 'routed-transition' : 'unrouted-transition'
     const eventText = walkingRoute ? `${arrival} Walking route calculated.` : `${arrival} Continuing without a walking route.`
-    setMessages((current) => [...current.slice(0, -1), eventText])
+    // Append the arrival; only the untouched starter line is replaced. The old code overwrote the last real message.
+    setMessages((current) => current.length === 1 && current[0].text === STARTER_MESSAGE ? [newEntry('event', eventText)] : [...current, newEntry('event', eventText)])
     setNarrativeEvents((current) => [...current, newEvent(eventType, eventText, place.id)])
   }
 
@@ -282,26 +292,29 @@ function App() {
     event.preventDefault()
     const trimmed = message.trim()
     if (!trimmed || llmState === 'loading') return
-    setMessages((current) => [...current, trimmed])
+    const history = messages
+    const reply = newEntry('assistant', '')
+    setMessages((current) => [...current, newEntry('user', trimmed)])
     setNarrativeEvents((current) => [...current, newEvent('message', trimmed)])
     setMessage('')
     setLlmState('loading')
     setLlmError('')
+    chatAbort.current?.abort()
+    const controller = new AbortController()
+    chatAbort.current = controller
     let assistantStarted = false
     void import('./providers/context').then(({ buildJourneyContext }) => {
-      const chatMessages = buildJourneyContext({ settings, selectedPlace, messages, userMessage: trimmed, liveWeather: weather ? `${weatherLabel(weather.data.weatherCode)}, ${weather.data.temperatureC}°C, ${weather.source}` : undefined, destinationPhotos: selectedPhoto ? [selectedPhoto] : [], journey: { destinationHistory, currentScene, knownPeople, knownEntities, userFacts, conversationSummary } })
+      const chatMessages = buildJourneyContext({ settings, selectedPlace, messages: history, userMessage: trimmed, liveWeather: weather ? `${weatherLabel(weather.data.weatherCode)}, ${weather.data.temperatureC}°C, ${weather.source}` : undefined, destinationPhotos: selectedPhoto ? [selectedPhoto] : [], placeContext: contextState === 'ready' ? placeContext : null, placeContextCached: contextCached, journey: { destinationHistory, currentScene, knownPeople, knownEntities, userFacts, conversationSummary } })
       return import('./providers/llm').then(({ streamChat }) => streamChat({ baseUrl: settings.llmBaseUrl, model: settings.llmModel, apiKey: settings.llmApiKey }, chatMessages, (delta) => {
         const firstDelta = !assistantStarted
         assistantStarted = true
-        setMessages((current) => {
-          if (firstDelta) return [...current, delta]
-          const last = current[current.length - 1] ?? ''
-          return [...current.slice(0, -1), last + delta]
-        })
-      }))
+        // Entries are matched by id, so a reset or a late delta can never corrupt another message.
+        setMessages((current) => firstDelta ? [...current, { ...reply, text: delta }] : current.map((entry) => entry.id === reply.id ? { ...entry, text: entry.text + delta } : entry))
+      }, controller.signal))
     }).then(() => {
       setLlmState('idle')
     }).catch((error) => {
+      if (controller.signal.aborted) return
       setLlmState('error')
       setLlmError(error instanceof Error ? error.message : 'The language model request failed')
     })
@@ -331,6 +344,9 @@ function App() {
   }
 
   function resetJourney() {
+    chatAbort.current?.abort()
+    setLlmState('idle')
+    setLlmError('')
     const journey = emptyJourney()
     setSelectedPlace(journey.currentDestination)
     setDestinationHistory(journey.destinationHistory)
@@ -353,6 +369,9 @@ function App() {
   }
 
   function applyJourney(journey: JourneyState) {
+    chatAbort.current?.abort()
+    setLlmState('idle')
+    setLlmError('')
     setSelectedPlace(journey.currentDestination)
     setMapViewport(journey.mapViewport ?? null)
     setDestinationHistory(journey.destinationHistory)
@@ -657,7 +676,7 @@ function App() {
             <small>Placeholder · no portrait uploaded</small>
           </div>}
           <div className="conversation" aria-label="Journey narration">
-            {messages.map((item, index) => <div className={`message ${index % 2 ? 'user-action' : 'narration'}`} key={`${item}-${index}`}><p>{item}</p></div>)}
+            {messages.map((entry) => <div className={`message ${entry.role === 'user' ? 'user-action' : entry.role === 'event' ? 'narration event' : 'narration'}`} key={entry.id}><p>{entry.text}</p></div>)}
           </div>
           <section className="journey-timeline" aria-label="Journey timeline">
             <div className="timeline-heading"><p className="memory-label">Travelogue</p><span>{narrativeEvents.length} event{narrativeEvents.length === 1 ? '' : 's'}</span></div>

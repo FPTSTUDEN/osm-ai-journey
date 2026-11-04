@@ -1,4 +1,5 @@
 import type { JourneyState } from '../types/domain'
+import { normalizeMessages } from './messages'
 
 const DATABASE_NAME = 'osm-ai-journey'
 const JOURNEY_STORE = 'journeys'
@@ -21,13 +22,15 @@ function openDatabase(): Promise<IDBDatabase> {
 export async function loadActiveJourney(): Promise<JourneyState | null> {
   try {
     const database = await openDatabase()
-    const journey = await new Promise<JourneyState | undefined>((resolve, reject) => {
+    const journey = await new Promise<(Omit<JourneyState, 'messages'> & { messages: unknown }) | undefined>((resolve, reject) => {
       const request = database.transaction(JOURNEY_STORE, 'readonly').objectStore(JOURNEY_STORE).get('active')
-      request.onsuccess = () => resolve(request.result as JourneyState | undefined)
+      request.onsuccess = () => resolve(request.result as (Omit<JourneyState, 'messages'> & { messages: unknown }) | undefined)
       request.onerror = () => reject(request.error)
     })
     database.close()
-    return journey ?? null
+    if (!journey) return null
+    // Journeys saved before structured messages stored string[]; migrate on read.
+    return { ...journey, messages: normalizeMessages(journey.messages) ?? [] }
   } catch {
     return null
   }
