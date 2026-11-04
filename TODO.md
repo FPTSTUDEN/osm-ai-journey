@@ -103,10 +103,11 @@ The phases below are ordered around a usable single-user MVP. Each phase should 
 
 The interface follows [mockups/05-two-characters.html](./mockups/05-two-characters.html) and [mockups/06-map-and-destination-panels.html](./mockups/06-map-and-destination-panels.html), without changing journey state or provider contracts.
 
-- [x] Keep the scene and narration as a stable, full-screen stage behind navigation panels.
+- [x] Keep the scene and narration on a stable stage behind navigation panels, using an ambient gradient when no photo is selected.
 - [x] Make Map, Place, and Journal/Travelogue dock actions explicitly open and close their panels; do not change layout on focus or blur.
-- [x] Show the interactive map in a compact panel while the scene stage remains visible, retaining search, place selection, and route flows.
-- [x] Show destination context and nearby photos in a separate panel; selecting a photo updates the scene art and keeps its source attribution available.
+- [x] Show the interactive map only inside its compact panel; the map is not used as a background, including beneath scene art.
+- [x] Make Explore open the Map panel; keep place selection, search, and route flows available there.
+- [x] Show destination context and nearby photos in a separate panel; only an explicitly selected photo becomes scene art, with its source attribution visible.
 - [x] Allow Map and Place panels to remain open together; closing one must not implicitly close the other.
 - [x] Keep narration and the chat composer available without losing their state when panels open or close.
 - [x] Make dock and panel placement responsive and keyboard-accessible; ensure the map redraws correctly when its panel is resized.

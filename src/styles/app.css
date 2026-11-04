@@ -143,10 +143,11 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
 }
 
 /* Dock panels are explicit views; keyboard focus alone never changes the layout. */
+.app-shell { background: radial-gradient(circle at 80% -10%, #29423a 0, transparent 35%), radial-gradient(circle at 10% 85%, #203b3d 0, transparent 42%), #101917; }
 .scene-art { position: fixed; z-index: 1; inset: 0; }
-.scene-art--explore { position: absolute; }
 .scene-art-note a { pointer-events: auto; }
-.stage-map-caption { position: fixed; z-index: 2; right: 12px; bottom: 7px; left: auto; display: grid; justify-items: end; gap: 2px; }
+.map-layout:not(.map-layout--compact) .map-panel { visibility: hidden; pointer-events: none; }
+.map-layout.map-layout--compact .map-panel--compact { visibility: visible; pointer-events: auto; }
 .map-layout--compact {
   position: fixed;
   z-index: 6;
@@ -160,7 +161,6 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
   height: auto;
   pointer-events: none;
 }
-.map-layout--compact::before { position: fixed; z-index: -1; inset: 0; background: radial-gradient(circle at 30% 24%, #29423a 0, transparent 40%), radial-gradient(circle at 76% 70%, #203b3d 0, transparent 44%), #101917; content: ''; pointer-events: none; }
 .map-panel--compact {
   position: relative;
   z-index: 0;

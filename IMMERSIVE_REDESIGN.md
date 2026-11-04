@@ -24,7 +24,7 @@ optional character illustration, and narration reads as prose in a dialogue box.
 | `mockups/01-opening.html` | Threshold / "begin your journey" | Hushed world map, serif invitation, search + quick "drop in" chips, local-first trust line. |
 | `mockups/02-arrival.html` | Arrival + field notes | Full-bleed stage, cinematic "Scene 03 — You arrive" chapter card, hero photo, field-notes drawer, travelogue spine. |
 | `mockups/03-ongoing-narration.html` | Mid-conversation (narration) | Narration-as-prose thread over the map (no chat bubbles), typewriter cursor, dock with suggestions + free input. |
-| `mockups/04-visual-novel.html` | VN single character | Destination photo as scene art over dimmed map, togglable companion sprite, VN dialogue box with nameplate. |
+| `mockups/04-visual-novel.html` | VN single character | Destination photo as scene art, togglable companion sprite, VN dialogue box with nameplate. Its map-under-photo layering is a visual reference only; the live app does not show the map behind scene art. |
 | `mockups/05-two-characters.html` | VN two characters | Vendor (active, amber nameplate) + companion (dimmed), stage directions, left dock with Map / Place / Journal toggles. |
 | `mockups/06-map-and-destination-panels.html` | VN + navigation | Map panel (navigate to other places) and Destination panel (image gallery + context) open over the scene so the user can travel and swap scene images without leaving the story. |
 
@@ -34,13 +34,14 @@ optional character illustration, and narration reads as prose in a dialogue box.
 
 ## Core moves
 
-1. **Full-bleed stage.** The map or selected illustrative photo fills the
-   viewport; narration and navigation panels float over it. Opening Map from the
-   dock explicitly moves the live map into a compact panel while the stage remains
-   visible. Keyboard focus and blur do not resize the map.
-2. **Destination photo = scene art (VN).** The selected place's photo becomes the
-   full background, feathered over the dimmed live map. Promote the first
-   `destinationPhotos` photo to a full-bleed hero/scene image.
+1. **Full-bleed scene stage.** A selected illustrative photo fills the viewport;
+   otherwise, use the app's ambient gradient background. Never render the live
+   map behind the scene art. The interactive map exists only in its compact Map
+   panel. Opening Explore opens that panel; keyboard focus and blur do not resize it.
+2. **Destination photo = scene art (VN).** Only an explicitly selected destination
+   photo becomes the full background, with an illustrative label and source link.
+   Do not auto-select the first nearby photo. When the photo is cleared or the
+   destination changes, return to the ambient gradient until another photo is chosen.
 3. **Narration, not messaging.** Render AI output as flowing serif prose with a
    typewriter reveal (the stream already deltas in `sendMessage`); render the
    user's action as a quiet italic line. Drop alternating bubbles and the
@@ -60,8 +61,9 @@ optional character illustration, and narration reads as prose in a dialogue box.
 8. **Cinematic arrivals.** Dramatize `completeTransition`: fade/vignette, camera
    `flyTo`, a "Scene NN — You arrive at …" chapter card, then dissolve into the
    new scene art.
-9. **Explore ⇄ Story toggle.** Story mode immerses (overlaid narration); Explore
-   mode hands the map back for free panning/clicking. Keeps the map fully usable.
+9. **Explore ⇄ Story toggle.** Story mode immerses with narration; Explore hides
+   narration and explicitly opens the compact Map panel for free panning and
+   clicking. Neither mode uses the live map as a scene background.
 
 ## Constraints to honor (from docs/PRODUCT.md & ARCHITECTURE.md)
 
@@ -93,6 +95,8 @@ Options, in suggested order:
 ## Implementation notes
 
 - Dock panel state is explicit and independent; focus and blur do not trigger layout changes.
+- The ambient gradient is the default stage. An explicitly selected illustrative photo replaces it; the live map is hidden unless its compact panel is open, and is never a layer beneath the photo.
+- Explore opens the compact Map panel. Returning to Story closes it.
 - MapLibre remains mounted when its container becomes compact and uses `ResizeObserver` to refresh its rendering after size changes.
 - The Journal panel reads existing `narrativeEvents`; no journey schema changes are required.
 - Browser coverage for panel toggles, focus stability, and mobile layout lives in `tests/app.spec.mjs`.

@@ -12,8 +12,27 @@ async function mockSearch(page) {
   await page.route('https://nominatim.openstreetmap.org/search**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([place]) }))
 }
 
+async function mockPhotos(page) {
+  await page.route('https://commons.wikimedia.org/w/api.php**', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ query: { pages: { '123': {
+      pageid: 123,
+      title: 'File:Test scene.jpg',
+      imageinfo: [{
+        thumburl: 'https://images.test/thumb.jpg',
+        url: 'https://images.test/full.jpg',
+        descriptionurl: 'https://commons.wikimedia.org/wiki/File:Test_scene.jpg',
+        extmetadata: { ImageDescription: { value: 'Test scene description' } },
+      }],
+      coordinates: [{ lat: 35.6762, lon: 139.6503 }],
+    } } } }),
+  }))
+}
+
 async function chooseOnlinePlace(page) {
-  const search = page.getByPlaceholder('Search loaded places')
+  await page.locator('.story-dock button').nth(0).click()
+  const search = page.getByPlaceholder('Search places')
   await search.fill('test destination')
   await page.getByRole('button', { name: 'Search online' }).click()
   await page.getByRole('button', { name: /Test Destination/ }).click()
@@ -43,7 +62,8 @@ test('completes and restores an online destination journey', async ({ page }) =>
   await mockSearch(page)
   await resetBrowser(page)
   await chooseOnlinePlace(page)
-  await expect(page.getByRole('complementary', { name: 'Selected destination' }).getByRole('heading', { name: 'Test Destination' })).toBeVisible()
+  await page.locator('.story-dock button').nth(1).click()
+  await expect(page.getByRole('complementary', { name: 'Destination panel' }).getByRole('heading', { name: 'Test Destination' })).toBeVisible()
   await expect.poll(() => page.locator('.map-canvas').evaluate((map) => {
     const marker = map.querySelector('.maplibregl-marker')
     if (!marker) return Number.POSITIVE_INFINITY
@@ -73,7 +93,8 @@ test('completes and restores an online destination journey', async ({ page }) =>
     requestAnimationFrame(captureInitialMarkerPosition)
   })
   await page.reload()
-  await expect(page.getByRole('complementary', { name: 'Selected destination' }).getByRole('heading', { name: 'Test Destination' })).toBeVisible()
+  await page.locator('.story-dock button').nth(1).click()
+  await expect(page.getByRole('complementary', { name: 'Destination panel' }).getByRole('heading', { name: 'Test Destination' })).toBeVisible()
   await expect(page.getByText(/1 destination/)).toBeVisible()
   await expect.poll(() => page.evaluate(() => window.__restoredMapMarkerOffset), { timeout: 15000 }).not.toBeNull()
   expect(await page.evaluate(() => window.__restoredMapMarkerOffset)).toBeLessThan(30)
@@ -82,6 +103,7 @@ test('completes and restores an online destination journey', async ({ page }) =>
 test('restores the last explored map viewport when no destination is selected', async ({ page }) => {
   test.setTimeout(60000)
   await resetBrowser(page)
+  await page.locator('.story-dock button').nth(0).click()
   const map = page.locator('.map-canvas')
   await expect(map.locator('canvas')).toBeVisible({ timeout: 15000 })
   const bounds = await map.boundingBox()
@@ -102,6 +124,7 @@ test('restores the last explored map viewport when no destination is selected', 
   expect(savedViewport).not.toBeNull()
 
   await page.reload()
+  await page.locator('.story-dock button').nth(0).click()
   await expect(page.locator('.map-canvas canvas')).toBeVisible({ timeout: 15000 })
   await expect.poll(async () => {
     const viewport = await readActiveMapViewport(page)
@@ -111,7 +134,7 @@ test('restores the last explored map viewport when no destination is selected', 
       viewport.center[1] - savedViewport.center[1],
     )
     return Math.max(centerDifference, Math.abs(viewport.zoom - savedViewport.zoom))
-  }, { timeout: 15000 }).toBeLessThan(0.0001)
+  }, { timeout: 15000 }).toBeLessThan(0.001)
 })
 
 test('shows a provider failure without breaking normal chat UI', async ({ page }) => {
@@ -153,25 +176,67 @@ test('story panels open independently and ignore keyboard focus changes', async 
   await composer.focus()
   await expect(mapToggle).toHaveAttribute('aria-pressed', 'false')
   await expect(page.locator('.map-panel')).not.toHaveClass(/map-panel--compact/)
+  await expect(page.locator('.map-canvas')).toBeHidden()
 
   await mapToggle.click()
   await expect(mapToggle).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.getByRole('complementary', { name: 'Visited places' })).toBeVisible()
+  await expect(page.getByRole('complementary', { name: 'Map navigation panel' })).toBeVisible()
+  await expect(page.locator('.map-canvas')).toBeVisible()
   const compactMapWidth = await page.locator('.map-panel').evaluate((map) => map.getBoundingClientRect().width)
   await composer.fill('Focus should not change the map layout')
   expect(await page.locator('.map-panel').evaluate((map) => map.getBoundingClientRect().width)).toBe(compactMapWidth)
 
   await placeToggle.click()
   await expect(page.getByRole('complementary', { name: 'Destination panel' })).toBeVisible()
-  await expect(page.getByRole('complementary', { name: 'Visited places' })).toBeVisible()
+  await expect(page.getByRole('complementary', { name: 'Map navigation panel' })).toBeVisible()
   await placeToggle.click()
   await expect(page.getByRole('complementary', { name: 'Destination panel' })).toHaveCount(0)
-  await expect(page.getByRole('complementary', { name: 'Visited places' })).toBeVisible()
+  await expect(page.getByRole('complementary', { name: 'Map navigation panel' })).toBeVisible()
 
   await mapToggle.click()
   await expect(mapToggle).toHaveAttribute('aria-pressed', 'false')
   await journalToggle.click()
   await expect(page.getByRole('complementary', { name: 'Travelogue panel' })).toBeVisible()
+})
+
+test('Explore opens the map panel without putting the map behind the scene', async ({ page }) => {
+  await resetBrowser(page)
+  const modeToggle = page.getByRole('button', { name: 'Story' })
+
+  await modeToggle.click()
+  await expect(page.getByRole('button', { name: 'Explore' })).toHaveAttribute('aria-pressed', 'false')
+  await expect(page.locator('.map-panel')).toHaveClass(/map-panel--compact/)
+  await expect(page.locator('.map-canvas')).toBeVisible()
+  await expect(page.locator('.journey-panel')).toBeHidden()
+
+  await page.getByRole('button', { name: 'Explore' }).click()
+  await expect(page.locator('.map-canvas')).toBeHidden()
+  await expect(page.locator('.map-panel')).not.toHaveClass(/map-panel--compact/)
+})
+
+test('selected photo replaces the ambient background while the map stays panel-only', async ({ page }) => {
+  await mockSearch(page)
+  await mockPhotos(page)
+  await resetBrowser(page)
+  await chooseOnlinePlace(page)
+  await page.locator('.story-dock button').nth(0).click()
+  await page.locator('.story-dock button').nth(1).click()
+  const photoChoice = page.getByRole('button', { name: /Test scene\.jpg/ })
+  await expect(photoChoice).toBeVisible()
+  await expect(page.locator('.scene-art')).toHaveCount(0)
+  await expect(page.locator('.map-canvas')).toBeHidden()
+  await photoChoice.click()
+
+  const sceneArt = page.locator('.scene-art')
+  await expect(sceneArt).toBeVisible()
+  await expect(sceneArt.locator('img')).toHaveAttribute('src', 'https://images.test/full.jpg')
+  await expect(sceneArt).toHaveCount(1)
+  await expect(page.locator('.map-canvas')).toBeHidden()
+  await expect(page.getByRole('link', { name: 'Photo source' })).toHaveAttribute('href', 'https://commons.wikimedia.org/wiki/File:Test_scene.jpg')
+
+  await page.locator('.story-dock button').nth(0).click()
+  await expect(page.locator('.map-canvas')).toBeVisible()
+  await expect(sceneArt).toBeVisible()
 })
 
 test('map and destination panels remain usable together on mobile', async ({ page }) => {

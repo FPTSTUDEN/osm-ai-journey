@@ -439,7 +439,7 @@ function App() {
         </div>
         <div className="topbar-actions">
           <span className="status-pill"><span className="status-dot" /> Local-first</span>
-          <button className="mode-toggle" type="button" onClick={() => { setStoryMode((active) => !active); setStoryPanels([]); setFieldNotesOpen(false) }} aria-pressed={storyMode}>
+          <button className="mode-toggle" type="button" onClick={() => { setStoryMode((active) => !active); setStoryPanels(storyMode ? ['map'] : []); setFieldNotesOpen(false) }} aria-pressed={storyMode}>
             {storyMode ? 'Story' : 'Explore'}
           </button>
           <button className="icon-button" onClick={() => setShowSettings((visible) => !visible)} aria-label="Toggle settings">⚙</button>
@@ -447,18 +447,13 @@ function App() {
       </header>
 
       <section className="workspace">
-        {storyMode && selectedPhoto && <div className="scene-art" aria-label="Illustrative destination scene art">
+        {selectedPhoto && <div className="scene-art" aria-label="Illustrative destination scene art">
           <img src={selectedPhoto.imageUrl} alt="" />
           <div className="scene-art-shade" />
           <p className="scene-art-note">Illustrative photo · not a live view · <a href={selectedPhoto.sourceUrl} target="_blank" rel="noreferrer">source</a></p>
         </div>}
-        <div id="story-map-panel" className={`map-layout ${storyMode && storyPanels.includes('map') ? 'map-layout--compact' : ''}`}>
-        <section className={`map-panel panel ${storyMode && storyPanels.includes('map') ? 'map-panel--compact' : ''}`}>
-          {!storyMode && selectedPhoto && <div className="scene-art scene-art--explore" aria-label="Illustrative destination scene art">
-            <img src={selectedPhoto.imageUrl} alt="" />
-            <div className="scene-art-shade" />
-            <p className="scene-art-note">Illustrative photo · not a live view · <a href={selectedPhoto.sourceUrl} target="_blank" rel="noreferrer">source</a></p>
-          </div>}
+        <div id="story-map-panel" className={`map-layout ${storyPanels.includes('map') ? 'map-layout--compact' : ''}`}>
+        <section className={`map-panel panel ${storyPanels.includes('map') ? 'map-panel--compact' : ''}`}>
           <div className="map-toolbar">
             <div>
               <p className="eyebrow">Explore a place</p>
@@ -552,10 +547,10 @@ function App() {
           </aside>}
           <div className="map-caption"><span>Map data © OpenStreetMap contributors</span><span>OpenFreeMap</span></div>
         </section>
-        {storyMode && storyPanels.includes('map') && <aside className="map-history-panel panel" aria-label="Visited places">
+        {storyPanels.includes('map') && <aside className="map-history-panel panel" aria-label="Map navigation panel">
           <div className="story-dock-header">
             <div><p className="eyebrow">Navigate</p><h3>Map</h3></div>
-            <button className="close-button" type="button" onClick={() => closeStoryPanel('map')} aria-label="Close map panel">×</button>
+            <button className="close-button" type="button" onClick={() => { if (storyMode) closeStoryPanel('map'); else { setStoryPanels([]); setStoryMode(true) } }} aria-label={storyMode ? 'Close map panel' : 'Return to story'}>×</button>
           </div>
           <label className="dock-search"><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => updateQuery(event.target.value)} placeholder="Search places" /></label>
           {destinationHistory.length > 0 && <div className="dock-history"><p className="result-label">Visited places</p>{destinationHistory.slice().reverse().map((place) => <button key={place.id} type="button" onClick={() => choosePlace(place)}>{place.name}<span>{place.category ?? 'Place'}</span></button>)}</div>}
@@ -563,7 +558,6 @@ function App() {
           <p className="dock-hint">Free map panning and search remain available.</p>
         </aside>}
         </div>
-        {storyMode && selectedPhoto && !storyPanels.includes('map') && <div className="map-caption stage-map-caption"><span>Map data © OpenStreetMap contributors</span><span>OpenFreeMap</span></div>}
 
         {storyMode && <nav className="story-dock" aria-label="Story navigation">
           <button className={storyPanels.includes('map') ? 'active' : ''} type="button" onClick={() => toggleStoryPanel('map')} aria-pressed={storyPanels.includes('map')} aria-controls="story-map-panel" aria-expanded={storyPanels.includes('map')}>⌖ <span>Map</span></button>
