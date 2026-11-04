@@ -5,24 +5,29 @@ type OpeningScreenProps = {
   onOnlineShortcut: (placeName: string) => void
 }
 
-const dropInPlaces = ['Trevi Fountain', 'Shibuya Crossing', 'Bryggen Wharf']
+const dropInPlaces = [
+  { name: 'Trevi Fountain', location: 'Rome · Italy' },
+  { name: 'Shibuya Crossing', location: 'Tokyo · Japan' },
+  { name: 'Bryggen Wharf', location: 'Bergen · Norway' },
+]
 
 export function OpeningScreen({ query, onQueryChange, onSearchLoadedPlaces, onOnlineShortcut }: OpeningScreenProps) {
   return (
     <section className="opening-screen" aria-labelledby="opening-title">
       <div className="opening-pins" aria-hidden="true"><i /><i /><i /><i /></div>
-      <p className="eyebrow">A story with a real-world setting</p>
-      <h2 id="opening-title">Where shall we begin?</h2>
-      <p>Choose a place or start chatting. No destination is required.</p>
+      <p className="eyebrow">A map. A companion. Wherever you point.</p>
+      <h2 id="opening-title">Every place on Earth is a <em>doorway</em> into a story.</h2>
+      <p className="opening-description">Pick a real location, learn what’s actually there, and roleplay a journey with a companion you create. No fixed path — you can wander anywhere.</p>
       <form className="opening-search" onSubmit={(event) => { event.preventDefault(); onSearchLoadedPlaces() }}>
-        <label htmlFor="opening-place-search">Search loaded map places</label>
-        <div><input id="opening-place-search" value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="Try a place name" /><button type="submit">Search map</button></div>
+        <label htmlFor="opening-place-search">Choose where your story begins</label>
+        <div><span className="opening-search-icon" aria-hidden="true">⌕</span><input id="opening-place-search" value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="Search loaded map places, a city, a landmark…" /><button type="submit">Begin <span aria-hidden="true">→</span></button></div>
       </form>
       <div className="drop-in-places">
-        <span>Drop in · online search starts only when selected</span>
-        {dropInPlaces.map((place) => <button key={place} type="button" onClick={() => onOnlineShortcut(place)}>{place}</button>)}
-        <button type="button" onClick={() => onOnlineShortcut(dropInPlaces[Math.floor(Math.random() * dropInPlaces.length)])}>Surprise me</button>
+        <span>— or drop in somewhere —</span>
+        {dropInPlaces.map((place) => <button key={place.name} type="button" onClick={() => onOnlineShortcut(place.name)}><strong>{place.name}</strong><small>{place.location}</small></button>)}
+        <button type="button" onClick={() => onOnlineShortcut(dropInPlaces[Math.floor(Math.random() * dropInPlaces.length)].name)}><strong>Surprise me</strong><small>A random doorway</small></button>
       </div>
+      <p className="opening-fine">Typing searches loaded map data first. Shortcuts make one explicit online lookup when selected.</p>
     </section>
   )
 }

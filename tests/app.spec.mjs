@@ -242,6 +242,21 @@ test('does not overflow a narrow mobile viewport', async ({ page }) => {
   expect(dimensions.width).toBeLessThanOrEqual(dimensions.viewport)
 })
 
+test('opening hero, dialogue, and mobile dock do not overlap', async ({ page }) => {
+  for (const viewport of [{ width: 1280, height: 720 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport)
+    await resetBrowser(page)
+    const layout = await page.evaluate(() => {
+      const opening = document.querySelector('.opening-screen').getBoundingClientRect()
+      const dialogue = document.querySelector('.dialogue-panel').getBoundingClientRect()
+      const dock = document.querySelector('.story-dock').getBoundingClientRect()
+      return { heroDialogueGap: dialogue.top - opening.bottom, dialogueDockGap: dock.top - dialogue.bottom }
+    })
+    expect(layout.heroDialogueGap).toBeGreaterThanOrEqual(0)
+    if (viewport.width <= 520) expect(layout.dialogueDockGap).toBeGreaterThanOrEqual(0)
+  }
+})
+
 test('story panels open independently and ignore keyboard focus changes', async ({ page }) => {
   await resetBrowser(page)
   const dockButtons = page.locator('.story-dock button')
@@ -285,7 +300,7 @@ test('opening screen makes no provider request until an explicit shortcut is sel
   })
   await mockSearch(page)
   await resetBrowser(page)
-  await expect(page.getByRole('heading', { name: 'Where shall we begin?' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Every place on Earth is a doorway into a story.' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Show companion' })).toHaveAttribute('aria-pressed', 'false')
   await expect(page.locator('.story-dock button').nth(1)).toBeDisabled()
   expect(providerRequests).toEqual([])
