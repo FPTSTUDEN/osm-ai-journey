@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { shouldSummarize } from './chat'
 import { newEntry } from '../storage/messages'
+import { parseStoryResponse, storyTurnToText } from '../providers/storyFormat'
 import type { PlaceContext } from '../providers/enrichment'
 import type { WeatherResult } from '../providers/weather'
 import type { ChatEntry, JourneyState, Place, PlacePhoto, UserSettings } from '../types/domain'
@@ -81,6 +82,14 @@ export function useChat({
     const controller = new AbortController()
     chatAbort.current = controller
     let assistantStarted = false
+    let responseKind: 'undetermined' | 'structured' | 'plain-text' = 'undetermined'
+    let responsePrefix = ''
+    const publishPlainText = (content: string) => {
+      if (!content) return
+      const firstDelta = !assistantStarted
+      assistantStarted = true
+      setEntries((current) => firstDelta ? [...current, { ...reply, text: content }] : current.map((entry) => entry.id === reply.id ? { ...entry, text: entry.text + content } : entry))
+    }
     const liveWeather = placeData.weather
       ? `${placeData.weather.data.weatherCode}, ${placeData.weather.data.temperatureC}°C, ${placeData.weather.source}`
       : undefined
@@ -99,12 +108,27 @@ export function useChat({
       })
       return import('../providers/llm').then(({ streamChat }) => streamChat(config, chatMessages, (delta) => {
         if (controller.signal.aborted || chatAbort.current !== controller) return
-        const firstDelta = !assistantStarted
-        assistantStarted = true
-        setEntries((current) => firstDelta ? [...current, { ...reply, text: delta }] : current.map((entry) => entry.id === reply.id ? { ...entry, text: entry.text + delta } : entry))
+        if (responseKind === 'structured') return
+        if (responseKind === 'plain-text') {
+          publishPlainText(delta)
+          return
+        }
+        responsePrefix += delta
+        const trimmedPrefix = responsePrefix.trimStart()
+        if (!trimmedPrefix) return
+        responseKind = trimmedPrefix.startsWith('{') || trimmedPrefix.startsWith('```') ? 'structured' : 'plain-text'
+        if (responseKind === 'plain-text') {
+          publishPlainText(responsePrefix)
+          responsePrefix = ''
+        }
       }, controller.signal))
-    }).then(() => {
+    }).then(async (content) => {
       if (controller.signal.aborted || chatAbort.current !== controller) return
+      const storyTurn = parseStoryResponse(content, reply.id)
+      const displayText = storyTurnToText(storyTurn)
+      setEntries((current) => current.some((entry) => entry.id === reply.id)
+        ? current.map((entry) => entry.id === reply.id ? { ...entry, text: displayText, storyTurn } : entry)
+        : [...current, { ...reply, text: displayText, storyTurn }])
       setLlmState('idle')
       chatAbort.current = null
     }).catch((error) => {

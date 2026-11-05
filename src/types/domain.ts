@@ -68,11 +68,21 @@ export type NarrativeEvent = {
   placeId?: string
 }
 
+export type StoryBlock =
+  | { id: string; type: 'prose' | 'narration' | 'scene'; text: string }
+  | { id: string; type: 'dialogue'; speaker: string; text: string }
+
+export type StoryTurn = {
+  format: 'structured' | 'plain-text'
+  blocks: StoryBlock[]
+}
+
 export type ChatEntry = {
   id: string
   /** `event` entries are app-generated narration (e.g. arrivals); they are never sent to the model as a user turn. */
   role: 'user' | 'assistant' | 'event'
   text: string
+  storyTurn?: StoryTurn
   createdAt: string
 }
 

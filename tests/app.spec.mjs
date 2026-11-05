@@ -383,6 +383,25 @@ test('opening screen makes no provider request until an explicit shortcut is sel
   await expect(page.getByRole('status')).toContainText('You arrive at Test Destination')
 })
 
+test('renders structured assistant turns as readable story text', async ({ page }) => {
+  const content = JSON.stringify({ blocks: [
+    { type: 'narration', text: 'Rain begins to fall.' },
+    { type: 'dialogue', speaker: 'Mira', text: 'Let’s find shelter.' },
+  ] })
+  await page.route('http://localhost:11434/v1/chat/completions', (route) => route.fulfill({
+    status: 200,
+    contentType: 'text/event-stream',
+    body: `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\ndata: [DONE]\n\n`,
+  }))
+  await resetBrowser(page)
+  await page.getByPlaceholder(/Speak freely/).fill('What happens next?')
+  await page.getByRole('button', { name: 'Send message' }).click()
+  const conversation = page.locator('.conversation')
+  await expect(conversation).toContainText('Rain begins to fall.')
+  await expect(conversation).toContainText('Mira: Let’s find shelter.')
+  await expect(conversation).not.toContainText('"blocks"')
+})
+
 test('Retry resends the last user turn after a provider failure', async ({ page }) => {
   let requests = 0
   await page.route('http://localhost:11434/v1/chat/completions', (route) => {

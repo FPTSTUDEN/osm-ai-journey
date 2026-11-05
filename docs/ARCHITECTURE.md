@@ -35,6 +35,8 @@ External services must be behind small interfaces. The UI should not know whethe
 - `RoutingProvider`: optional walking route calculation.
 - `LLMProvider`: streaming chat using an OpenAI-compatible request shape.
 
+Assistant replies request one JSON object containing ordered narration, dialogue, and scene blocks. The app normalizes that into a `StoryTurn`; plain-text, malformed, or unsupported responses become a single prose block without requiring provider-specific structured-output APIs. Structured stream content is buffered until it can be parsed so raw JSON is not shown; plain-text fallback can stream directly. The existing `ChatEntry.text` remains a readable flattened form for current UI, conversation history, and summaries.
+
 ## Map and tile strategy
 
 MapLibre uses OpenFreeMap's public vector style initially. A user may instead select a local raster or vector `.pmtiles` file; the archive stays in the browser session and is not uploaded or persisted. The local vector style is intentionally generic, recognizes common water/land/building/road source layers, and omits labels to avoid glyph-network requests. OpenFreeMap attribution remains visible for the hosted map; local map display credits OpenStreetMap contributors.
@@ -65,7 +67,10 @@ Journey state is intentionally soft. It coordinates map and narrative consistenc
 - Source-backed destination context
 - Illustrative destination photos and their written source metadata
 - Narrative events and conversation summary
+- Ordered `StoryTurn` blocks on assistant messages, with per-turn block IDs and speaker identity for dialogue
 - Suggested actions, which are never required
+
+Older persisted assistant messages are normalized to one prose block on read. Structured turns also retain flattened text so the current novel-style renderer and existing context/summarization paths continue to work.
 
 ## Static-hosting constraints
 

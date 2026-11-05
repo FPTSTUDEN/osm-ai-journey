@@ -1,3 +1,4 @@
+import { normalizeStoredStoryTurn, storyTurnToText } from '../providers/storyFormat'
 import type { ChatEntry } from '../types/domain'
 
 export const STARTER_MESSAGE = 'Choose a place on the map, or tell me what kind of journey you want to begin.'
@@ -16,6 +17,12 @@ function isEntry(value: unknown): value is ChatEntry {
   return typeof entry.id === 'string' && typeof entry.text === 'string' && (entry.role === 'user' || entry.role === 'assistant' || entry.role === 'event')
 }
 
+function normalizeEntry(entry: ChatEntry): ChatEntry {
+  if (entry.role !== 'assistant') return { id: entry.id, role: entry.role, text: entry.text, createdAt: entry.createdAt }
+  const storyTurn = normalizeStoredStoryTurn(entry.storyTurn, entry.text, entry.id)
+  return { id: entry.id, role: entry.role, text: storyTurnToText(storyTurn), storyTurn, createdAt: entry.createdAt }
+}
+
 /**
  * Accepts the current `ChatEntry[]` shape or the legacy `string[]` shape.
  * Legacy rule (the one the old UI and context builder used): index 0 is the assistant starter, then user/assistant alternate.
@@ -24,7 +31,7 @@ function isEntry(value: unknown): value is ChatEntry {
  */
 export function normalizeMessages(value: unknown): ChatEntry[] | null {
   if (!Array.isArray(value)) return null
-  if (value.every(isEntry)) return value.length ? value : starterEntries()
+  if (value.every(isEntry)) return value.length ? value.map((entry) => normalizeEntry(entry)) : starterEntries()
   if (!value.every((item) => typeof item === 'string')) return null
   let turn = 0
   const entries = (value as string[]).map((text, index): ChatEntry => {
@@ -34,5 +41,5 @@ export function normalizeMessages(value: unknown): ChatEntry[] | null {
     turn += 1
     return newEntry(role, text)
   })
-  return entries.length ? entries : starterEntries()
+  return entries.length ? entries.map((entry) => normalizeEntry(entry)) : starterEntries()
 }

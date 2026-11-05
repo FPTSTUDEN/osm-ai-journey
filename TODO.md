@@ -13,12 +13,12 @@ Expand the existing journey and roleplay app into three interchangeable story pr
 
 ## Phase 1: Story turn model and compatibility
 
-- [ ] Define an ordered story-block schema for narration, character dialogue, and scene changes, with stable IDs and speaker identity where relevant.
-- [ ] Normalize structured LLM responses and plain-text responses into the same internal story-turn representation; malformed or unsupported structured output must fall back without losing text.
-- [ ] Update prompt/context assembly to request the structured turn format while continuing to use the selected LLM and existing provider contract.
-- [ ] Preserve current free-form user input, streaming cancellation, retry, and conversation summarization behavior.
-- [ ] Migrate or normalize existing persisted `ChatEntry` and journey data so existing journeys remain readable.
-- [ ] Add unit tests for valid structured responses, plain-text fallback, malformed output, ordering, and legacy journey data.
+- [x] Define an ordered story-block schema for narration, character dialogue, and scene changes, with stable IDs and speaker identity where relevant.
+- [x] Normalize structured LLM responses and plain-text responses into the same internal story-turn representation; malformed or unsupported structured output must fall back without losing text.
+- [x] Update prompt/context assembly to request the structured turn format while continuing to use the selected LLM and existing provider contract.
+- [x] Preserve current free-form user input, streaming cancellation, retry, and conversation summarization behavior.
+- [x] Migrate or normalize existing persisted `ChatEntry` and journey data so existing journeys remain readable.
+- [x] Add unit tests for valid structured responses, plain-text fallback, malformed output, ordering, and legacy journey data.
 
 ## Phase 2: Mode selection and shared content rendering
 
