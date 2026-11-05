@@ -35,7 +35,7 @@ self.addEventListener('message', (event) => {
 })
 
 async function cacheSuccessfulResponse(cache, request, response, maxEntries) {
-  if (!response.ok || response.type === 'opaque') return
+  if (!response.ok || response.status === 206 || response.type === 'opaque') return
   await cache.delete(request)
   await cache.put(request, response.clone())
   if (maxEntries === undefined) return
@@ -60,6 +60,7 @@ self.addEventListener('fetch', (event) => {
   const isDocument = request.destination === 'document'
   const isHashedAssetRequest = url.origin === self.location.origin && isHashedAsset(url)
   const isMapResource = isMapRequest(url)
+  if (isMapResource && request.headers.has('range')) return
   if (!isDocument && !isHashedAssetRequest && !isMapResource) return
 
   if (isDocument) {

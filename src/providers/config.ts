@@ -14,6 +14,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   liveDataEnabled: false,
   routingBaseUrl: 'https://router.project-osrm.org',
   weatherBaseUrl: 'https://api.open-meteo.com/v1/forecast',
+  overpassApiUrl: 'https://overpass-api.de/api/interpreter',
   companionImage: false,
 }
 

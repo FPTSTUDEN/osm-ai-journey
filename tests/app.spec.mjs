@@ -125,8 +125,66 @@ test('field notes reuse the full place details view', async ({ page }) => {
   await page.getByRole('button', { name: 'Open field notes' }).click()
   const fieldNotes = page.locator('.field-notes')
   await expect(fieldNotes.locator('.place-facts')).toBeVisible()
-  await expect(fieldNotes.locator('.weather-panel')).toBeVisible()
+  await expect(fieldNotes.locator('.weather-panel')).toHaveCount(2)
   await expect(fieldNotes.locator('.place-photos')).toBeVisible()
+})
+
+test('opening hours and nearby stops are requested only after the user asks', async ({ page }) => {
+  let overpassRequests = 0
+  await mockSearch(page)
+  await page.route('https://overpass-api.de/api/interpreter', async (route) => {
+    overpassRequests += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ elements: [
+        { type: 'node', lat: 35.6763, lon: 139.6503, tags: { name: 'Museum Stop', highway: 'bus_stop' } },
+        { type: 'node', lat: 35.6762, lon: 139.6503, tags: { name: 'Test Destination', opening_hours: 'Mo-Su 09:00-17:00' } },
+      ] }),
+    })
+  })
+  await resetBrowser(page)
+  await page.getByRole('button', { name: 'Toggle settings' }).click()
+  await page.getByLabel('Enable optional live data').check()
+  await page.getByRole('button', { name: 'Close settings' }).click()
+  await chooseOnlinePlace(page)
+  await page.locator('.story-dock button').nth(1).click()
+  await page.getByRole('button', { name: 'Open field notes' }).click()
+  expect(overpassRequests).toBe(0)
+  await page.getByRole('button', { name: 'Check hours & nearby stops' }).click()
+  const fieldNotes = page.locator('.field-notes')
+  await expect(fieldNotes.getByText('Mo-Su 09:00-17:00')).toBeVisible()
+  await expect(fieldNotes.getByText('Museum Stop · bus stop')).toBeVisible()
+  expect(overpassRequests).toBe(1)
+})
+
+test('a local PMTiles picker rejects files without a pmtiles extension', async ({ page }) => {
+  await resetBrowser(page)
+  await page.getByRole('button', { name: 'Toggle settings' }).click()
+  const archiveInput = page.getByLabel('Choose a .pmtiles archive')
+  await archiveInput.setInputFiles({
+    name: 'not-a-map.txt',
+    mimeType: 'application/octet-stream',
+    buffer: Buffer.from('not a PMTiles archive'),
+  })
+  await expect(page.getByRole('alert')).toContainText('Choose a file with the .pmtiles extension')
+  await archiveInput.setInputFiles({
+    name: 'broken.pmtiles',
+    mimeType: 'application/octet-stream',
+    buffer: Buffer.from('invalid archive contents'),
+  })
+  await expect(page.getByRole('alert')).not.toBeEmpty()
+})
+
+test('offline cache status ignores unrelated origin caches and clearing leaves them intact', async ({ page }) => {
+  await resetBrowser(page)
+  await page.evaluate(() => caches.open('unrelated-cache'))
+  await page.getByRole('button', { name: 'Toggle settings' }).click()
+  await page.getByRole('button', { name: 'Refresh status' }).click()
+  await expect(page.locator('.offline-cache').first()).toContainText('0 cached resources across 0 caches')
+  await page.getByRole('button', { name: 'Clear cache' }).click()
+  await expect.poll(() => page.evaluate(() => caches.keys())).toContain('unrelated-cache')
 })
 
 test('completes and restores an online destination journey', async ({ page }) => {
@@ -224,6 +282,7 @@ test('shows a provider failure without breaking normal chat UI', async ({ page }
 test('supports keyboard journey memory and accessible controls', async ({ page }) => {
   await resetBrowser(page)
   await page.getByRole('button', { name: 'Toggle settings' }).click()
+  await expect(page.getByRole('dialog', { name: 'Journey settings' })).toBeVisible()
   const people = page.getByPlaceholder('Add user-created people')
   await people.fill('Ada')
   await people.press('Enter')

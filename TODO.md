@@ -73,7 +73,8 @@ The phases below are ordered around a usable single-user MVP. Each phase should 
 - [x] Add weather adapter as the first optional integration
 - [x] Fetch live data only when enabled and requested
 - [x] Cache live responses with explicit freshness metadata
-- [ ] Add optional opening-hours, events, transport, and travel adapters
+- [x] Add opt-in opening-hours schedules and nearby transit-stop lookups through the public Overpass API
+- [ ] Add an events adapter (deferred: no global public no-key source was selected; regional/credentialed sources are out of scope)
 - [x] Ensure the AI distinguishes current data from cached and static facts
 
 ## Phase 7: Offline and Deployment Polish
@@ -84,7 +85,7 @@ The phases below are ordered around a usable single-user MVP. Each phase should 
 - [x] Add cache status and clear-cache controls
 - [x] Test the app while offline with previously viewed areas
 - [x] Evaluate bounded area downloads against OpenFreeMap limits
-- [ ] Add PMTiles support if stronger offline maps are required
+- [x] Support user-selected local PMTiles archives for offline map tiles (session-only; no archive is bundled)
 - [x] Add deployment instructions for GitHub Pages or Cloudflare Pages
 - [x] Add privacy guidance for browser-stored API keys
 
@@ -118,7 +119,7 @@ The interface follows [mockups/05-two-characters.html](./mockups/05-two-characte
 - [x] Add Escape-to-close and focus return for story panels.
 - [x] Move journey persistence/state and chat streaming/summary into `useJourney` and `useChat` (WP-R1).
 - [x] Consolidate place/context/weather/photo details in `PlaceDetails`, used by the map, Place panel, and Field notes (WP-R1).
-- [ ] Extract remaining map/search and panel ownership; reduce `App.tsx` to the WP-R1 target of 250 lines.
+- [x] Extract map search, story-panel rendering, and settings/journey controllers; `App.tsx` is below the 250-line target.
 
 ## Reliability follow-ups
 
@@ -127,4 +128,4 @@ The interface follows [mockups/05-two-characters.html](./mockups/05-two-characte
 - [x] Bound map-resource caching and refresh documents with a network-first strategy.
 - [x] Match place context by explicit Wikidata IDs or nearby, title-matched Wikipedia pages.
 - [x] Filter unsupported Wikimedia file types and preserve photo licence/attribution metadata.
-- [ ] Review remaining accessibility and browser cache edge cases.
+- [x] Review identified accessibility and browser-cache edges: label the settings dialog/close control, scope cache status to app-owned caches, and avoid storing partial range responses.

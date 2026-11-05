@@ -36,6 +36,13 @@ type SettingsDrawerProps = {
   onExportJourney: () => void
   onResetJourney: () => void
   onDeleteJourney: () => void
+  settingsError: string
+  offlineError: string
+  localPmtilesFileName: string | null
+  localPmtilesError: string
+  localPmtilesLoading: boolean
+  onSelectLocalPmtiles: (file: File | undefined) => void
+  onClearLocalPmtiles: () => void
 }
 
 const MEMORY_LABELS: Record<MemoryKind, string> = {
@@ -75,14 +82,22 @@ export function SettingsDrawer({
   onExportJourney,
   onResetJourney,
   onDeleteJourney,
+  settingsError,
+  offlineError,
+  localPmtilesFileName,
+  localPmtilesError,
+  localPmtilesLoading,
+  onSelectLocalPmtiles,
+  onClearLocalPmtiles,
 }: SettingsDrawerProps) {
   return (
-    <aside className="settings panel">
-      <div className="settings-header"><div><p className="eyebrow">Local configuration</p><h2>Journey settings</h2></div><button className="close-button" type="button" onClick={onClose}>×</button></div>
+    <aside className="settings panel" role="dialog" aria-modal="false" aria-labelledby="settings-title">
+      <div className="settings-header"><div><p className="eyebrow">Local configuration</p><h2 id="settings-title">Journey settings</h2></div><button className="close-button" type="button" onClick={onClose} aria-label="Close settings">×</button></div>
       <label>LLM provider<select value={settings.llmProvider} onChange={(event) => onProviderChange(event.target.value as UserSettings['llmProvider'])}><option value="ollama">Ollama</option><option value="openai">OpenAI</option><option value="lmstudio">LM Studio</option><option value="vllm">vLLM</option><option value="custom">Custom compatible server</option></select></label>
       <label>LLM base URL<input value={settings.llmBaseUrl} onChange={(event) => onSettingsChange({ llmProvider: 'custom', llmBaseUrl: event.target.value })} /></label>
       <label>Model<input value={settings.llmModel} onChange={(event) => onSettingsChange({ llmModel: event.target.value })} /></label>
       <label>API key<input type="password" value={settings.llmApiKey} onChange={(event) => onSettingsChange({ llmApiKey: event.target.value })} placeholder="Optional for local models" /></label>
+      {settingsError && <p className="connection-error" role="alert">Settings may not persist: {settingsError}</p>}
       <label>Companion name<input value={settings.personaName} onChange={(event) => onSettingsChange({ personaName: event.target.value })} /></label>
       <label>Companion instructions<textarea className="persona-input" value={settings.personaInstructions} onChange={(event) => onSettingsChange({ personaInstructions: event.target.value })} rows={3} /></label>
       <div className="companion-art-setting"><label>Companion illustration<input ref={companionArtInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => onUploadCompanionArt(event.target.files?.[0])} /></label>{settings.companionImage && <button type="button" onClick={onRemoveCompanionArt}>Remove illustration</button>}{companionArtError && <p className="connection-error" role="alert">{companionArtError}</p>}</div>
@@ -90,9 +105,18 @@ export function SettingsDrawer({
       <label>Online geocoder<select value={settings.onlineGeocoder} onChange={(event) => onSettingsChange({ onlineGeocoder: event.target.value as UserSettings['onlineGeocoder'] })}><option value="nominatim">Nominatim</option><option value="photon">Photon</option></select></label>
       <label>Walking route server<input value={settings.routingBaseUrl} onChange={(event) => onSettingsChange({ routingBaseUrl: event.target.value })} /></label>
       <label>Weather provider URL<input value={settings.weatherBaseUrl} onChange={(event) => onSettingsChange({ weatherBaseUrl: event.target.value })} /></label>
+      <label>Overpass API URL<input value={settings.overpassApiUrl} onChange={(event) => onSettingsChange({ overpassApiUrl: event.target.value })} /></label>
       <label className="toggle-row"><span>Calculate walking routes by default</span><input type="checkbox" checked={settings.calculateWalkingRoutes} onChange={(event) => onSettingsChange({ calculateWalkingRoutes: event.target.checked })} /></label>
       <label className="toggle-row"><span>Enable optional live data</span><input type="checkbox" checked={settings.liveDataEnabled} onChange={(event) => onSettingsChange({ liveDataEnabled: event.target.checked })} /></label>
-      <div className="offline-cache"><p className="memory-label">Offline cache</p><p className="settings-note">{offlineStatus ? `${offlineStatus.entries} cached resources across ${offlineStatus.cacheNames.length} cache${offlineStatus.cacheNames.length === 1 ? '' : 's'}.` : 'Checking cached resources…'}</p><div className="settings-actions"><button type="button" onClick={onRefreshOfflineStatus}>Refresh status</button><button type="button" onClick={onClearOfflineData}>Clear cache</button></div></div>
+      <div className="offline-cache"><p className="memory-label">Offline cache</p><p className="settings-note">{offlineStatus ? `${offlineStatus.entries} cached resources across ${offlineStatus.cacheNames.length} cache${offlineStatus.cacheNames.length === 1 ? '' : 's'}.` : 'Checking cached resources…'}</p>{offlineError && <p className="connection-error" role="alert">{offlineError}</p>}<div className="settings-actions"><button type="button" onClick={onRefreshOfflineStatus}>Refresh status</button><button type="button" onClick={onClearOfflineData}>Clear cache</button></div></div>
+      <div className="offline-cache">
+        <p className="memory-label">Local PMTiles map</p>
+        <label>Choose a .pmtiles archive<input type="file" accept=".pmtiles,application/octet-stream" onChange={(event) => { onSelectLocalPmtiles(event.target.files?.[0]); event.currentTarget.value = '' }} /></label>
+        <p className="settings-note">{localPmtilesLoading ? 'Validating archive…' : localPmtilesFileName ? `${localPmtilesFileName} is active for this browser session.` : 'No local archive selected. Your file stays in this browser session and is not uploaded.'}</p>
+        {localPmtilesFileName && <button type="button" onClick={onClearLocalPmtiles}>Use online map instead</button>}
+        {localPmtilesError && <p className="connection-error" role="alert">{localPmtilesError}</p>}
+        <p className="settings-note">Vector archives need metadata and common water, land, building, or road layers; raster archives are also supported. The local style omits labels to avoid online glyph requests.</p>
+      </div>
       <p className="settings-note">Saved journey destinations: {destinationCount}. Scene events: {eventCount}. {summaryState === 'loading' ? 'Updating conversation summary…' : conversationSummary ? 'Long-conversation summary available.' : ''}</p>
       <div className="journey-memory">
         <p className="memory-label">Journey memory</p>

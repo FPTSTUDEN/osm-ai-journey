@@ -1,4 +1,5 @@
 import { weatherLabel, type WeatherResult } from '../providers/weather'
+import type { NearbyPlaceDataResult } from '../providers/overpass'
 import type { PlaceContext } from '../providers/enrichment'
 import type { Place, PlacePhoto, UserSettings } from '../types/domain'
 
@@ -14,6 +15,10 @@ type PlaceDetailsProps = {
   weatherState: 'idle' | 'loading' | 'ready' | 'error'
   weatherError: string
   onLoadWeather: (force?: boolean) => void
+  nearbyData: NearbyPlaceDataResult | null
+  nearbyDataState: 'idle' | 'loading' | 'ready' | 'error'
+  nearbyDataError: string
+  onLoadNearbyData: (force?: boolean) => void
   photos: PlacePhoto[]
   photosState: 'idle' | 'loading' | 'ready' | 'error'
   photosCached: boolean
@@ -34,6 +39,10 @@ export function PlaceDetails({
   weatherState,
   weatherError,
   onLoadWeather,
+  nearbyData,
+  nearbyDataState,
+  nearbyDataError,
+  onLoadNearbyData,
   photos,
   photosState,
   photosCached,
@@ -56,7 +65,24 @@ export function PlaceDetails({
         {liveDataEnabled && weatherState === 'idle' && <button className="weather-button" onClick={() => onLoadWeather()}>Load current weather</button>}
         {weatherState === 'loading' && <p className="context-state">Fetching current conditions…</p>}
         {weatherState === 'error' && <><p className="context-state">{weatherError}</p><button className="weather-button" onClick={() => onLoadWeather(true)}>Try weather again</button></>}
-        {weatherState === 'ready' && weather && <><div className="weather-reading"><strong>{weather.data.temperatureC.toFixed(1)}°C</strong><span>{weatherLabel(weather.data.weatherCode)} · feels like {weather.data.apparentTemperatureC.toFixed(1)}°C</span></div><p className="weather-meta">Wind {weather.data.windSpeedKmh.toFixed(0)} km/h · observed {weather.data.observedAt.replace('T', ' ')}</p><button className="weather-button" onClick={() => onLoadWeather(true)}>Refresh weather</button></>}
+        {weatherState === 'ready' && weather && <><div className="weather-reading"><strong>{weather.data.temperatureC.toFixed(1)}°C</strong><span>{weatherLabel(weather.data.weatherCode)} · feels like {weather.data.apparentTemperatureC.toFixed(1)}°C</span></div><p className="weather-meta">Wind {weather.data.windSpeedKmh.toFixed(0)} km/h · observed {weather.data.observedAt.replace('T', ' ')}</p>{weather.cacheError && <p className="context-state" role="alert">Data loaded, but browser caching failed: {weather.cacheError}</p>}<button className="weather-button" onClick={() => onLoadWeather(true)}>Refresh weather</button></>}
+      </div>}
+      {!compact && <div className="weather-panel">
+        <div className="weather-heading"><p className="context-label">Opening hours & nearby transport</p>{nearbyData && <span className={`weather-source weather-${nearbyData.source}`}>{nearbyData.source}</span>}</div>
+        {!liveDataEnabled && <p className="context-state">Enable optional live data to request OpenStreetMap hours and nearby stops.</p>}
+        {liveDataEnabled && nearbyDataState === 'idle' && <button className="weather-button" onClick={() => onLoadNearbyData()}>Check hours & nearby stops</button>}
+        {nearbyDataState === 'loading' && <p className="context-state">Requesting nearby OpenStreetMap data…</p>}
+        {nearbyDataState === 'error' && <><p className="context-state" role="alert">{nearbyDataError}</p><button className="weather-button" onClick={() => onLoadNearbyData(true)}>Try again</button></>}
+        {nearbyDataState === 'ready' && nearbyData && <>
+          <p className="context-label">Opening-hours schedule</p>
+          <p className="context-state">{nearbyData.data.openingHours ?? 'No opening-hours schedule found for this place.'} Schedule text is not an open/closed status.</p>
+          {nearbyData.cacheError && <p className="context-state" role="alert">Data loaded, but browser caching failed: {nearbyData.cacheError}</p>}
+          <p className="context-label">Nearby stops · no live departure times</p>
+          {nearbyData.data.transitStops.length
+            ? <ul className="memory-values">{nearbyData.data.transitStops.map((stop) => <li key={`${stop.name}-${stop.kind}`}><span>{stop.name} · {stop.kind}</span><span>{stop.distanceMeters} m</span></li>)}</ul>
+            : <p className="context-state">No named transit stops found within 800 m.</p>}
+          <button className="weather-button" onClick={() => onLoadNearbyData(true)}>Refresh nearby data</button>
+        </>}
       </div>}
       {contextState === 'loading' && <p className="context-state">{compact ? 'Loading destination context…' : 'Loading Wikipedia and Wikidata context…'}</p>}
       {contextState === 'error' && <p className="context-state">Optional destination context is unavailable.</p>}

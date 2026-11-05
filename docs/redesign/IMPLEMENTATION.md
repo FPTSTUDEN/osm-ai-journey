@@ -1,8 +1,8 @@
 # Immersive redesign: implementation reference
 
 Status: **implemented**, including the opening screen, dialogue/nameplate, typewriter, companion controls, panels,
-field notes, and shared place details. The remaining WP-R1 work is to extract map/search and panel ownership further
-and reduce `App.tsx` to its 250-line target. The original work plan is in [`../plan/`](../plan/README.md).
+field notes, shared place details, map search, and panel/settings/journey ownership. `App.tsx` is below the WP-R1
+250-line target. The original work plan is in [`../plan/`](../plan/README.md).
 
 Mockups: [`/mockups`](../../mockups/README.md). Original rationale: [`/IMMERSIVE_REDESIGN.md`](../../IMMERSIVE_REDESIGN.md).
 
@@ -64,12 +64,14 @@ attribution. Mobile, tablet, and desktop panel layouts are covered by the browse
 
 - **Speaker swap (mockup 05):** requires a speaker-selection data-model decision.
 - **Structured suggestion generation:** current suggestions remain optional and do not replace free text.
-- **Sub-250-line `App.tsx`:** journey persistence and chat streaming/summary are extracted, as are settings, field notes,
-  journal, arrival, and place details. Map/search and remaining panel ownership still need extraction.
+- **Sub-250-line `App.tsx`:** achieved. Journey persistence and chat streaming/summary, map search, story-panel rendering,
+  settings state, and journey-settings actions are extracted.
 
 ## 6. Verification status
 
-The opening-screen request gating, panel behavior, dialogue, reduced-motion handling, local illustration persistence,
-responsive layouts, map restoration, and destination journey are covered by Playwright tests. The full unit suite and
-browser suite passed during implementation. Real-provider behavior and browser variations outside Chromium remain
-dependent on their respective external services and runtime environments.
+The opening-screen request gating, panel behavior, dialogue, reduced-motion handling, local illustration and PMTiles
+handling, responsive layouts, map restoration, destination journey, and opt-in Overpass lookups are covered by
+Playwright tests. Provider parsing, location handling, and search behavior are covered by unit tests. Event lookup is
+deferred because no global public no-key source was selected; nearby transit results are OSM stop locations, not live
+departure times. Real-provider behavior and browser variations outside Chromium remain dependent on their respective
+external services and runtime environments.

@@ -20,6 +20,7 @@ export type Place = {
   osmId?: string
   wikidataId?: string
   wikipediaTitle?: string
+  openingHours?: string
   description?: string
   coordinates: Coordinates
   source: 'map' | 'online'
@@ -55,6 +56,7 @@ export type UserSettings = {
   routingBaseUrl: string
   liveDataEnabled: boolean
   weatherBaseUrl: string
+  overpassApiUrl: string
   companionImage: boolean
 }
 

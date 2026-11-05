@@ -20,6 +20,12 @@ Narrative movement should not depend on routing availability. Users can skip wal
 
 Live integrations are useful but add API keys, quotas, freshness concerns, and failure modes. They are configured and fetched only when explicitly enabled or requested.
 
+Opening-hours schedules and nearby public-transport stop locations use the public Overpass API with a configurable endpoint and a bounded cache. These are source tags and stop locations only, not computed open/closed state or live departure times. Event listings are deferred because there is no suitable global no-key provider selected; credentialed or regional integrations need a separate provider decision.
+
+## Local offline maps
+
+Users can choose a local PMTiles archive instead of OpenFreeMap for the current browser session. The app does not bundle a global archive or upload/persist a user's file. The generic vector style omits labels to avoid a remote glyph dependency.
+
 ## Map is panel-only
 
 The map is rendered only inside an explicitly opened Map panel. It is never a scene background; destination photos are illustrative scene art and retain source attribution.

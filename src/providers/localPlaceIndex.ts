@@ -36,6 +36,7 @@ export function placeFromFeature(feature: { id?: string | number; properties?: R
     osmId,
     wikidataId,
     wikipediaTitle,
+    openingHours: firstText(properties, ['opening_hours']) || undefined,
     coordinates: [coordinates[0], coordinates[1]],
     source: 'map',
   }

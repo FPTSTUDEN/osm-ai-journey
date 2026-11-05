@@ -1,6 +1,7 @@
 import { PlaceDetails } from './PlaceDetails'
 import type { PlaceContext } from '../providers/enrichment'
 import type { WeatherResult } from '../providers/weather'
+import type { NearbyPlaceDataResult } from '../providers/overpass'
 import type { Place, PlacePhoto, UserSettings } from '../types/domain'
 
 type FieldNotesProps = {
@@ -14,6 +15,10 @@ type FieldNotesProps = {
   weatherState: 'idle' | 'loading' | 'ready' | 'error'
   weatherError: string
   onLoadWeather: (force?: boolean) => void
+  nearbyData: NearbyPlaceDataResult | null
+  nearbyDataState: 'idle' | 'loading' | 'ready' | 'error'
+  nearbyDataError: string
+  onLoadNearbyData: (force?: boolean) => void
   photos: PlacePhoto[]
   photosState: 'idle' | 'loading' | 'ready' | 'error'
   photosCached: boolean

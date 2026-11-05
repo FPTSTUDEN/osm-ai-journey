@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { fetchCurrentWeather, type WeatherResult } from '../providers/weather'
+import { fetchNearbyPlaceData, type NearbyPlaceDataResult } from '../providers/overpass'
 import type { PlaceContext } from '../providers/enrichment'
 import type { Place, PlacePhoto, UserSettings } from '../types/domain'
 
@@ -15,6 +16,9 @@ export function usePlaceData(place: Place | null, settings: UserSettings) {
   const [weather, setWeather] = useState<WeatherResult | null>(null)
   const [weatherState, setWeatherState] = useState<LoadState>('idle')
   const [weatherError, setWeatherError] = useState('')
+  const [nearbyData, setNearbyData] = useState<NearbyPlaceDataResult | null>(null)
+  const [nearbyDataState, setNearbyDataState] = useState<LoadState>('idle')
+  const [nearbyDataError, setNearbyDataError] = useState('')
 
   useEffect(() => {
     let active = true
@@ -24,6 +28,9 @@ export function usePlaceData(place: Place | null, settings: UserSettings) {
     setWeather(null)
     setWeatherState('idle')
     setWeatherError('')
+    setNearbyData(null)
+    setNearbyDataState('idle')
+    setNearbyDataError('')
     setPhotos([])
     setPhotosState(place ? 'loading' : 'idle')
     setPhotosCached(false)
@@ -65,6 +72,19 @@ export function usePlaceData(place: Place | null, settings: UserSettings) {
     }
   }, [place, settings.liveDataEnabled, settings.weatherBaseUrl])
 
+  const loadNearbyData = useCallback(async (force = false) => {
+    if (!place || !settings.liveDataEnabled) return
+    setNearbyDataState('loading')
+    setNearbyDataError('')
+    try {
+      setNearbyData(await fetchNearbyPlaceData(place, settings.overpassApiUrl, force))
+      setNearbyDataState('ready')
+    } catch (error) {
+      setNearbyDataState('error')
+      setNearbyDataError(error instanceof Error ? error.message : 'Opening hours and nearby transport are unavailable')
+    }
+  }, [place, settings.liveDataEnabled, settings.overpassApiUrl])
+
   return {
     context,
     contextState,
@@ -76,5 +96,9 @@ export function usePlaceData(place: Place | null, settings: UserSettings) {
     weatherState,
     weatherError,
     loadWeather,
+    nearbyData,
+    nearbyDataState,
+    nearbyDataError,
+    loadNearbyData,
   }
 }

@@ -4,6 +4,7 @@ import { DEFAULT_MAP_VIEWPORT, getInitialMapViewport } from '../src/components/m
 import { deduplicatePlaces, placeFromFeature, searchLocalPlaces } from '../src/providers/localPlaceIndex'
 import { buildJourneyContext } from '../src/providers/context'
 import { weatherLabel } from '../src/providers/weather'
+import { createOverpassQuery, parseOverpassResponse } from '../src/providers/overpass'
 import { enrichPlace } from '../src/providers/enrichment'
 import { parseWikimediaPhotos } from '../src/providers/photos'
 import { revealedTextLength } from '../src/components/typewriter'
@@ -30,6 +31,29 @@ test('places preserve Wikidata IDs and Wikipedia sitelinks from loaded features'
   })
   assert.equal(mapped?.wikidataId, 'Q12345')
   assert.equal(mapped?.wikipediaTitle, 'Central Library')
+})
+
+test('places preserve opening-hours tags from loaded map features', () => {
+  const mapped = placeFromFeature({
+    geometry: { type: 'Point', coordinates: [2.35, 48.85] },
+    properties: { name: 'Central Library', opening_hours: 'Mo-Fr 09:00-17:00' },
+  })
+  assert.equal(mapped?.openingHours, 'Mo-Fr 09:00-17:00')
+})
+
+test('Overpass queries escape place names and return nearby named transit stops in distance order', () => {
+  const destination = { ...place('destination', 'Museum "Central"'), openingHours: undefined }
+  const query = createOverpassQuery(destination)
+  assert.ok(query.includes('Museum \\"Central\\"'))
+
+  const result = parseOverpassResponse({ elements: [
+    { type: 'node', lat: 48.851, lon: 2.35, tags: { name: 'Far stop', highway: 'bus_stop' } },
+    { type: 'node', lat: 48.8501, lon: 2.35, tags: { name: 'Near stop', public_transport: 'platform' } },
+    { type: 'node', lat: 48.851, lon: 2.35, tags: { name: 'Museum "Central"', opening_hours: 'Mo-Fr 10:00-17:00' } },
+    { type: 'node', lat: 48.85, lon: 2.35, tags: { name: 'Museum "Central"', opening_hours: 'Mo-Su 10:00-18:00' } },
+  ] }, destination)
+  assert.equal(result.openingHours, 'Mo-Su 10:00-18:00')
+  assert.deepEqual(result.transitStops.map((stop) => stop.name), ['Near stop', 'Far stop'])
 })
 
 test('initial map viewport restores free exploration and prioritizes a selected destination', () => {
@@ -59,6 +83,7 @@ test('photo metadata is included as untrusted text context without image content
       routingBaseUrl: 'https://router.project-osrm.org',
       liveDataEnabled: false,
       weatherBaseUrl: 'https://api.open-meteo.com/v1/forecast',
+      overpassApiUrl: 'https://overpass-api.de/api/interpreter',
     },
     selectedPlace: place('place', 'Test Place'),
     journey: { destinationHistory: [], currentScene: 1, knownPeople: [], knownEntities: [], userFacts: [], conversationSummary: '' },
@@ -98,7 +123,7 @@ test('journey export round-trips and rejects malformed data', () => {
 })
 
 const entry = (role: ChatEntry['role'], text: string): ChatEntry => ({ id: text, role, text, createdAt: '2026-01-01T00:00:00.000Z' })
-const settings = { llmProvider: 'ollama' as const, llmBaseUrl: '', llmModel: 't', llmApiKey: '', personaName: 'P', personaInstructions: '', onlineGeocoder: 'nominatim' as const, calculateWalkingRoutes: false, routingBaseUrl: '', liveDataEnabled: false, weatherBaseUrl: '' }
+const settings = { llmProvider: 'ollama' as const, llmBaseUrl: '', llmModel: 't', llmApiKey: '', personaName: 'P', personaInstructions: '', onlineGeocoder: 'nominatim' as const, calculateWalkingRoutes: false, routingBaseUrl: '', liveDataEnabled: false, weatherBaseUrl: '', overpassApiUrl: 'https://overpass-api.de/api/interpreter' }
 const journey = { destinationHistory: [], currentScene: 1, knownPeople: [], knownEntities: [], userFacts: [], conversationSummary: '' }
 
 test('legacy string messages migrate with the old role alternation and arrival lines become events', () => {
