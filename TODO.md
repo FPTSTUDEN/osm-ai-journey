@@ -1,132 +1,53 @@
-# Project TODO
+# Story Presentation Modes Plan
 
-The phases below are ordered around a usable single-user MVP. Each phase should leave the app runnable as a static deployment.
+Expand the existing journey and roleplay app into three interchangeable story presentation modes. Keep the map, journey state, persona, and configured LLM shared; this work changes the story format and presentation, not the number of model providers.
 
-## Phase 0: Foundation
+## Agreed direction
 
-- [x] Vite + React + TypeScript scaffold
-- [x] Responsive map and chat shell
-- [x] MapLibre and OpenFreeMap integration
-- [x] Browser settings persistence
-- [x] Initial service worker and map-resource caching
-- [x] Product and architecture documentation
+- **Novel mode:** Preserve the current mostly text-based reading experience, with minimal visual elements.
+- **Visual novel mode:** Present narration and character dialogue on a scene stage with character illustrations on the left and/or right. Progression should be flexible, not a forced sequence of clicks.
+- **Chat mode:** Present character dialogue as chat bubbles with avatars, and distinguish narration and scene events from messages.
+- Use one ordered, structured story turn for all modes. Blocks identify their kind and, when applicable, their speaker and scene metadata. Each mode renders the same content differently.
+- Keep one configured LLM/provider contract. Request structured output when generating a turn; if the response is plain text or cannot be parsed, preserve it as a single prose block. Do not require provider-specific structured-output APIs.
+- Visual novel mode includes a Skip action and a summary panel so users can move ahead without losing important context.
 
-## Phase 1: Local Map Exploration
+## Phase 1: Story turn model and compatibility
 
-- [x] Extract and normalize place features from loaded vector tiles
-- [x] Improve local place indexing and fuzzy matching
-- [x] Deduplicate features across vector tiles
-- [x] Add selected-place marker and map fly-to behavior
-- [x] Add destination detail panel with coordinates and OSM metadata
-- [x] Add clear local-search states for loading, empty, and unavailable data
-- [x] Verify OpenFreeMap attribution and provider configuration
+- [ ] Define an ordered story-block schema for narration, character dialogue, and scene changes, with stable IDs and speaker identity where relevant.
+- [ ] Normalize structured LLM responses and plain-text responses into the same internal story-turn representation; malformed or unsupported structured output must fall back without losing text.
+- [ ] Update prompt/context assembly to request the structured turn format while continuing to use the selected LLM and existing provider contract.
+- [ ] Preserve current free-form user input, streaming cancellation, retry, and conversation summarization behavior.
+- [ ] Migrate or normalize existing persisted `ChatEntry` and journey data so existing journeys remain readable.
+- [ ] Add unit tests for valid structured responses, plain-text fallback, malformed output, ordering, and legacy journey data.
 
-## Phase 2: Online Search and Destination Context
+## Phase 2: Mode selection and shared content rendering
 
-- [x] Add explicit online-search flow after local results are exhausted
-- [x] Implement geocoder provider interface
-- [x] Add Nominatim adapter with rate-limit-aware requests
-- [x] Add Photon adapter option
-- [x] Cache online geocoder results in IndexedDB
-- [x] Add cache-key normalization and expiry behavior
-- [x] Add Wikipedia destination enrichment
-- [x] Add Wikidata structured-fact enrichment
-- [x] Add illustrative destination photos with source metadata
-- [x] Feed photo post metadata to the AI without sending image pixels
-- [x] Label source-backed, cached, live, and user-created information
+- [ ] Add Novel, Visual novel, and Chat as the app's story presentation modes and persist the selection using the existing settings/journey storage conventions.
+- [ ] Replace the single-purpose “Show companion” top-bar toggle with a mode selector; decide whether artwork visibility also needs a separate preference.
+- [ ] Keep the current prose presentation as Novel mode, including the existing composer and story controls.
+- [ ] Add the Chat renderer with speaker avatars/bubbles and visually distinct narration and scene events.
+- [ ] Add the Visual novel renderer with a stable scene stage, dialogue/nameplate treatment, and left/right character illustration slots.
+- [ ] Keep destination/map panels, journey state, and persona behavior consistent when switching modes.
 
-## Phase 3: Journey State
+## Phase 3: Visual novel pacing and history
 
-- [x] Define persistent journey, destination, scene, and narrative event schemas
-- [x] Add IndexedDB storage boundary
-- [x] Persist and restore the active journey
-- [x] Track current destination and destination history
-- [x] Track current scene, known people, entities, and user-created facts
-- [x] Add destination transition events
-- [x] Add journey reset and delete controls
+- [ ] Add click/keyboard progression for story blocks without blocking free-text input or requiring a click after every beat.
+- [ ] Add a visible Skip action that advances through pending story content and opens a summary panel of skipped dialogue and events.
+- [ ] Let users review the summary and return to the current scene; preserve access to the underlying story history.
+- [ ] Define rewind behavior for dialogue and scene history, including how continuing from an earlier point affects later events and journey state.
+- [ ] Ensure progression, skip, summary, rewind, and retry keep the displayed story and LLM conversation context in sync.
 
-## Phase 4: LLM Roleplay
+## Phase 4: Character artwork and accessibility
 
-- [x] Implement the unified OpenAI-compatible provider contract
-- [x] Add streaming chat responses
-- [x] Support OpenAI, Ollama, LM Studio, vLLM, and compatible base URLs
-- [x] Add provider connection test and clear error states
-- [x] Add user-created persona editor
-- [x] Build context assembly from place, journey state, and conversation history
-- [x] Keep normal chat available when no destination is selected
-- [x] Preserve user freedom while keeping map and narrative transitions consistent
-- [x] Add conversation summarization for long journeys
+- [ ] Associate illustrations with character/speaker identities so the correct character appears for each dialogue block; retain a graceful placeholder when art is unavailable.
+- [ ] Reuse browser-local artwork where suitable and define the UI for adding or removing character illustrations.
+- [ ] Make scene composition responsive for mobile and desktop, with no overlap with the map, panels, or composer.
+- [ ] Support keyboard operation, screen-reader labels for controls and speakers, reduced motion, and readable contrast in all three modes.
 
-## Phase 5: Walking Journeys
+## Phase 5: Validation and documentation
 
-- [x] Implement routing provider interface
-- [x] Add OSRM or OpenRouteService walking adapter
-- [x] Add route preview and route geometry on the map
-- [x] Allow route calculation to be skipped per transition
-- [x] Add configurable default route preference
-- [x] Continue the journey when routing is unavailable or fails
-- [x] Add route and unrouted transition narrative events
-
-## Phase 6: Optional Live Data
-
-- [x] Add provider settings for live data integrations
-- [x] Add weather adapter as the first optional integration
-- [x] Fetch live data only when enabled and requested
-- [x] Cache live responses with explicit freshness metadata
-- [x] Add opt-in opening-hours schedules and nearby transit-stop lookups through the public Overpass API
-- [ ] Add an events adapter (deferred: no global public no-key source was selected; regional/credentialed sources are out of scope)
-- [x] Ensure the AI distinguishes current data from cached and static facts
-
-## Phase 7: Offline and Deployment Polish
-
-- [x] Cache application shell assets through the service worker
-- [x] Cache recently viewed map styles, glyphs, sprites, and tiles
-- [x] Add cache versioning and cleanup
-- [x] Add cache status and clear-cache controls
-- [x] Test the app while offline with previously viewed areas
-- [x] Evaluate bounded area downloads against OpenFreeMap limits
-- [x] Support user-selected local PMTiles archives for offline map tiles (session-only; no archive is bundled)
-- [x] Add deployment instructions for GitHub Pages or Cloudflare Pages
-- [x] Add privacy guidance for browser-stored API keys
-
-## Phase 8: Quality
-
-- [x] Add unit tests for provider adapters and local search
-- [x] Add journey-state transition tests
-- [x] Add browser tests for the core destination-to-roleplay flow
-- [x] Test responsive layouts at mobile, tablet, and desktop widths
-- [x] Test keyboard navigation and screen-reader labels
-- [x] Add provider failure and offline scenarios to the test matrix
-- [x] Reduce the initial bundle with code splitting where useful
-- [x] Review npm audit findings and dependency updates
-
-## Immersive redesign (partly implemented)
-
-The interface follows [mockups/05-two-characters.html](./mockups/05-two-characters.html) and [mockups/06-map-and-destination-panels.html](./mockups/06-map-and-destination-panels.html), without changing journey state or provider contracts.
-
-- [x] Keep the scene and narration on a stable stage behind navigation panels, using an ambient gradient when no photo is selected.
-- [x] Make Map, Place, and Journal/Travelogue dock actions explicitly open and close their panels; do not change layout on focus or blur.
-- [x] Show the interactive map only inside its compact panel; the map is not used as a background, including beneath scene art.
-- [x] Make Explore open the Map panel; keep place selection, search, and route flows available there.
-- [x] Show destination context and nearby photos in a separate panel; automatically use the nearest photo as illustrative scene art, with attribution visible.
-- [x] Let manual photo selection show that photo's location/details and return to the original destination without treating the automatic scene image as a destination change.
-- [x] Allow Map and Place panels to remain open together; closing one must not implicitly close the other.
-- [x] Keep narration and the chat composer available without losing their state when panels open or close.
-- [x] Make dock and panel placement responsive and keyboard-accessible; ensure the map redraws correctly when its panel is resized.
-- [x] Add UI coverage for explicit panel toggles, simultaneous panels, close behavior, focus/blur stability, and narrow screens.
-- [x] Add opening screen, dialogue nameplate, expanded log, Stop/Retry controls, and free-text composer.
-- [x] Keep the companion toggle in the top bar and support browser-local illustration uploads.
-- [x] Add streamed typewriter display with reduced-motion support and optional prompt suggestions.
-- [x] Add Escape-to-close and focus return for story panels.
-- [x] Move journey persistence/state and chat streaming/summary into `useJourney` and `useChat` (WP-R1).
-- [x] Consolidate place/context/weather/photo details in `PlaceDetails`, used by the map, Place panel, and Field notes (WP-R1).
-- [x] Extract map search, story-panel rendering, and settings/journey controllers; `App.tsx` is below the 250-line target.
-
-## Reliability follow-ups
-
-- [x] Run typecheck and unit tests in CI; run browser tests on pull requests.
-- [x] Use a shared IndexedDB connection and migrate the v3 database to v4 without dropping existing stores.
-- [x] Bound map-resource caching and refresh documents with a network-first strategy.
-- [x] Match place context by explicit Wikidata IDs or nearby, title-matched Wikipedia pages.
-- [x] Filter unsupported Wikimedia file types and preserve photo licence/attribution metadata.
-- [x] Review identified accessibility and browser-cache edges: label the settings dialog/close control, scope cache status to app-owned caches, and avoid storing partial range responses.
+- [ ] Add component and integration tests for all three renderers, mode switching, and narration-vs-dialogue presentation.
+- [ ] Add end-to-end coverage for a journey across mode changes, structured output and fallback, VN skip/summary/rewind, and existing free-text chat.
+- [ ] Verify existing journeys and current chat behavior remain intact after storage normalization.
+- [ ] Update product and architecture documentation with the shared story-turn model, mode behavior, persistence, and fallback rules.
+- [ ] Update screenshots/mockups if the mode selector or story layouts materially change.
