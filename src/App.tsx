@@ -32,7 +32,10 @@ function App() {
   const [message, setMessage] = useState('')
   const placeData = usePlaceData(selectedPlace, settings)
   const { context: placeContext, contextState, contextCached, photos: destinationPhotos, photosState, photosCached, weather, weatherState, weatherError, loadWeather } = placeData
-  const [selectedPhoto, setSelectedPhoto] = useState<PlacePhoto | null>(null)
+  const [photoSelection, setPhotoSelection] = useState<{ place: Place | null; photo: PlacePhoto | null }>({ place: null, photo: null })
+  const selectedPhoto = photoSelection.place === selectedPlace ? photoSelection.photo : null
+  const setSelectedPhoto = (photo: PlacePhoto | null) => setPhotoSelection({ place: selectedPlace, photo })
+  const scenePhoto = selectedPhoto ?? (photosState === 'ready' ? destinationPhotos[0] ?? null : null)
   const chat = useChat({
     entries: messages,
     setEntries: setMessages,
@@ -164,10 +167,10 @@ function App() {
 
       <section className="workspace">
         {storyMode && !selectedPlace && !messages.some((entry) => entry.role === 'user') && <OpeningScreen query={mapSearch.query} onQueryChange={mapSearch.updateQuery} onSearchLoadedPlaces={mapSearch.openMapForSearch} onOnlineShortcut={mapSearch.searchOnlineShortcut} />}
-        {selectedPhoto && <div className="scene-art" aria-label="Illustrative destination scene art">
-          <img src={selectedPhoto.sceneUrl ?? selectedPhoto.imageUrl} alt="" />
+        {scenePhoto && <div className="scene-art" aria-label="Illustrative destination scene art">
+          <img src={scenePhoto.sceneUrl ?? scenePhoto.imageUrl} alt="" />
           <div className="scene-art-shade" />
-          <p className="scene-art-note">Illustrative photo · not a live view · {selectedPhoto.author && `${selectedPhoto.author} · `}{selectedPhoto.license && <>{selectedPhoto.license} · </>}<a href={selectedPhoto.sourceUrl} target="_blank" rel="noreferrer">source</a></p>
+          <p className="scene-art-note">Illustrative photo · not a live view · {scenePhoto.author && `${scenePhoto.author} · `}{scenePhoto.license && <>{scenePhoto.license} · </>}<a href={scenePhoto.sourceUrl} target="_blank" rel="noreferrer">source</a></p>
         </div>}
         <StoryPanels
           panels={storyPanelState}
@@ -177,6 +180,7 @@ function App() {
           selectedPlace={selectedPlace}
           setSelectedPlace={setSelectedPlace}
           selectedPhoto={selectedPhoto}
+          scenePhoto={scenePhoto}
           setSelectedPhoto={setSelectedPhoto}
           journeyReady={journeyReady}
           mapViewport={mapViewport}

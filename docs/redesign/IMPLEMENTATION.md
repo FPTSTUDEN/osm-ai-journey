@@ -8,11 +8,12 @@ Mockups: [`/mockups`](../../mockups/README.md). Original rationale: [`/IMMERSIVE
 
 ## 1. Main idea
 
-A visual novel whose places are real. The picked destination's photo is the scene art over an ambient gradient (**the map is
+A visual novel whose places are real. The nearest available photo for the current destination is scene art over an ambient gradient (**the map is
 panel-only and is never a background**, a decision already made in the build). A
 dialogue box carries the companion's narration. An optional companion illustration stands opposite any open
 panel. Map, Place and Journal are independent panels the user opens and closes explicitly, so the user can move
-between places and images without leaving the chat view.
+between places and images without leaving the chat view. Manually selecting a nearby photo shows its location and
+details and focuses the map there; a return action restores the original destination and its automatic scene photo.
 
 Principles (from `PRODUCT.md`): the user's intent wins; local-first; online lookups only on explicit action;
 photos are illustrative, never presented as a live view; every fact shows its data class.

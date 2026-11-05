@@ -16,18 +16,32 @@ async function mockPhotos(page) {
   await page.route('https://commons.wikimedia.org/w/api.php**', (route) => route.fulfill({
     status: 200,
     contentType: 'application/json',
-    body: JSON.stringify({ query: { pages: { '123': {
-      pageid: 123,
-      title: 'File:Test scene.jpg',
-      imageinfo: [{
-        thumburl: 'https://images.test/thumb/1600px-Test_scene.jpg',
-        url: 'https://images.test/full.jpg',
-        mime: 'image/jpeg',
-        descriptionurl: 'https://commons.wikimedia.org/wiki/File:Test_scene.jpg',
-        extmetadata: { ImageDescription: { value: 'Test scene description' } },
-      }],
-      coordinates: [{ lat: 35.6762, lon: 139.6503 }],
-    } } } }),
+    body: JSON.stringify({ query: { pages: {
+      '123': {
+        pageid: 123,
+        title: 'File:Test scene.jpg',
+        imageinfo: [{
+          thumburl: 'https://images.test/thumb/1600px-Test_scene.jpg',
+          url: 'https://images.test/full.jpg',
+          mime: 'image/jpeg',
+          descriptionurl: 'https://commons.wikimedia.org/wiki/File:Test_scene.jpg',
+          extmetadata: { ImageDescription: { value: 'Test scene description' } },
+        }],
+        coordinates: [{ lat: 35.6762, lon: 139.6503 }],
+      },
+      '124': {
+        pageid: 124,
+        title: 'File:Adjacent scene.jpg',
+        imageinfo: [{
+          thumburl: 'https://images.test/thumb/1600px-Adjacent_scene.jpg',
+          url: 'https://images.test/adjacent-full.jpg',
+          mime: 'image/jpeg',
+          descriptionurl: 'https://commons.wikimedia.org/wiki/File:Adjacent_scene.jpg',
+          extmetadata: { ImageDescription: { value: 'Adjacent scene description' } },
+        }],
+        coordinates: [{ lat: 35.6802, lon: 139.6523 }],
+      },
+    } } }),
   }))
 }
 
@@ -479,7 +493,7 @@ test('Explore opens the map panel without putting the map behind the scene', asy
   await expect(page.locator('.map-panel')).toHaveCount(0)
 })
 
-test('selected photo replaces the ambient background while the map stays panel-only', async ({ page }) => {
+test('destination photos load automatically and manual selection opens photo details with a return path', async ({ page }) => {
   await mockSearch(page)
   await mockPhotos(page)
   await resetBrowser(page)
@@ -488,20 +502,126 @@ test('selected photo replaces the ambient background while the map stays panel-o
   await page.locator('.story-dock button').nth(1).click()
   const photoChoice = page.getByRole('button', { name: /Test scene\.jpg/ })
   await expect(photoChoice).toBeVisible()
-  await expect(page.locator('.scene-art')).toHaveCount(0)
-  await expect(page.locator('.map-canvas')).toHaveCount(0)
-  await photoChoice.click()
-
   const sceneArt = page.locator('.scene-art')
   await expect(sceneArt).toBeVisible()
   await expect(sceneArt.locator('img')).toHaveAttribute('src', 'https://images.test/thumb/1600px-Test_scene.jpg')
+  await expect(photoChoice).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('.destination-dock-panel')).toContainText('Test Destination')
+  await expect(page.locator('.map-canvas')).toHaveCount(0)
+  await page.getByRole('button', { name: /Adjacent scene\.jpg/ }).click()
+
+  await expect(sceneArt.locator('img')).toHaveAttribute('src', 'https://images.test/thumb/1600px-Adjacent_scene.jpg')
   await expect(sceneArt).toHaveCount(1)
   await expect(page.locator('.map-canvas')).toHaveCount(0)
-  await expect(page.getByRole('link', { name: 'Photo source' })).toHaveAttribute('href', 'https://commons.wikimedia.org/wiki/File:Test_scene.jpg')
+  await expect(page.locator('.destination-dock-panel .photo-detail')).toContainText('Adjacent scene.jpg')
+
+  await expect(page.locator('.destination-dock-panel .photo-detail')).toContainText('Adjacent scene.jpg')
+  await expect(page.locator('.destination-dock-panel .photo-detail a', { hasText: 'View on Wikimedia' })).toHaveAttribute('href', 'https://commons.wikimedia.org/wiki/File:Adjacent_scene.jpg')
+  await page.locator('.destination-dock-panel').getByRole('button', { name: /Back to Test Destination/ }).click()
+  await expect(page.locator('.destination-dock-panel')).toContainText('Test Destination')
+  await expect(page.locator('.destination-dock-panel .photo-detail')).toHaveCount(0)
+  await expect(sceneArt.locator('img')).toHaveAttribute('src', 'https://images.test/thumb/1600px-Test_scene.jpg')
 
   await page.locator('.story-dock button').nth(0).click()
   await expect(page.locator('.map-canvas')).toBeVisible()
   await expect(sceneArt).toBeVisible()
+})
+
+test('missing or unavailable destination photos leave the ambient background in place', async ({ page }) => {
+  let photoRequest = 0
+  await mockSearch(page)
+  await page.route('https://commons.wikimedia.org/w/api.php**', (route) => {
+    photoRequest += 1
+    return photoRequest === 1
+      ? route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ query: { pages: {} } }) })
+      : route.fulfill({ status: 503, body: 'Unavailable' })
+  })
+
+  await resetBrowser(page)
+  await chooseOnlinePlace(page)
+  await page.locator('.story-dock button').nth(1).click()
+  await expect(page.locator('.destination-dock-panel').getByText('No nearby photos found.')).toBeVisible()
+  await expect(page.locator('.scene-art')).toHaveCount(0)
+
+  await resetBrowser(page)
+  await chooseOnlinePlace(page)
+  await page.locator('.story-dock button').nth(1).click()
+  await expect(page.locator('.destination-dock-panel').getByText('Photos are unavailable for this destination.')).toBeVisible()
+  await expect(page.locator('.scene-art')).toHaveCount(0)
+})
+
+test('a late photo response cannot replace the current destination image', async ({ page }) => {
+  const firstPlace = { ...place, name: 'First Destination', display_name: 'First Destination', lat: '35.6762', lon: '139.6503' }
+  const secondPlace = { ...place, osm_id: 315, name: 'Second Destination', display_name: 'Second Destination', lat: '40.7128', lon: '-74.0060' }
+  await page.route('https://nominatim.openstreetmap.org/search**', (route) => {
+    const query = new URL(route.request().url()).searchParams.get('q')
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([query?.includes('second') ? secondPlace : firstPlace]) })
+  })
+
+  let markFirstRequest
+  let markSecondRequest
+  let markFirstCompleted
+  let releaseFirst
+  let releaseSecond
+  const firstRequested = new Promise((resolve) => { markFirstRequest = resolve })
+  const secondRequested = new Promise((resolve) => { markSecondRequest = resolve })
+  const firstCompleted = new Promise((resolve) => { markFirstCompleted = resolve })
+  const firstResponse = new Promise((resolve) => { releaseFirst = resolve })
+  const secondResponse = new Promise((resolve) => { releaseSecond = resolve })
+  await page.route('https://commons.wikimedia.org/w/api.php**', async (route) => {
+    const coordinates = new URL(route.request().url()).searchParams.get('ggscoord')
+    if (coordinates?.startsWith('35.6762|')) {
+      markFirstRequest()
+      await firstResponse
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ query: { pages: { '123': {
+          pageid: 123,
+          title: 'File:First destination.jpg',
+          imageinfo: [{ thumburl: 'https://images.test/first.jpg', mime: 'image/jpeg', descriptionurl: 'https://commons.wikimedia.org/wiki/File:First_destination.jpg' }],
+        } } } }),
+      })
+      markFirstCompleted()
+      return
+    }
+
+    markSecondRequest()
+    await secondResponse
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ query: { pages: { '124': {
+        pageid: 124,
+        title: 'File:Second destination.jpg',
+        imageinfo: [{ thumburl: 'https://images.test/second.jpg', mime: 'image/jpeg', descriptionurl: 'https://commons.wikimedia.org/wiki/File:Second_destination.jpg' }],
+      } } } }),
+    })
+  })
+
+  await resetBrowser(page)
+  await page.locator('.story-dock button').nth(0).click()
+  const search = page.getByPlaceholder('Search places')
+  await search.fill('first destination')
+  await page.getByRole('button', { name: 'Search online' }).click()
+  await page.getByRole('button', { name: /First Destination/ }).click()
+  await firstRequested
+
+  try {
+    await search.fill('second destination')
+    await page.getByRole('button', { name: 'Search online' }).click()
+    await page.getByRole('button', { name: /Second Destination/ }).click()
+    await secondRequested
+    await expect(page.locator('.scene-art')).toHaveCount(0)
+    releaseSecond()
+    await expect(page.locator('.scene-art img')).toHaveAttribute('src', 'https://images.test/second.jpg')
+    releaseFirst()
+    await firstCompleted
+    await expect(page.locator('.scene-art img')).toHaveAttribute('src', 'https://images.test/second.jpg')
+  } finally {
+    releaseFirst()
+    releaseSecond()
+  }
 })
 
 test('map and destination panels remain usable together on mobile', async ({ page }) => {

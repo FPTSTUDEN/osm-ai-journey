@@ -1,4 +1,5 @@
 import { PlaceDetails } from './PlaceDetails'
+import { SelectedPhotoDetails } from './SelectedPhotoDetails'
 import type { PlaceContext } from '../providers/enrichment'
 import type { WeatherResult } from '../providers/weather'
 import type { NearbyPlaceDataResult } from '../providers/overpass'
@@ -23,11 +24,12 @@ type FieldNotesProps = {
   photosState: 'idle' | 'loading' | 'ready' | 'error'
   photosCached: boolean
   selectedPhoto: PlacePhoto | null
-  onSelectPhoto: (photo: PlacePhoto) => void
+  scenePhoto: PlacePhoto | null
+  onSelectPhoto: (photo: PlacePhoto | null) => void
   onClose: () => void
 }
 
-export function FieldNotes({ place, onClose, ...details }: FieldNotesProps) {
+export function FieldNotes({ place, onClose, selectedPhoto, ...details }: FieldNotesProps) {
   return (
     <aside className="field-notes panel" aria-label="Destination field notes">
       <div className="settings-header">
@@ -35,7 +37,9 @@ export function FieldNotes({ place, onClose, ...details }: FieldNotesProps) {
         <button className="close-button" type="button" onClick={onClose} aria-label="Close field notes">×</button>
       </div>
       <p className="field-notes-intro">Source-backed context for this scene. Illustrations and live readings are labeled separately.</p>
-      <PlaceDetails {...details} layout="full" place={place} />
+      {selectedPhoto
+        ? <SelectedPhotoDetails photo={selectedPhoto} destination={place} onBack={() => details.onSelectPhoto(null)} />
+        : <PlaceDetails {...details} layout="full" place={place} />}
     </aside>
   )
 }

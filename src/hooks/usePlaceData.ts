@@ -5,14 +5,18 @@ import type { PlaceContext } from '../providers/enrichment'
 import type { Place, PlacePhoto, UserSettings } from '../types/domain'
 
 type LoadState = 'idle' | 'loading' | 'ready' | 'error'
+type PhotoResult = {
+  place: Place
+  photos: PlacePhoto[]
+  state: 'ready' | 'error'
+  cached: boolean
+}
 
 export function usePlaceData(place: Place | null, settings: UserSettings) {
   const [context, setContext] = useState<PlaceContext | null>(null)
   const [contextState, setContextState] = useState<LoadState>('idle')
   const [contextCached, setContextCached] = useState(false)
-  const [photos, setPhotos] = useState<PlacePhoto[]>([])
-  const [photosState, setPhotosState] = useState<LoadState>('idle')
-  const [photosCached, setPhotosCached] = useState(false)
+  const [photoResult, setPhotoResult] = useState<PhotoResult | null>(null)
   const [weather, setWeather] = useState<WeatherResult | null>(null)
   const [weatherState, setWeatherState] = useState<LoadState>('idle')
   const [weatherError, setWeatherError] = useState('')
@@ -31,18 +35,12 @@ export function usePlaceData(place: Place | null, settings: UserSettings) {
     setNearbyData(null)
     setNearbyDataState('idle')
     setNearbyDataError('')
-    setPhotos([])
-    setPhotosState(place ? 'loading' : 'idle')
-    setPhotosCached(false)
-
     if (place) {
       void import('../providers/photos').then(({ fetchPlacePhotos }) => fetchPlacePhotos(place)).then((response) => {
         if (!active) return
-        setPhotos(response.photos)
-        setPhotosCached(response.cached)
-        setPhotosState('ready')
+        setPhotoResult({ place, photos: response.photos, state: 'ready', cached: response.cached })
       }).catch(() => {
-        if (active) setPhotosState('error')
+        if (active) setPhotoResult({ place, photos: [], state: 'error', cached: false })
       })
 
       void import('../providers/enrichment').then(({ enrichPlace }) => enrichPlace(place)).then((response) => {
@@ -57,6 +55,9 @@ export function usePlaceData(place: Place | null, settings: UserSettings) {
 
     return () => { active = false }
   }, [place])
+
+  const currentPhotoResult = photoResult?.place === place ? photoResult : null
+  const photosState: LoadState = !place ? 'idle' : currentPhotoResult?.state ?? 'loading'
 
   const loadWeather = useCallback(async (force = false) => {
     if (!place || !settings.liveDataEnabled) return
@@ -89,9 +90,9 @@ export function usePlaceData(place: Place | null, settings: UserSettings) {
     context,
     contextState,
     contextCached,
-    photos,
+    photos: currentPhotoResult?.photos ?? [],
     photosState,
-    photosCached,
+    photosCached: currentPhotoResult?.cached ?? false,
     weather,
     weatherState,
     weatherError,

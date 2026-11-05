@@ -3,6 +3,7 @@ import { ArrivalCard } from './ArrivalCard'
 import { FieldNotes } from './FieldNotes'
 import { JournalPanel } from './JournalPanel'
 import { PlaceDetails } from './PlaceDetails'
+import { SelectedPhotoDetails } from './SelectedPhotoDetails'
 import { useMapSearch } from '../hooks/useMapSearch'
 import { usePlaceData } from '../hooks/usePlaceData'
 import { useStoryPanels } from '../hooks/useStoryPanels'
@@ -20,6 +21,7 @@ type Props = {
   selectedPlace: Place | null
   setSelectedPlace: (place: Place | null) => void
   selectedPhoto: PlacePhoto | null
+  scenePhoto: PlacePhoto | null
   setSelectedPhoto: (photo: PlacePhoto | null) => void
   journeyReady: boolean
   mapViewport: MapViewport | null
@@ -56,6 +58,7 @@ export function StoryPanels({
   selectedPlace,
   setSelectedPlace,
   selectedPhoto,
+  scenePhoto,
   setSelectedPhoto,
   journeyReady,
   mapViewport,
@@ -112,27 +115,13 @@ export function StoryPanels({
             {routeState === 'loading' && <div className="route-status">Calculating walking route…</div>}
             {routeState === 'ready' && route && <div className="route-status">Walking route · {(route.distanceMeters / 1000).toFixed(1)} km · {Math.round(route.durationSeconds / 60)} min</div>}
             {routeState === 'error' && <div className="route-status route-error">{routeMessage} Continuing without a route.</div>}
-            {selectedPlace && selectedPhoto && <aside className="place-detail photo-detail" aria-label="Selected photo">
-              <button type="button" className="back-button" onClick={() => setSelectedPhoto(null)}>← Back to {selectedPlace.name}</button>
-              <img className="photo-detail-image" src={selectedPhoto.thumbnailUrl} alt={selectedPhoto.title} />
-              <p className="eyebrow">Photo</p><h3 className="photo-detail-title">{selectedPhoto.title}</h3>
-              <dl className="place-facts">
-                <div><dt>Distance</dt><dd>{selectedPhoto.distanceMeters === undefined ? 'Unknown' : selectedPhoto.distanceMeters < 50 ? 'At destination' : `${(selectedPhoto.distanceMeters / 1000).toFixed(1)} km away`}</dd></div>
-                <div><dt>Location</dt><dd>{selectedPhoto.photoCoordinates ? `${selectedPhoto.photoCoordinates[1].toFixed(5)}, ${selectedPhoto.photoCoordinates[0].toFixed(5)}` : 'No geotag'}</dd></div>
-                {selectedPhoto.author && <div><dt>Author</dt><dd>{selectedPhoto.author}</dd></div>}
-                {selectedPhoto.license && <div><dt>Licence</dt><dd>{selectedPhoto.license}{selectedPhoto.licenseUrl && <> · <a href={selectedPhoto.licenseUrl} target="_blank" rel="noreferrer">details</a></>}</dd></div>}
-                {selectedPhoto.publishedAt && <div><dt>Date</dt><dd>{selectedPhoto.publishedAt}</dd></div>}
-              </dl>
-              {selectedPhoto.description && <p className="context-summary">{selectedPhoto.description}</p>}
-              <p className="photo-note">This photo is in the companion's context for your next message. Going back removes it.</p>
-              <div className="context-links"><a href={selectedPhoto.sourceUrl} target="_blank" rel="noreferrer">View on Wikimedia</a></div>
-            </aside>}
+            {selectedPlace && selectedPhoto && <SelectedPhotoDetails photo={selectedPhoto} destination={selectedPlace} onBack={() => setSelectedPhoto(null)} />}
             {selectedPlace && !selectedPhoto && <aside className="place-detail" aria-label="Selected destination">
               <div className="place-detail-header">
                 <div><p className="eyebrow">Selected destination</p><h3>{selectedPlace.name}</h3></div>
                 <button className="close-button" onClick={onClearRoute} aria-label="Clear selected destination">×</button>
               </div>
-              <PlaceDetails layout="full" place={selectedPlace} geocoder={settings.onlineGeocoder} liveDataEnabled={settings.liveDataEnabled} {...placeData} onLoadWeather={(force) => void placeData.loadWeather(force)} onLoadNearbyData={(force) => void placeData.loadNearbyData(force)} selectedPhoto={selectedPhoto} onSelectPhoto={setSelectedPhoto} />
+              <PlaceDetails layout="full" place={selectedPlace} geocoder={settings.onlineGeocoder} liveDataEnabled={settings.liveDataEnabled} {...placeData} onLoadWeather={(force) => void placeData.loadWeather(force)} onLoadNearbyData={(force) => void placeData.loadNearbyData(force)} scenePhoto={scenePhoto} onSelectPhoto={setSelectedPhoto} />
             </aside>}
             <div className="map-caption"><span>{localArchive?.attribution ?? 'Map data © OpenStreetMap contributors'}</span><span>{localArchive ? 'Local PMTiles archive' : 'OpenFreeMap'}</span></div>
           </section>
@@ -161,12 +150,14 @@ export function StoryPanels({
           <button className="close-button" type="button" onClick={() => closeStoryPanel('destination')} aria-label="Close destination panel">×</button>
         </div>
         {selectedPlace
-          ? <PlaceDetails layout="compact" place={selectedPlace} geocoder={settings.onlineGeocoder} liveDataEnabled={settings.liveDataEnabled} {...placeData} onLoadWeather={(force) => void placeData.loadWeather(force)} onLoadNearbyData={(force) => void placeData.loadNearbyData(force)} selectedPhoto={selectedPhoto} onSelectPhoto={setSelectedPhoto} onOpenFieldNotes={() => setFieldNotesOpen(true)} />
+          ? selectedPhoto
+            ? <SelectedPhotoDetails photo={selectedPhoto} destination={selectedPlace} onBack={() => setSelectedPhoto(null)} />
+            : <PlaceDetails layout="compact" place={selectedPlace} geocoder={settings.onlineGeocoder} liveDataEnabled={settings.liveDataEnabled} {...placeData} onLoadWeather={(force) => void placeData.loadWeather(force)} onLoadNearbyData={(force) => void placeData.loadNearbyData(force)} scenePhoto={scenePhoto} onSelectPhoto={setSelectedPhoto} onOpenFieldNotes={() => setFieldNotesOpen(true)} />
           : <p className="dock-empty">Choose a place first, then return here to examine it.</p>}
       </aside>}
       {storyMode && storyPanels.includes('travelogue') && <JournalPanel events={narrativeEvents} onClose={() => closeStoryPanel('travelogue')} />}
       {arrivalCard && <ArrivalCard placeName={arrivalCard} sceneNumber={currentScene} />}
-      {fieldNotesOpen && selectedPlace && <FieldNotes place={selectedPlace} geocoder={settings.onlineGeocoder} liveDataEnabled={settings.liveDataEnabled} {...placeData} onLoadWeather={(force) => void placeData.loadWeather(force)} onLoadNearbyData={(force) => void placeData.loadNearbyData(force)} selectedPhoto={selectedPhoto} onSelectPhoto={setSelectedPhoto} onClose={() => setFieldNotesOpen(false)} />}
+      {fieldNotesOpen && selectedPlace && <FieldNotes place={selectedPlace} geocoder={settings.onlineGeocoder} liveDataEnabled={settings.liveDataEnabled} {...placeData} selectedPhoto={selectedPhoto} scenePhoto={scenePhoto} onLoadWeather={(force) => void placeData.loadWeather(force)} onLoadNearbyData={(force) => void placeData.loadNearbyData(force)} onSelectPhoto={setSelectedPhoto} onClose={() => setFieldNotesOpen(false)} />}
     </>
   )
 }

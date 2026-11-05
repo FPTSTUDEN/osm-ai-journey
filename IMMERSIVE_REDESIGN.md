@@ -34,14 +34,16 @@ optional character illustration, and narration reads as prose in a dialogue box.
 
 ## Core moves
 
-1. **Full-bleed scene stage.** A selected illustrative photo fills the viewport;
+1. **Full-bleed scene stage.** The nearest available destination photo fills the viewport;
    otherwise, use the app's ambient gradient background. Never render the live
    map behind the scene art. The interactive map exists only in its compact Map
    panel. Opening Explore opens that panel; keyboard focus and blur do not resize it.
-2. **Destination photo = scene art (VN).** Only an explicitly selected destination
-   photo becomes the full background, with an illustrative label and source link.
-   Do not auto-select the first nearby photo. When the photo is cleared or the
-   destination changes, return to the ambient gradient until another photo is chosen.
+2. **Destination photo = scene art (VN).** Automatically use the nearest available
+   photo from the existing nearby-photo results, with an illustrative label and
+   source link. If no photo is available, retain the ambient gradient. A manual
+   choice shows that photo's location/details and focuses the map there; returning
+   restores the original destination and its automatic scene photo. Automatic
+   selection never changes the current destination.
 3. **Narration, not messaging.** Render AI output as flowing serif prose with a
    typewriter reveal (the stream already deltas in `sendMessage`); render the
    user's action as a quiet italic line. Drop alternating bubbles and the
@@ -53,7 +55,8 @@ optional character illustration, and narration reads as prose in a dialogue box.
    Map, Place, and Journal panels independently. Map and Place can be open
    together; explicitly closing one leaves the other open. Map search and travel
    use the existing `choosePlace` / `completeTransition` flows, and photo choices
-   set the scene background (see mockup 06).
+   set the scene background (see mockup 06). Manual photo choices show the nearby
+   photo location with a clear return path to the original destination.
 6. **Field notes drawer.** Tuck provenance-heavy data (coordinates, OSM feature,
    source, cache status) behind an "examine" drawer instead of always-on facts.
 7. **Travelogue spine.** Reframe `narrativeEvents` as a journal path of visited

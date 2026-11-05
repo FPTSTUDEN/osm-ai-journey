@@ -200,6 +200,7 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
 .story-dock { z-index: 7; }
 .story-dock-panel { z-index: 8; }
 .destination-dock-panel { top: 84px; right: 24px; left: auto; width: min(340px, calc(100vw - 130px)); max-height: min(48vh, calc(100vh - 110px)); transform: none; }
+.destination-dock-panel > .photo-detail, .field-notes > .photo-detail { position: static; width: auto; max-height: none; overflow: visible; margin-top: 12px; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none; }
 .destination-dock-panel .dock-facts { margin-top: 10px; }
 .destination-dock-panel .place-facts div { align-items: flex-start; }
 .destination-dock-panel .place-facts dd { max-width: 65%; overflow-wrap: anywhere; }

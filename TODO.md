@@ -108,7 +108,8 @@ The interface follows [mockups/05-two-characters.html](./mockups/05-two-characte
 - [x] Make Map, Place, and Journal/Travelogue dock actions explicitly open and close their panels; do not change layout on focus or blur.
 - [x] Show the interactive map only inside its compact panel; the map is not used as a background, including beneath scene art.
 - [x] Make Explore open the Map panel; keep place selection, search, and route flows available there.
-- [x] Show destination context and nearby photos in a separate panel; only an explicitly selected photo becomes scene art, with its source attribution visible.
+- [x] Show destination context and nearby photos in a separate panel; automatically use the nearest photo as illustrative scene art, with attribution visible.
+- [x] Let manual photo selection show that photo's location/details and return to the original destination without treating the automatic scene image as a destination change.
 - [x] Allow Map and Place panels to remain open together; closing one must not implicitly close the other.
 - [x] Keep narration and the chat composer available without losing their state when panels open or close.
 - [x] Make dock and panel placement responsive and keyboard-accessible; ensure the map redraws correctly when its panel is resized.

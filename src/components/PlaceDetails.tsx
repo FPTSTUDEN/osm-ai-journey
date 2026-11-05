@@ -22,7 +22,7 @@ type PlaceDetailsProps = {
   photos: PlacePhoto[]
   photosState: 'idle' | 'loading' | 'ready' | 'error'
   photosCached: boolean
-  selectedPhoto: PlacePhoto | null
+  scenePhoto: PlacePhoto | null
   onSelectPhoto: (photo: PlacePhoto) => void
   onOpenFieldNotes?: () => void
 }
@@ -46,7 +46,7 @@ export function PlaceDetails({
   photos,
   photosState,
   photosCached,
-  selectedPhoto,
+  scenePhoto,
   onSelectPhoto,
   onOpenFieldNotes,
 }: PlaceDetailsProps) {
@@ -102,13 +102,13 @@ export function PlaceDetails({
         {photosState === 'error' && <p className="context-state">Photos are unavailable for this destination.</p>}
         {photosState === 'ready' && photos.length === 0 && <p className="context-state">No nearby photos found.</p>}
         {photos.length > 0 && (compact
-          ? <div className="dock-gallery">{photos.map((photo) => <button key={photo.id} type="button" className={selectedPhoto?.id === photo.id ? 'selected' : ''} onClick={() => onSelectPhoto(photo)} aria-pressed={selectedPhoto?.id === photo.id}><img src={photo.thumbnailUrl} alt={photo.title} /><span>{photo.title}</span></button>)}</div>
+          ? <div className="dock-gallery">{photos.map((photo) => <button key={photo.id} type="button" className={scenePhoto?.id === photo.id ? 'selected' : ''} onClick={() => onSelectPhoto(photo)} aria-pressed={scenePhoto?.id === photo.id}><img src={photo.thumbnailUrl} alt={photo.title} /><span>{photo.title}</span></button>)}</div>
           : <div className="photo-grid">{photos.map((photo) => {
             const distanceLabel = photo.distanceMeters === undefined ? '' : photo.distanceMeters < 50 ? 'At destination' : `${(photo.distanceMeters / 1000).toFixed(1)} km away`
             return <button key={photo.id} onClick={() => onSelectPhoto(photo)} className="photo-card"><img src={photo.thumbnailUrl} alt={photo.title} loading="lazy" /><div className="photo-info"><span className="photo-title">{photo.title}</span>{distanceLabel && <span className="photo-distance">{distanceLabel}</span>}</div></button>
           })}</div>)}
         {!compact && photos.length > 0 && <p className="photo-note">Photos within 1 km search radius. Images are for illustration. Photo titles, captions, and source metadata may inform the companion.</p>}
-        {compact && selectedPhoto && <div className="selected-scene-photo"><span>Scene art · illustrative, not a live view</span><a href={selectedPhoto.sourceUrl} target="_blank" rel="noreferrer">Photo source</a></div>}
+        {compact && scenePhoto && <div className="selected-scene-photo"><span>Scene art · illustrative, not a live view</span><a href={scenePhoto.sourceUrl} target="_blank" rel="noreferrer">Photo source</a></div>}
       </div>
       {compact && onOpenFieldNotes && <button className="field-notes-button" type="button" onClick={onOpenFieldNotes}>Open field notes</button>}
     </div>
