@@ -16,7 +16,8 @@ Provider adapters
   -> optional geocoder
   -> Wikipedia / Wikidata
   -> Wikimedia Commons destination photos and post metadata
-  -> optional live data
+  -> optional Open-Meteo weather and Overpass hours/transit-stop data
+  -> optional user-selected local PMTiles archive
   -> optional walking router
   -> OpenAI-compatible or local LLM
 ```
@@ -30,13 +31,13 @@ External services must be behind small interfaces. The UI should not know whethe
 - `GeocoderProvider`: explicit online search only.
 - `EnrichmentProvider`: Wikipedia/Wikidata destination context.
 - `ImageProvider`: illustrative destination images plus source post metadata.
-- `LiveDataProvider`: optional weather, hours, events, or transport data.
+- `LiveDataProvider`: optional weather, opening-hours schedules, or nearby OSM transit stops.
 - `RoutingProvider`: optional walking route calculation.
 - `LLMProvider`: streaming chat using an OpenAI-compatible request shape.
 
 ## Map and tile strategy
 
-MapLibre uses OpenFreeMap's public vector style initially. OpenFreeMap is replaceable through configuration and attribution remains visible. The service worker will cache application assets and recently requested map resources. Explicit offline-area downloads are not part of the first slice because provider download terms and browser request headers need to be handled carefully.
+MapLibre uses OpenFreeMap's public vector style initially. A user may instead select a local raster or vector `.pmtiles` file; the archive stays in the browser session and is not uploaded or persisted. The local vector style is intentionally generic, recognizes common water/land/building/road source layers, and omits labels to avoid glyph-network requests. OpenFreeMap attribution remains visible for the hosted map; local map display credits OpenStreetMap contributors.
 
 `queryRenderedFeatures` is used for click selection. The local search index is populated opportunistically from loaded source features using `querySourceFeatures`, then normalized and deduplicated in memory. It is not a global place database. Empty local results expose an explicit online-search action.
 
@@ -45,6 +46,7 @@ MapLibre uses OpenFreeMap's public vector style initially. OpenFreeMap is replac
 - `localStorage`: provider settings, feature toggles, and UI preferences.
 - IndexedDB: journey records, chat messages, destination snapshots, and online geocoder results.
 - Cache Storage: static assets and recently viewed map resources through the service worker.
+- Local PMTiles archives: held as a selected browser `File` for the current session; no server or cache copy is created.
 
 The current scaffold includes a small storage boundary; full journey persistence can be added without coupling components to browser APIs.
 
@@ -67,7 +69,7 @@ Journey state is intentionally soft. It coordinates map and narrative consistenc
 
 ## Static-hosting constraints
 
-Browser-configured API keys are not secrets. The private single-user mode is acceptable for user-owned keys, but shared credentials must not be bundled into the static build. Direct browser providers must support CORS. A future Cloudflare Worker, Netlify Function, or other small proxy can be added without changing the provider contracts.
+Browser-configured API keys are not secrets. The private single-user mode is acceptable for user-owned keys, but shared credentials must not be bundled into the static build. Direct browser providers must support CORS. Overpass requests are only sent after the user asks for nearby data; the request contains the destination coordinates and name. A future Cloudflare Worker, Netlify Function, or other small proxy can be added without changing the provider contracts.
 
 ## Directory layout
 

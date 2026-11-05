@@ -24,6 +24,9 @@ export function placeFromFeature(feature: { id?: string | number; properties?: R
   const category = firstText(properties, ['class', 'subclass', 'amenity', 'tourism', 'shop'])
   const osmType = firstText(properties, ['osm_type', 'type']) || undefined
   const osmId = firstText(properties, ['osm_id', 'id']) || undefined
+  const wikidataId = firstText(properties, ['wikidata', 'wikidata_id']) || undefined
+  const wikipedia = firstText(properties, ['wikipedia', 'wikipedia_title']) || undefined
+  const wikipediaTitle = wikipedia?.replace(/^[a-z-]+:/i, '').replace(/_/g, ' ')
 
   return {
     id: `${normalized(name)}:${coordinates[0].toFixed(5)}:${coordinates[1].toFixed(5)}`,
@@ -31,6 +34,9 @@ export function placeFromFeature(feature: { id?: string | number; properties?: R
     category: category || undefined,
     osmType,
     osmId,
+    wikidataId,
+    wikipediaTitle,
+    openingHours: firstText(properties, ['opening_hours']) || undefined,
     coordinates: [coordinates[0], coordinates[1]],
     source: 'map',
   }

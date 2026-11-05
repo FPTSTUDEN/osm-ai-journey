@@ -14,11 +14,15 @@ Journey state, provider settings, geocoder results, enrichment responses, weathe
 
 API keys are stored in `localStorage` when entered. This is convenient for a single-user local deployment but is not a secure secret store. Do not enter sensitive production keys on a shared computer or deploy a public instance intended for multiple users. Prefer a local Ollama, LM Studio, or vLLM endpoint when possible.
 
-Live weather is opt-in and only requested after enabling live data and asking for current weather. Cached live responses are labeled in the UI and may be stale.
+Weather and nearby OpenStreetMap data are opt-in. Opening-hours schedules and nearby public-transport stop locations are queried from Overpass only after the user asks; this sends the selected place name and coordinates to the configured endpoint. Hours are displayed as schedule text, not a calculated open/closed state; transit results do not include departure times. Cached results are labeled and stale data is identified.
 
 ## Map caching limits
 
-The service worker caches resources requested by the normal map viewport. It does not download arbitrary areas in bulk. OpenFreeMap and its upstream data providers have usage and storage limits; bounded area downloads should be evaluated before adding a bulk-download feature. PMTiles remains the stronger option for intentionally packaged offline regions.
+The service worker caches resources requested by the normal map viewport. It does not download arbitrary areas in bulk. OpenFreeMap and its upstream data providers have usage and storage limits.
+
+### Local PMTiles
+
+Open **Settings → Local PMTiles map** and select a `.pmtiles` file. Raster PNG/JPEG/WebP/AVIF archives are supported; vector archives must include vector-layer metadata and common water, land, building, or road layers for the generic local style. Labels are intentionally omitted so the local map does not depend on remote glyphs. The app reads the chosen `File` locally through range reads; it does not upload, copy to IndexedDB, or retain it after the browser session/page reload. Provide a legally usable archive and retain its required data attribution; the map credits OpenStreetMap contributors.
 
 ## Branch preview deployments
 

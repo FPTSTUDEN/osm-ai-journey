@@ -18,6 +18,9 @@ export type Place = {
   category?: string
   osmType?: string
   osmId?: string
+  wikidataId?: string
+  wikipediaTitle?: string
+  openingHours?: string
   description?: string
   coordinates: Coordinates
   source: 'map' | 'online'
@@ -29,7 +32,11 @@ export type PlacePhoto = {
   description?: string
   author?: string
   publishedAt?: string
+  license?: string
+  licenseUrl?: string
+  attributionRequired?: boolean
   imageUrl: string
+  sceneUrl?: string
   thumbnailUrl: string
   sourceUrl: string
   source: 'wikimedia-commons'
@@ -49,6 +56,8 @@ export type UserSettings = {
   routingBaseUrl: string
   liveDataEnabled: boolean
   weatherBaseUrl: string
+  overpassApiUrl: string
+  companionImage: boolean
 }
 
 export type NarrativeEvent = {
@@ -59,13 +68,21 @@ export type NarrativeEvent = {
   placeId?: string
 }
 
+export type ChatEntry = {
+  id: string
+  /** `event` entries are app-generated narration (e.g. arrivals); they are never sent to the model as a user turn. */
+  role: 'user' | 'assistant' | 'event'
+  text: string
+  createdAt: string
+}
+
 export type JourneyState = {
   id: 'active'
   currentDestination: Place | null
   mapViewport?: MapViewport | null
   destinationHistory: Place[]
   currentScene: number
-  messages: string[]
+  messages: ChatEntry[]
   knownPeople: string[]
   knownEntities: string[]
   userFacts: string[]

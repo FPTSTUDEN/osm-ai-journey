@@ -1,14 +1,18 @@
 import { memo, useEffect, useRef } from 'react'
 import * as maplibregl from 'maplibre-gl'
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
-import type { GeoJSONFeature, Map as MapLibreMap, MapMouseEvent, Marker } from 'maplibre-gl'
+import type { GeoJSONFeature, Map as MapLibreMap, MapMouseEvent, Marker, StyleSpecification } from 'maplibre-gl'
+import { Protocol, TileType } from 'pmtiles'
 import { OPENFREEMAP_STYLE } from '../providers/config'
+import type { LocalPmtilesArchive } from '../providers/localPmtiles'
 import { deduplicatePlaces, placeFromFeature } from '../providers/localPlaceIndex'
 import { getInitialMapViewport } from './mapViewport'
 import type { MapViewport, Place, WalkingRoute } from '../types/domain'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
 maplibregl.setWorkerUrl(maplibreWorkerUrl)
+const pmtilesProtocol = new Protocol()
+maplibregl.addProtocol('pmtiles', pmtilesProtocol.tile)
 
 type MapCanvasProps = {
   onPlaceSelected: (place: Place) => void
@@ -18,12 +22,62 @@ type MapCanvasProps = {
   initialViewport: MapViewport | null
   onViewportChange: (viewport: MapViewport) => void
   route: WalkingRoute | null
+  localArchive: LocalPmtilesArchive | null
 }
 
-export const MapCanvas = memo(function MapCanvas({ onPlaceSelected, onPlacesLoaded, onMapStatusChange, selectedPlace, initialViewport, onViewportChange, route }: MapCanvasProps) {
+function localArchiveStyle(archive: LocalPmtilesArchive): StyleSpecification {
+  const sourceKey = archive.pmtiles.source.getKey()
+  const sourceUrl = `pmtiles://${sourceKey}`
+  const sources: StyleSpecification['sources'] = archive.tileType === TileType.Mvt
+    ? { offline: { type: 'vector', url: sourceUrl, bounds: archive.bounds, minzoom: archive.minZoom, maxzoom: archive.maxZoom, attribution: 'Local PMTiles archive' } }
+    : { offline: { type: 'raster', tiles: [`${sourceUrl}/{z}/{x}/{y}`], bounds: archive.bounds, minzoom: archive.minZoom, maxzoom: archive.maxZoom, tileSize: 256, attribution: 'Local PMTiles archive' } }
+  const layers: StyleSpecification['layers'] = [{ id: 'offline-background', type: 'background', paint: { 'background-color': '#132b26' } }]
+
+  if (archive.tileType !== TileType.Mvt) {
+    layers.push({ id: 'offline-raster', type: 'raster', source: 'offline', paint: { 'raster-opacity': 1 } })
+    return { version: 8, sources, layers }
+  }
+
+  for (const sourceLayer of archive.vectorLayers) {
+    const layerName = sourceLayer.toLowerCase()
+    const layerId = sourceLayer.replace(/[^a-zA-Z0-9_-]/g, '-') || 'layer'
+    let styled = false
+    if (/water|ocean|lake|landcover|landuse|park|building|earth|land/.test(layerName)) {
+      styled = true
+      layers.push({
+        id: `offline-fill-${layerId}`,
+        type: 'fill',
+        source: 'offline',
+        'source-layer': sourceLayer,
+        paint: { 'fill-color': /water|ocean|lake/.test(layerName) ? '#315d66' : /building/.test(layerName) ? '#536258' : '#263f35', 'fill-opacity': 0.9 },
+      })
+    }
+    if (/road|transport|waterway|boundary|rail|path|bridge|tunnel/.test(layerName)) {
+      styled = true
+      layers.push({
+        id: `offline-line-${layerId}`,
+        type: 'line',
+        source: 'offline',
+        'source-layer': sourceLayer,
+        paint: { 'line-color': /waterway/.test(layerName) ? '#4c8490' : '#b4c58e', 'line-width': 1.5, 'line-opacity': 0.8 },
+      })
+    }
+    if (!styled) {
+      layers.push(
+        { id: `offline-fill-${layerId}`, type: 'fill', source: 'offline', 'source-layer': sourceLayer, filter: ['==', '$type', 'Polygon'], paint: { 'fill-color': '#31483a', 'fill-opacity': 0.8 } },
+        { id: `offline-line-${layerId}`, type: 'line', source: 'offline', 'source-layer': sourceLayer, filter: ['==', '$type', 'LineString'], paint: { 'line-color': '#9daf82', 'line-width': 1.2, 'line-opacity': 0.8 } },
+        { id: `offline-point-${layerId}`, type: 'circle', source: 'offline', 'source-layer': sourceLayer, filter: ['==', '$type', 'Point'], paint: { 'circle-color': '#d5ef9a', 'circle-radius': 2.5 } },
+      )
+    }
+  }
+  return { version: 8, sources, layers }
+}
+
+export const MapCanvas = memo(function MapCanvas({ onPlaceSelected, onPlacesLoaded, onMapStatusChange, selectedPlace, initialViewport, onViewportChange, route, localArchive }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
   const markerRef = useRef<Marker | null>(null)
+  const activeArchiveKeyRef = useRef<string | null>(null)
   const onPlaceSelectedRef = useRef(onPlaceSelected)
   const onPlacesLoadedRef = useRef(onPlacesLoaded)
   const onMapStatusChangeRef = useRef(onMapStatusChange)
@@ -87,7 +141,8 @@ export const MapCanvas = memo(function MapCanvas({ onPlaceSelected, onPlacesLoad
       saveViewport()
       collectLoadedPlaces()
     })
-    map.on('move', saveViewport)
+    // `moveend`, not `move`: `move` fires every frame and re-rendered the whole app while panning.
+    map.on('moveend', saveViewport)
     map.on('idle', collectLoadedPlaces)
     map.on('click', handleClick)
     map.on('error', () => {
@@ -99,6 +154,8 @@ export const MapCanvas = memo(function MapCanvas({ onPlaceSelected, onPlacesLoad
       markerRef.current?.remove()
       map.remove()
       mapRef.current = null
+      if (activeArchiveKeyRef.current) pmtilesProtocol.tiles.delete(activeArchiveKeyRef.current)
+      activeArchiveKeyRef.current = null
     }
   }, [])
 
@@ -117,14 +174,25 @@ export const MapCanvas = memo(function MapCanvas({ onPlaceSelected, onPlacesLoad
       .setLngLat(selectedPlace.coordinates)
       .addTo(map)
 
-    const focusSelectedPlace = () => {
-      map.jumpTo({ center: selectedPlace.coordinates, zoom: Math.max(map.getZoom(), 14) })
-    }
-
-    focusSelectedPlace()
-
-    return () => { map.off('load', focusSelectedPlace) }
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    map.flyTo({ center: selectedPlace.coordinates, zoom: Math.max(map.getZoom(), 14), duration: reducedMotion ? 0 : 1000 })
   }, [selectedPlace])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    if (localArchive) {
+      const sourceKey = localArchive.pmtiles.source.getKey()
+      pmtilesProtocol.add(localArchive.pmtiles)
+      map.setStyle(localArchiveStyle(localArchive), { diff: false })
+      map.fitBounds(localArchive.bounds, { padding: 32, duration: 0 })
+      activeArchiveKeyRef.current = sourceKey
+    } else if (activeArchiveKeyRef.current) {
+      map.setStyle(OPENFREEMAP_STYLE, { diff: false })
+      pmtilesProtocol.tiles.delete(activeArchiveKeyRef.current)
+      activeArchiveKeyRef.current = null
+    }
+  }, [localArchive])
 
   useEffect(() => {
     const map = mapRef.current
@@ -142,6 +210,10 @@ export const MapCanvas = memo(function MapCanvas({ onPlaceSelected, onPlacesLoad
         data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: route.coordinates } },
       })
       map.addLayer({ id: layerId, type: 'line', source: sourceId, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#d5ef9a', 'line-width': 4, 'line-opacity': 0.9 } })
+      if (route.coordinates.length > 1) {
+        const bounds = route.coordinates.reduce((result, coordinate) => result.extend(coordinate), new maplibregl.LngLatBounds(route.coordinates[0], route.coordinates[0]))
+        map.fitBounds(bounds, { padding: 48, maxZoom: 14, duration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 1000 })
+      }
     }
     if (map.isStyleLoaded()) drawRoute()
     else map.once('load', drawRoute)
@@ -149,7 +221,7 @@ export const MapCanvas = memo(function MapCanvas({ onPlaceSelected, onPlacesLoad
       map.off('load', drawRoute)
       removeRoute()
     }
-  }, [route])
+  }, [route, localArchive])
 
-  return <div className="map-canvas" ref={containerRef} aria-label="Interactive OpenStreetMap map" role="application" />
+  return <div className="map-canvas" ref={containerRef} aria-label="Interactive map" role="application" />
 })

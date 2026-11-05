@@ -73,7 +73,8 @@ The phases below are ordered around a usable single-user MVP. Each phase should 
 - [x] Add weather adapter as the first optional integration
 - [x] Fetch live data only when enabled and requested
 - [x] Cache live responses with explicit freshness metadata
-- [ ] Add optional opening-hours, events, transport, and travel adapters
+- [x] Add opt-in opening-hours schedules and nearby transit-stop lookups through the public Overpass API
+- [ ] Add an events adapter (deferred: no global public no-key source was selected; regional/credentialed sources are out of scope)
 - [x] Ensure the AI distinguishes current data from cached and static facts
 
 ## Phase 7: Offline and Deployment Polish
@@ -84,7 +85,7 @@ The phases below are ordered around a usable single-user MVP. Each phase should 
 - [x] Add cache status and clear-cache controls
 - [x] Test the app while offline with previously viewed areas
 - [x] Evaluate bounded area downloads against OpenFreeMap limits
-- [ ] Add PMTiles support if stronger offline maps are required
+- [x] Support user-selected local PMTiles archives for offline map tiles (session-only; no archive is bundled)
 - [x] Add deployment instructions for GitHub Pages or Cloudflare Pages
 - [x] Add privacy guidance for browser-stored API keys
 
@@ -99,7 +100,7 @@ The phases below are ordered around a usable single-user MVP. Each phase should 
 - [x] Reduce the initial bundle with code splitting where useful
 - [x] Review npm audit findings and dependency updates
 
-## Immersive redesign (implemented)
+## Immersive redesign (partly implemented)
 
 The interface follows [mockups/05-two-characters.html](./mockups/05-two-characters.html) and [mockups/06-map-and-destination-panels.html](./mockups/06-map-and-destination-panels.html), without changing journey state or provider contracts.
 
@@ -107,8 +108,25 @@ The interface follows [mockups/05-two-characters.html](./mockups/05-two-characte
 - [x] Make Map, Place, and Journal/Travelogue dock actions explicitly open and close their panels; do not change layout on focus or blur.
 - [x] Show the interactive map only inside its compact panel; the map is not used as a background, including beneath scene art.
 - [x] Make Explore open the Map panel; keep place selection, search, and route flows available there.
-- [x] Show destination context and nearby photos in a separate panel; only an explicitly selected photo becomes scene art, with its source attribution visible.
+- [x] Show destination context and nearby photos in a separate panel; automatically use the nearest photo as illustrative scene art, with attribution visible.
+- [x] Let manual photo selection show that photo's location/details and return to the original destination without treating the automatic scene image as a destination change.
 - [x] Allow Map and Place panels to remain open together; closing one must not implicitly close the other.
 - [x] Keep narration and the chat composer available without losing their state when panels open or close.
 - [x] Make dock and panel placement responsive and keyboard-accessible; ensure the map redraws correctly when its panel is resized.
 - [x] Add UI coverage for explicit panel toggles, simultaneous panels, close behavior, focus/blur stability, and narrow screens.
+- [x] Add opening screen, dialogue nameplate, expanded log, Stop/Retry controls, and free-text composer.
+- [x] Keep the companion toggle in the top bar and support browser-local illustration uploads.
+- [x] Add streamed typewriter display with reduced-motion support and optional prompt suggestions.
+- [x] Add Escape-to-close and focus return for story panels.
+- [x] Move journey persistence/state and chat streaming/summary into `useJourney` and `useChat` (WP-R1).
+- [x] Consolidate place/context/weather/photo details in `PlaceDetails`, used by the map, Place panel, and Field notes (WP-R1).
+- [x] Extract map search, story-panel rendering, and settings/journey controllers; `App.tsx` is below the 250-line target.
+
+## Reliability follow-ups
+
+- [x] Run typecheck and unit tests in CI; run browser tests on pull requests.
+- [x] Use a shared IndexedDB connection and migrate the v3 database to v4 without dropping existing stores.
+- [x] Bound map-resource caching and refresh documents with a network-first strategy.
+- [x] Match place context by explicit Wikidata IDs or nearby, title-matched Wikipedia pages.
+- [x] Filter unsupported Wikimedia file types and preserve photo licence/attribution metadata.
+- [x] Review identified accessibility and browser-cache edges: label the settings dialog/close control, scope cache status to app-owned caches, and avoid storing partial range responses.

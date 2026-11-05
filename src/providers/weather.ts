@@ -1,4 +1,4 @@
-import { readLiveCache, writeLiveCache } from '../storage/liveCache'
+import { readLiveCache, writeLiveCache, type LiveCacheRecord } from '../storage/liveCache'
 import type { Place } from '../types/domain'
 
 export type WeatherData = {
@@ -14,6 +14,7 @@ export type WeatherResult = {
   source: 'live' | 'cached' | 'stale'
   fetchedAt: number
   expiresAt: number
+  cacheError?: string
 }
 
 type OpenMeteoResponse = {
@@ -34,8 +35,14 @@ function parseWeather(payload: OpenMeteoResponse): WeatherData {
 
 export async function fetchCurrentWeather(place: Place, baseUrl: string, force = false): Promise<WeatherResult> {
   const key = cacheKey(place)
-  const cached = await readLiveCache<WeatherData>(key)
-  if (!force && cached && cached.expiresAt > Date.now()) return { ...cached, data: cached.value, source: 'cached' }
+  let cached: LiveCacheRecord<WeatherData> | null = null
+  let cacheError = ''
+  try {
+    cached = await readLiveCache<WeatherData>(key)
+  } catch (error) {
+    cacheError = error instanceof Error ? error.message : 'Browser cache is unavailable'
+  }
+  if (!force && cached && cached.expiresAt > Date.now()) return { ...cached, data: cached.value, source: 'cached', ...(cacheError ? { cacheError } : {}) }
   try {
     const url = new URL(baseUrl)
     url.searchParams.set('latitude', String(place.coordinates[1]))
@@ -45,11 +52,18 @@ export async function fetchCurrentWeather(place: Place, baseUrl: string, force =
     const response = await fetch(url)
     if (!response.ok) throw new Error(`Weather provider unavailable (${response.status})`)
     const data = parseWeather(await response.json() as OpenMeteoResponse)
-    await writeLiveCache(key, data, CACHE_TTL)
-    const fetchedAt = Date.now()
-    return { data, source: 'live', fetchedAt, expiresAt: fetchedAt + CACHE_TTL }
+    let fetchedAt = Date.now()
+    let expiresAt = fetchedAt + CACHE_TTL
+    try {
+      const cacheRecord = await writeLiveCache(key, data, CACHE_TTL)
+      fetchedAt = cacheRecord.fetchedAt
+      expiresAt = cacheRecord.expiresAt
+    } catch (error) {
+      cacheError = error instanceof Error ? error.message : 'Unable to save weather in the browser cache'
+    }
+    return { data, source: 'live', fetchedAt, expiresAt, ...(cacheError ? { cacheError } : {}) }
   } catch (error) {
-    if (cached) return { ...cached, data: cached.value, source: 'stale' }
+    if (cached) return { ...cached, data: cached.value, source: 'stale', ...(cacheError ? { cacheError } : {}) }
     throw error
   }
 }

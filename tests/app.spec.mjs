@@ -16,17 +16,32 @@ async function mockPhotos(page) {
   await page.route('https://commons.wikimedia.org/w/api.php**', (route) => route.fulfill({
     status: 200,
     contentType: 'application/json',
-    body: JSON.stringify({ query: { pages: { '123': {
-      pageid: 123,
-      title: 'File:Test scene.jpg',
-      imageinfo: [{
-        thumburl: 'https://images.test/thumb.jpg',
-        url: 'https://images.test/full.jpg',
-        descriptionurl: 'https://commons.wikimedia.org/wiki/File:Test_scene.jpg',
-        extmetadata: { ImageDescription: { value: 'Test scene description' } },
-      }],
-      coordinates: [{ lat: 35.6762, lon: 139.6503 }],
-    } } } }),
+    body: JSON.stringify({ query: { pages: {
+      '123': {
+        pageid: 123,
+        title: 'File:Test scene.jpg',
+        imageinfo: [{
+          thumburl: 'https://images.test/thumb/1600px-Test_scene.jpg',
+          url: 'https://images.test/full.jpg',
+          mime: 'image/jpeg',
+          descriptionurl: 'https://commons.wikimedia.org/wiki/File:Test_scene.jpg',
+          extmetadata: { ImageDescription: { value: 'Test scene description' } },
+        }],
+        coordinates: [{ lat: 35.6762, lon: 139.6503 }],
+      },
+      '124': {
+        pageid: 124,
+        title: 'File:Adjacent scene.jpg',
+        imageinfo: [{
+          thumburl: 'https://images.test/thumb/1600px-Adjacent_scene.jpg',
+          url: 'https://images.test/adjacent-full.jpg',
+          mime: 'image/jpeg',
+          descriptionurl: 'https://commons.wikimedia.org/wiki/File:Adjacent_scene.jpg',
+          extmetadata: { ImageDescription: { value: 'Adjacent scene description' } },
+        }],
+        coordinates: [{ lat: 35.6802, lon: 139.6523 }],
+      },
+    } } }),
   }))
 }
 
@@ -56,6 +71,135 @@ async function readActiveMapViewport(page) {
     }
   }))
 }
+
+test('upgrades a v3 journey database without losing its stores or records', async ({ page }) => {
+  await page.route('**/database-migration-fixture', (route) => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body></body></html>' }))
+  await page.goto('/database-migration-fixture')
+  await page.evaluate(() => new Promise((resolve, reject) => {
+    const request = indexedDB.open('osm-ai-journey', 3)
+    request.onupgradeneeded = () => {
+      const database = request.result
+      database.createObjectStore('geocoder-results', { keyPath: 'key' })
+      database.createObjectStore('journeys', { keyPath: 'id' })
+      database.createObjectStore('live-data', { keyPath: 'key' })
+    }
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => {
+      const database = request.result
+      const transaction = database.transaction('journeys', 'readwrite')
+      transaction.objectStore('journeys').put({
+        id: 'active',
+        currentDestination: null,
+        mapViewport: null,
+        destinationHistory: [],
+        currentScene: 3,
+        messages: ['A saved traveler message'],
+        knownPeople: [],
+        knownEntities: [],
+        userFacts: [],
+        narrativeEvents: [],
+      })
+      transaction.oncomplete = () => { database.close(); resolve() }
+      transaction.onerror = () => reject(transaction.error)
+    }
+  }))
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Osm AI Journey' })).toBeVisible()
+  const upgraded = await page.evaluate(() => new Promise((resolve, reject) => {
+    const request = indexedDB.open('osm-ai-journey')
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => {
+      const database = request.result
+      const transaction = database.transaction('journeys', 'readonly')
+      const getJourney = transaction.objectStore('journeys').get('active')
+      getJourney.onsuccess = () => {
+        const result = {
+          version: database.version,
+          stores: Array.from(database.objectStoreNames),
+          journey: getJourney.result,
+        }
+        database.close()
+        resolve(result)
+      }
+      getJourney.onerror = () => reject(getJourney.error)
+    }
+  }))
+  expect(upgraded.version).toBe(4)
+  expect(upgraded.stores).toEqual(expect.arrayContaining(['geocoder-results', 'journeys', 'live-data', 'companion-art']))
+  expect(upgraded.journey.currentScene).toBe(3)
+  expect(upgraded.journey.messages).toEqual(['A saved traveler message'])
+})
+
+test('field notes reuse the full place details view', async ({ page }) => {
+  await mockSearch(page)
+  await resetBrowser(page)
+  await chooseOnlinePlace(page)
+  await page.locator('.story-dock button').nth(1).click()
+  await page.getByRole('button', { name: 'Open field notes' }).click()
+  const fieldNotes = page.locator('.field-notes')
+  await expect(fieldNotes.locator('.place-facts')).toBeVisible()
+  await expect(fieldNotes.locator('.weather-panel')).toHaveCount(2)
+  await expect(fieldNotes.locator('.place-photos')).toBeVisible()
+})
+
+test('opening hours and nearby stops are requested only after the user asks', async ({ page }) => {
+  let overpassRequests = 0
+  await mockSearch(page)
+  await page.route('https://overpass-api.de/api/interpreter', async (route) => {
+    overpassRequests += 1
+    expect(route.request().method()).toBe('POST')
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ elements: [
+        { type: 'node', lat: 35.6763, lon: 139.6503, tags: { name: 'Museum Stop', highway: 'bus_stop' } },
+        { type: 'node', lat: 35.6762, lon: 139.6503, tags: { name: 'Test Destination', opening_hours: 'Mo-Su 09:00-17:00' } },
+      ] }),
+    })
+  })
+  await resetBrowser(page)
+  await page.getByRole('button', { name: 'Toggle settings' }).click()
+  await page.getByLabel('Enable optional live data').check()
+  await page.getByRole('button', { name: 'Close settings' }).click()
+  await chooseOnlinePlace(page)
+  await page.locator('.story-dock button').nth(1).click()
+  await page.getByRole('button', { name: 'Open field notes' }).click()
+  expect(overpassRequests).toBe(0)
+  await page.getByRole('button', { name: 'Check hours & nearby stops' }).click()
+  const fieldNotes = page.locator('.field-notes')
+  await expect(fieldNotes.getByText('Mo-Su 09:00-17:00')).toBeVisible()
+  await expect(fieldNotes.getByText('Museum Stop · bus stop')).toBeVisible()
+  expect(overpassRequests).toBe(1)
+})
+
+test('a local PMTiles picker rejects files without a pmtiles extension', async ({ page }) => {
+  await resetBrowser(page)
+  await page.getByRole('button', { name: 'Toggle settings' }).click()
+  const archiveInput = page.getByLabel('Choose a .pmtiles archive')
+  await archiveInput.setInputFiles({
+    name: 'not-a-map.txt',
+    mimeType: 'application/octet-stream',
+    buffer: Buffer.from('not a PMTiles archive'),
+  })
+  await expect(page.getByRole('alert')).toContainText('Choose a file with the .pmtiles extension')
+  await archiveInput.setInputFiles({
+    name: 'broken.pmtiles',
+    mimeType: 'application/octet-stream',
+    buffer: Buffer.from('invalid archive contents'),
+  })
+  await expect(page.getByRole('alert')).not.toBeEmpty()
+})
+
+test('offline cache status ignores unrelated origin caches and clearing leaves them intact', async ({ page }) => {
+  await resetBrowser(page)
+  await page.evaluate(() => caches.open('unrelated-cache'))
+  await page.getByRole('button', { name: 'Toggle settings' }).click()
+  await page.getByRole('button', { name: 'Refresh status' }).click()
+  await expect(page.locator('.offline-cache').first()).toContainText('0 cached resources across 0 caches')
+  await page.getByRole('button', { name: 'Clear cache' }).click()
+  await expect.poll(() => page.evaluate(() => caches.keys())).toContain('unrelated-cache')
+})
 
 test('completes and restores an online destination journey', async ({ page }) => {
   test.setTimeout(60000)
@@ -152,12 +296,16 @@ test('shows a provider failure without breaking normal chat UI', async ({ page }
 test('supports keyboard journey memory and accessible controls', async ({ page }) => {
   await resetBrowser(page)
   await page.getByRole('button', { name: 'Toggle settings' }).click()
+  await expect(page.getByRole('dialog', { name: 'Journey settings' })).toBeVisible()
   const people = page.getByPlaceholder('Add user-created people')
   await people.fill('Ada')
   await people.press('Enter')
   await expect(page.getByText('Ada', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Test connection' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Toggle settings' })).toHaveAttribute('aria-label', 'Toggle settings')
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('heading', { name: 'Journey settings' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Toggle settings' })).toBeFocused()
 })
 
 test('does not overflow a narrow mobile viewport', async ({ page }) => {
@@ -165,6 +313,21 @@ test('does not overflow a narrow mobile viewport', async ({ page }) => {
   await resetBrowser(page)
   const dimensions = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: window.innerWidth }))
   expect(dimensions.width).toBeLessThanOrEqual(dimensions.viewport)
+})
+
+test('opening hero, dialogue, and mobile dock do not overlap', async ({ page }) => {
+  for (const viewport of [{ width: 1280, height: 720 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport)
+    await resetBrowser(page)
+    const layout = await page.evaluate(() => {
+      const opening = document.querySelector('.opening-screen').getBoundingClientRect()
+      const dialogue = document.querySelector('.dialogue-panel').getBoundingClientRect()
+      const dock = document.querySelector('.story-dock').getBoundingClientRect()
+      return { heroDialogueGap: dialogue.top - opening.bottom, dialogueDockGap: dock.top - dialogue.bottom }
+    })
+    expect(layout.heroDialogueGap).toBeGreaterThanOrEqual(0)
+    if (viewport.width <= 520) expect(layout.dialogueDockGap).toBeGreaterThanOrEqual(0)
+  }
 })
 
 test('story panels open independently and ignore keyboard focus changes', async ({ page }) => {
@@ -190,17 +353,129 @@ test('story panels open independently and ignore keyboard focus changes', async 
   await composer.fill('Focus should not change the map layout')
   expect(await page.locator('.map-panel').evaluate((map) => map.getBoundingClientRect().width)).toBe(compactMapWidth)
 
-  await placeToggle.click()
-  await expect(page.getByRole('complementary', { name: 'Destination panel' })).toBeVisible()
-  await expect(page.getByRole('complementary', { name: 'Map navigation panel' })).toBeVisible()
-  await placeToggle.click()
+  await expect(placeToggle).toBeDisabled()
   await expect(page.getByRole('complementary', { name: 'Destination panel' })).toHaveCount(0)
   await expect(page.getByRole('complementary', { name: 'Map navigation panel' })).toBeVisible()
 
   await mapToggle.click()
   await expect(mapToggle).toHaveAttribute('aria-pressed', 'false')
   await journalToggle.click()
-  await expect(page.getByRole('complementary', { name: 'Travelogue panel' })).toBeVisible()
+  await expect(page.getByRole('complementary', { name: 'Journal panel' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('complementary', { name: 'Journal panel' })).toHaveCount(0)
+  await expect(journalToggle).toBeFocused()
+})
+
+test('opening screen makes no provider request until an explicit shortcut is selected', async ({ page }) => {
+  const providerRequests = []
+  page.on('request', (request) => {
+    if (!request.url().startsWith('http://127.0.0.1') && !request.url().startsWith('http://localhost')) providerRequests.push(request.url())
+  })
+  await mockSearch(page)
+  await resetBrowser(page)
+  await expect(page.getByRole('heading', { name: 'Every place on Earth is a doorway into a story.' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Show companion' })).toHaveAttribute('aria-pressed', 'false')
+  await expect(page.locator('.story-dock button').nth(1)).toBeDisabled()
+  expect(providerRequests).toEqual([])
+
+  await page.getByRole('button', { name: 'Trevi Fountain' }).click()
+  await expect.poll(() => providerRequests.some((url) => url.includes('nominatim.openstreetmap.org/search'))).toBe(true)
+  await expect(page.getByRole('status')).toContainText('You arrive at Test Destination')
+})
+
+test('Retry resends the last user turn after a provider failure', async ({ page }) => {
+  let requests = 0
+  await page.route('http://localhost:11434/v1/chat/completions', (route) => {
+    requests += 1
+    if (requests === 1) return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: { message: 'Temporary failure' } }) })
+    return route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: 'data: {"choices":[{"delta":{"content":"The retry worked."}}]}\n\ndata: [DONE]\n\n',
+    })
+  })
+  await resetBrowser(page)
+  await page.getByPlaceholder(/Speak freely/).fill('Please retry me')
+  await page.getByRole('button', { name: 'Send message' }).click()
+  await page.getByRole('button', { name: 'Retry' }).click()
+  await expect(page.getByText('The retry worked.')).toBeVisible()
+  expect(requests).toBe(2)
+})
+
+test('Stop cancels a slow response and returns the composer to idle', async ({ page }) => {
+  await page.route('http://localhost:11434/v1/chat/completions', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1200))
+    try {
+      await route.fulfill({ status: 200, contentType: 'text/event-stream', body: 'data: {"choices":[{"delta":{"content":"Late reply."}}]}\n\ndata: [DONE]\n\n' })
+    } catch {
+      // The test intentionally aborts this request before its delayed response.
+    }
+  })
+  await resetBrowser(page)
+  await page.getByPlaceholder(/Speak freely/).fill('Stop this response')
+  await page.getByRole('button', { name: 'Send message' }).click()
+  await page.getByRole('button', { name: 'Stop' }).click()
+  await expect(page.getByRole('button', { name: 'Send message' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Retry' })).toHaveCount(0)
+})
+
+test('Log expands and reduced motion displays streamed text immediately', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.route('http://localhost:11434/v1/chat/completions', (route) => route.fulfill({
+    status: 200,
+    contentType: 'text/event-stream',
+    body: 'data: {"choices":[{"delta":{"content":"An entire line appears."}}]}\n\ndata: [DONE]\n\n',
+  }))
+  await resetBrowser(page)
+  await page.getByPlaceholder(/Speak freely/).fill('Ask for a line')
+  await page.getByRole('button', { name: 'Send message' }).click()
+  await expect(page.locator('.conversation')).toContainText('An entire line appears.')
+  await expect(page.locator('.conversation .message')).toHaveCount(1)
+  await page.getByRole('button', { name: 'Log' }).click()
+  await expect(page.locator('.conversation')).toContainText('Choose a place on the map')
+  await expect(page.locator('.conversation')).toContainText('Ask for a line')
+  await page.getByRole('button', { name: 'Close log' }).click()
+  await expect(page.locator('.conversation .message')).toHaveCount(1)
+})
+
+test('uploaded companion illustration persists as browser-local data', async ({ page }) => {
+  await resetBrowser(page)
+  await page.getByRole('button', { name: 'Toggle settings' }).click()
+  await page.getByLabel('Companion illustration').setInputFiles({
+    name: 'companion.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+  })
+  await expect(page.getByRole('button', { name: 'Remove illustration' })).toBeVisible()
+  await page.getByRole('button', { name: 'Toggle settings' }).click()
+  await page.getByRole('button', { name: 'Show companion' }).click()
+  await expect(page.getByRole('img', { name: 'Companion illustration' })).toBeVisible()
+  await page.reload()
+  await page.getByRole('button', { name: 'Show companion' }).click()
+  await expect(page.getByRole('img', { name: 'Companion illustration' })).toBeVisible()
+})
+
+test('dialogue box does not overlap open panels at desktop, tablet, or mobile widths', async ({ page }) => {
+  await mockSearch(page)
+  await resetBrowser(page)
+  await chooseOnlinePlace(page)
+  const dockButtons = page.locator('.story-dock button')
+  await dockButtons.nth(1).click()
+
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 1100, height: 800 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport)
+    const dialogue = await page.locator('.dialogue-panel').boundingBox()
+    const panels = [
+      await page.locator('.map-panel').boundingBox(),
+      await page.getByRole('complementary', { name: 'Destination panel' }).boundingBox(),
+    ].filter(Boolean)
+    expect(dialogue).not.toBeNull()
+    expect(panels).toHaveLength(2)
+    for (const panel of panels) {
+      const overlaps = dialogue.x < panel.x + panel.width && dialogue.x + dialogue.width > panel.x && dialogue.y < panel.y + panel.height && dialogue.y + dialogue.height > panel.y
+      expect(overlaps, `dialogue overlaps a panel at ${viewport.width}px`).toBe(false)
+    }
+  }
 })
 
 test('Explore opens the map panel without putting the map behind the scene', async ({ page }) => {
@@ -218,7 +493,7 @@ test('Explore opens the map panel without putting the map behind the scene', asy
   await expect(page.locator('.map-panel')).toHaveCount(0)
 })
 
-test('selected photo replaces the ambient background while the map stays panel-only', async ({ page }) => {
+test('destination photos load automatically and manual selection opens photo details with a return path', async ({ page }) => {
   await mockSearch(page)
   await mockPhotos(page)
   await resetBrowser(page)
@@ -227,27 +502,134 @@ test('selected photo replaces the ambient background while the map stays panel-o
   await page.locator('.story-dock button').nth(1).click()
   const photoChoice = page.getByRole('button', { name: /Test scene\.jpg/ })
   await expect(photoChoice).toBeVisible()
-  await expect(page.locator('.scene-art')).toHaveCount(0)
-  await expect(page.locator('.map-canvas')).toHaveCount(0)
-  await photoChoice.click()
-
   const sceneArt = page.locator('.scene-art')
   await expect(sceneArt).toBeVisible()
-  await expect(sceneArt.locator('img')).toHaveAttribute('src', 'https://images.test/full.jpg')
+  await expect(sceneArt.locator('img')).toHaveAttribute('src', 'https://images.test/thumb/1600px-Test_scene.jpg')
+  await expect(photoChoice).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('.destination-dock-panel')).toContainText('Test Destination')
+  await expect(page.locator('.map-canvas')).toHaveCount(0)
+  await page.getByRole('button', { name: /Adjacent scene\.jpg/ }).click()
+
+  await expect(sceneArt.locator('img')).toHaveAttribute('src', 'https://images.test/thumb/1600px-Adjacent_scene.jpg')
   await expect(sceneArt).toHaveCount(1)
   await expect(page.locator('.map-canvas')).toHaveCount(0)
-  await expect(page.getByRole('link', { name: 'Photo source' })).toHaveAttribute('href', 'https://commons.wikimedia.org/wiki/File:Test_scene.jpg')
+  await expect(page.locator('.destination-dock-panel .photo-detail')).toContainText('Adjacent scene.jpg')
+
+  await expect(page.locator('.destination-dock-panel .photo-detail')).toContainText('Adjacent scene.jpg')
+  await expect(page.locator('.destination-dock-panel .photo-detail a', { hasText: 'View on Wikimedia' })).toHaveAttribute('href', 'https://commons.wikimedia.org/wiki/File:Adjacent_scene.jpg')
+  await page.locator('.destination-dock-panel').getByRole('button', { name: /Back to Test Destination/ }).click()
+  await expect(page.locator('.destination-dock-panel')).toContainText('Test Destination')
+  await expect(page.locator('.destination-dock-panel .photo-detail')).toHaveCount(0)
+  await expect(sceneArt.locator('img')).toHaveAttribute('src', 'https://images.test/thumb/1600px-Test_scene.jpg')
 
   await page.locator('.story-dock button').nth(0).click()
   await expect(page.locator('.map-canvas')).toBeVisible()
   await expect(sceneArt).toBeVisible()
 })
 
+test('missing or unavailable destination photos leave the ambient background in place', async ({ page }) => {
+  let photoRequest = 0
+  await mockSearch(page)
+  await page.route('https://commons.wikimedia.org/w/api.php**', (route) => {
+    photoRequest += 1
+    return photoRequest === 1
+      ? route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ query: { pages: {} } }) })
+      : route.fulfill({ status: 503, body: 'Unavailable' })
+  })
+
+  await resetBrowser(page)
+  await chooseOnlinePlace(page)
+  await page.locator('.story-dock button').nth(1).click()
+  await expect(page.locator('.destination-dock-panel').getByText('No nearby photos found.')).toBeVisible()
+  await expect(page.locator('.scene-art')).toHaveCount(0)
+
+  await resetBrowser(page)
+  await chooseOnlinePlace(page)
+  await page.locator('.story-dock button').nth(1).click()
+  await expect(page.locator('.destination-dock-panel').getByText('Photos are unavailable for this destination.')).toBeVisible()
+  await expect(page.locator('.scene-art')).toHaveCount(0)
+})
+
+test('a late photo response cannot replace the current destination image', async ({ page }) => {
+  const firstPlace = { ...place, name: 'First Destination', display_name: 'First Destination', lat: '35.6762', lon: '139.6503' }
+  const secondPlace = { ...place, osm_id: 315, name: 'Second Destination', display_name: 'Second Destination', lat: '40.7128', lon: '-74.0060' }
+  await page.route('https://nominatim.openstreetmap.org/search**', (route) => {
+    const query = new URL(route.request().url()).searchParams.get('q')
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([query?.includes('second') ? secondPlace : firstPlace]) })
+  })
+
+  let markFirstRequest
+  let markSecondRequest
+  let markFirstCompleted
+  let releaseFirst
+  let releaseSecond
+  const firstRequested = new Promise((resolve) => { markFirstRequest = resolve })
+  const secondRequested = new Promise((resolve) => { markSecondRequest = resolve })
+  const firstCompleted = new Promise((resolve) => { markFirstCompleted = resolve })
+  const firstResponse = new Promise((resolve) => { releaseFirst = resolve })
+  const secondResponse = new Promise((resolve) => { releaseSecond = resolve })
+  await page.route('https://commons.wikimedia.org/w/api.php**', async (route) => {
+    const coordinates = new URL(route.request().url()).searchParams.get('ggscoord')
+    if (coordinates?.startsWith('35.6762|')) {
+      markFirstRequest()
+      await firstResponse
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ query: { pages: { '123': {
+          pageid: 123,
+          title: 'File:First destination.jpg',
+          imageinfo: [{ thumburl: 'https://images.test/first.jpg', mime: 'image/jpeg', descriptionurl: 'https://commons.wikimedia.org/wiki/File:First_destination.jpg' }],
+        } } } }),
+      })
+      markFirstCompleted()
+      return
+    }
+
+    markSecondRequest()
+    await secondResponse
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ query: { pages: { '124': {
+        pageid: 124,
+        title: 'File:Second destination.jpg',
+        imageinfo: [{ thumburl: 'https://images.test/second.jpg', mime: 'image/jpeg', descriptionurl: 'https://commons.wikimedia.org/wiki/File:Second_destination.jpg' }],
+      } } } }),
+    })
+  })
+
+  await resetBrowser(page)
+  await page.locator('.story-dock button').nth(0).click()
+  const search = page.getByPlaceholder('Search places')
+  await search.fill('first destination')
+  await page.getByRole('button', { name: 'Search online' }).click()
+  await page.getByRole('button', { name: /First Destination/ }).click()
+  await firstRequested
+
+  try {
+    await search.fill('second destination')
+    await page.getByRole('button', { name: 'Search online' }).click()
+    await page.getByRole('button', { name: /Second Destination/ }).click()
+    await secondRequested
+    await expect(page.locator('.scene-art')).toHaveCount(0)
+    releaseSecond()
+    await expect(page.locator('.scene-art img')).toHaveAttribute('src', 'https://images.test/second.jpg')
+    releaseFirst()
+    await firstCompleted
+    await expect(page.locator('.scene-art img')).toHaveAttribute('src', 'https://images.test/second.jpg')
+  } finally {
+    releaseFirst()
+    releaseSecond()
+  }
+})
+
 test('map and destination panels remain usable together on mobile', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
+  await mockSearch(page)
   await resetBrowser(page)
+  await chooseOnlinePlace(page)
   const dockButtons = page.locator('.story-dock button')
-  await dockButtons.nth(0).click()
   await dockButtons.nth(1).click()
 
   const mapBounds = await page.locator('.map-panel').boundingBox()
