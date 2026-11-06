@@ -23,7 +23,9 @@ Osm AI Journey turns map exploration into an open-ended narrative journey. A use
 - Chat uses speaker avatars and bubbles, with narration and scene events presented separately.
 - The selected presentation is an app-wide browser preference and survives reloads; changing it does not change journey state or conversation history.
 - Companion artwork is shown automatically in Visual novel mode; there is no separate visibility toggle. The existing upload/remove control remains in settings.
-- All modes share the same ordered `StoryTurn` blocks and free-text composer. VN progression controls, skipping, summaries, and rewind are planned separately.
+- All modes share the same ordered `StoryTurn` blocks and free-text composer. In Visual novel mode, previous/next controls, stage clicks, and left/right arrow keys move through story blocks; text input remains usable at any point.
+- Skip jumps to the end of the remaining story and opens a review panel with the original skipped dialogue and events. Closing it returns to the current scene; the full log remains available.
+- Rewinding and continuing creates a returnable alternate timeline. The selected point's destination, scene, conversation, and journey memory are restored for the new continuation.
 
 ## Interaction rules
 

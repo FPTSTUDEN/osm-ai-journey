@@ -31,11 +31,11 @@ Expand the existing journey and roleplay app into three interchangeable story pr
 
 ## Phase 3: Visual novel pacing and history
 
-- [ ] Add click/keyboard progression for story blocks without blocking free-text input or requiring a click after every beat.
-- [ ] Add a visible Skip action that advances through pending story content and opens a summary panel of skipped dialogue and events.
-- [ ] Let users review the summary and return to the current scene; preserve access to the underlying story history.
-- [ ] Define rewind behavior for dialogue and scene history, including how continuing from an earlier point affects later events and journey state.
-- [ ] Ensure progression, skip, summary, rewind, and retry keep the displayed story and LLM conversation context in sync.
+- [x] Add click/keyboard progression for story blocks without blocking free-text input or requiring a click after every beat.
+- [x] Add a visible Skip action that advances through pending story content and opens a review panel of skipped dialogue and events.
+- [x] Let users review skipped content and return to the current scene; preserve access to the underlying story history.
+- [x] Preserve later history as a returnable alternate branch when continuing from an earlier dialogue or scene; restore its destination, scene, memory, and conversation checkpoint.
+- [x] Ensure progression, skip, summary, rewind, and retry keep the displayed story and LLM conversation context in sync.
 
 ## Phase 4: Character artwork and accessibility
 

@@ -1,4 +1,4 @@
-import type { StoryBlock, StoryTurn } from '../types/domain'
+import type { ChatEntry, StoryBlock, StoryProgress, StoryTurn } from '../types/domain'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value))
@@ -62,4 +62,35 @@ export function normalizeStoredStoryTurn(value: unknown, fallbackText: string, t
     }
   }
   return plainTextStoryTurn(fallbackText, turnId)
+}
+
+export type StoryStop = StoryProgress
+
+const STARTER_STORY_TEXT = 'Choose a place on the map, or tell me what kind of journey you want to begin.'
+
+export function storyStops(entries: ChatEntry[]): StoryStop[] {
+  return entries.flatMap((entry) => entry.role === 'assistant' && entry.text !== STARTER_STORY_TEXT
+    ? (entry.storyTurn?.blocks ?? [{ id: `${entry.id}:1`, type: 'prose' as const, text: entry.text }]).map((_, blockIndex) => ({ entryId: entry.id, blockIndex }))
+    : [])
+}
+
+export function latestStoryStop(entries: ChatEntry[]): StoryStop | null {
+  return storyStops(entries).at(-1) ?? null
+}
+
+export function storyStopIndex(entries: ChatEntry[], progress: StoryProgress | null | undefined): number {
+  if (!progress) return Math.max(0, storyStops(entries).length - 1)
+  return storyStops(entries).findIndex((stop) => stop.entryId === progress.entryId && stop.blockIndex === progress.blockIndex)
+}
+
+export function trimHistoryAtStoryStop(entries: ChatEntry[], stop: StoryStop): ChatEntry[] {
+  const entryIndex = entries.findIndex((entry) => entry.id === stop.entryId && entry.role === 'assistant')
+  if (entryIndex < 0) return entries
+  const entry = entries[entryIndex]
+  const turn = entry.storyTurn ?? plainTextStoryTurn(entry.text, entry.id)
+  const blocks = turn.blocks.slice(0, stop.blockIndex + 1)
+  if (!blocks.length) return entries.slice(0, entryIndex)
+  const storyTurn: StoryTurn = { ...turn, blocks }
+  const trimmed = { ...entry, text: storyTurnToText(storyTurn), storyTurn }
+  return [...entries.slice(0, entryIndex), trimmed]
 }

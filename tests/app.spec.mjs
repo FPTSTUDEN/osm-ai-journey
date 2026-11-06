@@ -429,13 +429,87 @@ test('switches between novel, visual novel, and chat renderers with the same str
   await expect(page.locator('.vn-character-left')).toContainText('You')
   await expect(page.locator('.vn-character-right')).toContainText('The Wayfinder')
   await expect(page.locator('.vn-narration')).toContainText('Rain begins to fall.')
-  await expect(page.locator('.vn-event')).toContainText('The station lights flicker.')
+  await page.getByRole('button', { name: 'Next story block' }).click()
   await expect(page.locator('.vn-dialogue')).toContainText('Let’s find shelter.')
+  await page.getByRole('button', { name: 'Next story block' }).click()
+  await expect(page.locator('.vn-event')).toContainText('The station lights flicker.')
 
   await mode.selectOption('novel')
   await expect(page.locator('.story-conversation-novel .message')).toContainText('Rain begins to fall.')
   await page.reload()
   await expect(mode).toHaveValue('novel')
+})
+
+test('Visual novel progression can skip blocks, review the skipped content, and return to the scene', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  const reply = JSON.stringify({ blocks: [
+    { type: 'narration', text: 'Fog gathers around the platform.' },
+    { type: 'dialogue', speaker: 'The Wayfinder', text: 'The last train is near.' },
+    { type: 'scene', text: 'A distant headlight appears.' },
+    { type: 'dialogue', speaker: 'The Wayfinder', text: 'The doors slide open.' },
+  ] })
+  await page.route('http://localhost:11434/v1/chat/completions', (route) => route.fulfill({
+    status: 200,
+    contentType: 'text/event-stream',
+    body: `data: ${JSON.stringify({ choices: [{ delta: { content: reply } }] })}\n\ndata: [DONE]\n\n`,
+  }))
+  await resetBrowser(page)
+  await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('visual-novel')
+  await page.getByPlaceholder(/Speak freely/).fill('Continue the journey')
+  await page.getByRole('button', { name: 'Send message' }).click()
+  await expect(page.locator('.vn-narration')).toContainText('Fog gathers around the platform.')
+  await page.locator('.vn-story-turn').click()
+  await expect(page.locator('.vn-dialogue')).toContainText('The last train is near.')
+  await page.keyboard.press('ArrowRight')
+  await expect(page.locator('.vn-event')).toContainText('A distant headlight appears.')
+  await page.getByRole('button', { name: 'Skip' }).click()
+  const summary = page.getByRole('dialog', { name: 'Review what you skipped' })
+  await expect(summary).toContainText('The doors slide open.')
+  await expect(page.locator('.vn-dialogue')).toContainText('The doors slide open.')
+  await summary.getByRole('button', { name: 'Return to current scene' }).click()
+  await expect(summary).toHaveCount(0)
+})
+
+test('rewinding and continuing preserves the original future as a returnable branch', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  let requests = 0
+  const response = (text) => JSON.stringify({ blocks: [
+    { type: 'dialogue', speaker: 'The Wayfinder', text },
+    { type: 'scene', text: `${text} ends.` },
+  ] })
+  await page.route('http://localhost:11434/v1/chat/completions', (route) => {
+    requests += 1
+    const text = requests === 1 ? 'First chapter' : requests === 2 ? 'Later future' : 'New branch future'
+    return route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: `data: ${JSON.stringify({ choices: [{ delta: { content: response(text) } }] })}\n\ndata: [DONE]\n\n`,
+    })
+  })
+  await resetBrowser(page)
+  await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('visual-novel')
+  const composer = page.getByPlaceholder(/Speak freely/)
+  const send = page.getByRole('button', { name: 'Send message' })
+  await composer.fill('Start the first chapter')
+  await send.click()
+  await expect(page.locator('.vn-dialogue')).toContainText('First chapter')
+  await page.getByRole('button', { name: 'Next story block' }).click()
+  await composer.fill('Continue the story')
+  await send.click()
+  await expect(page.locator('.vn-dialogue')).toContainText('Later future')
+  await page.getByRole('button', { name: 'Previous story block' }).click()
+  await page.getByRole('button', { name: 'Previous story block' }).click()
+  await expect(page.locator('.vn-dialogue')).toContainText('First chapter')
+  await composer.fill('Take another path')
+  await send.click()
+  await expect(page.locator('.vn-dialogue')).toContainText('New branch future')
+  await page.waitForTimeout(450)
+  await page.reload()
+  const timeline = page.getByRole('combobox', { name: 'Switch timeline' })
+  await expect(timeline).toContainText('Rewound timeline 1')
+  await timeline.selectOption({ label: 'Rewound timeline 1' })
+  await expect(page.locator('.vn-event')).toContainText('Later future ends.')
+  await expect(timeline).toContainText('Previous active timeline')
 })
 
 test('Retry resends the last user turn after a provider failure', async ({ page }) => {

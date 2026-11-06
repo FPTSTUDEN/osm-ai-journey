@@ -80,17 +80,9 @@ export type StoryTurn = {
   blocks: StoryBlock[]
 }
 
-export type ChatEntry = {
-  id: string
-  /** `event` entries are app-generated narration (e.g. arrivals); they are never sent to the model as a user turn. */
-  role: 'user' | 'assistant' | 'event'
-  text: string
-  storyTurn?: StoryTurn
-  createdAt: string
-}
+export type StoryProgress = { entryId: string; blockIndex: number }
 
-export type JourneyState = {
-  id: 'active'
+export type JourneyTimeline = {
   currentDestination: Place | null
   mapViewport?: MapViewport | null
   destinationHistory: Place[]
@@ -101,4 +93,29 @@ export type JourneyState = {
   userFacts: string[]
   narrativeEvents: NarrativeEvent[]
   conversationSummary?: string
+  storyProgress?: StoryProgress | null
+}
+
+export type StoryCheckpoint = Omit<JourneyTimeline, 'messages' | 'storyProgress'>
+
+export type StoryBranch = {
+  id: string
+  label: string
+  createdAt: string
+  snapshot: JourneyTimeline
+}
+
+export type ChatEntry = {
+  id: string
+  /** `event` entries are app-generated narration (e.g. arrivals); they are never sent to the model as a user turn. */
+  role: 'user' | 'assistant' | 'event'
+  text: string
+  storyTurn?: StoryTurn
+  checkpoint?: StoryCheckpoint
+  createdAt: string
+}
+
+export type JourneyState = JourneyTimeline & {
+  id: 'active'
+  branches?: StoryBranch[]
 }

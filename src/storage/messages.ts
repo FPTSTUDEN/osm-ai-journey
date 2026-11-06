@@ -1,10 +1,10 @@
 import { normalizeStoredStoryTurn, storyTurnToText } from '../providers/storyFormat'
-import type { ChatEntry } from '../types/domain'
+import type { ChatEntry, StoryCheckpoint } from '../types/domain'
 
 export const STARTER_MESSAGE = 'Choose a place on the map, or tell me what kind of journey you want to begin.'
 
-export function newEntry(role: ChatEntry['role'], text: string): ChatEntry {
-  return { id: crypto.randomUUID(), role, text, createdAt: new Date().toISOString() }
+export function newEntry(role: ChatEntry['role'], text: string, checkpoint?: StoryCheckpoint): ChatEntry {
+  return { id: crypto.randomUUID(), role, text, ...(checkpoint ? { checkpoint } : {}), createdAt: new Date().toISOString() }
 }
 
 export function starterEntries(): ChatEntry[] {
@@ -17,8 +17,27 @@ function isEntry(value: unknown): value is ChatEntry {
   return typeof entry.id === 'string' && typeof entry.text === 'string' && (entry.role === 'user' || entry.role === 'assistant' || entry.role === 'event')
 }
 
+function isStoryCheckpoint(value: unknown): value is StoryCheckpoint {
+  if (!value || typeof value !== 'object') return false
+  const checkpoint = value as Partial<StoryCheckpoint>
+  return (checkpoint.currentDestination === null || Boolean(checkpoint.currentDestination && typeof checkpoint.currentDestination === 'object'))
+    && Array.isArray(checkpoint.destinationHistory)
+    && typeof checkpoint.currentScene === 'number'
+    && Number.isInteger(checkpoint.currentScene)
+    && Array.isArray(checkpoint.knownPeople)
+    && Array.isArray(checkpoint.knownEntities)
+    && Array.isArray(checkpoint.userFacts)
+    && Array.isArray(checkpoint.narrativeEvents)
+}
+
 function normalizeEntry(entry: ChatEntry): ChatEntry {
-  if (entry.role !== 'assistant') return { id: entry.id, role: entry.role, text: entry.text, createdAt: entry.createdAt }
+  if (entry.role !== 'assistant') return {
+    id: entry.id,
+    role: entry.role,
+    text: entry.text,
+    ...(entry.role === 'user' && isStoryCheckpoint(entry.checkpoint) ? { checkpoint: entry.checkpoint } : {}),
+    createdAt: entry.createdAt,
+  }
   const storyTurn = normalizeStoredStoryTurn(entry.storyTurn, entry.text, entry.id)
   return { id: entry.id, role: entry.role, text: storyTurnToText(storyTurn), storyTurn, createdAt: entry.createdAt }
 }

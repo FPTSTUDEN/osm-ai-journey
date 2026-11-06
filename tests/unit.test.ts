@@ -3,7 +3,7 @@ import test from 'node:test'
 import { DEFAULT_MAP_VIEWPORT, getInitialMapViewport } from '../src/components/mapViewport'
 import { deduplicatePlaces, placeFromFeature, searchLocalPlaces } from '../src/providers/localPlaceIndex'
 import { buildJourneyContext } from '../src/providers/context'
-import { parseStoryResponse, storyTurnToText } from '../src/providers/storyFormat'
+import { parseStoryResponse, storyStopIndex, storyStops, storyTurnToText, trimHistoryAtStoryStop } from '../src/providers/storyFormat'
 import { weatherLabel } from '../src/providers/weather'
 import { createOverpassQuery, parseOverpassResponse } from '../src/providers/overpass'
 import { enrichPlace } from '../src/providers/enrichment'
@@ -119,6 +119,15 @@ test('journey export round-trips and rejects malformed data', () => {
     userFacts: ['A fact'],
     narrativeEvents: [],
     conversationSummary: '',
+    storyProgress: null,
+    branches: [{
+      id: 'branch-1', label: 'Earlier future', createdAt: '2026-01-02T00:00:00.000Z',
+      snapshot: {
+        currentDestination: place('current', 'Current'), mapViewport: null, destinationHistory: [place('current', 'Current')], currentScene: 2,
+        messages: [{ id: 'm1', role: 'user' as const, text: 'hello', createdAt: '2026-01-01T00:00:00.000Z' }],
+        knownPeople: ['Ada'], knownEntities: [], userFacts: ['A fact'], narrativeEvents: [], conversationSummary: '', storyProgress: null,
+      },
+    }],
   }
   assert.deepEqual(parseJourneyJson(JSON.parse(journeyJson(journey))), JSON.parse(JSON.stringify(journey)))
   assert.throws(() => parseJourneyJson({ id: 'wrong' }), /invalid id/)
@@ -171,6 +180,22 @@ test('structured story responses preserve block order and produce readable legac
   assert.deepEqual(turn.blocks.map((block) => block.type), ['narration', 'dialogue', 'scene'])
   assert.deepEqual(turn.blocks.map((block) => block.id), ['turn-1:1', 'turn-1:2', 'turn-1:3'])
   assert.equal(storyTurnToText(turn), 'The station grows quiet.\n\nMira: Ready to go?\n\n[Scene] The train pulls away.')
+})
+
+test('story history can rewind to a block and trim the active transcript there', () => {
+  const first = { ...entry('assistant', 'First: one\\n\\nSecond'), storyTurn: parseStoryResponse(JSON.stringify({ blocks: [
+    { type: 'dialogue', speaker: 'First', text: 'one' },
+    { type: 'dialogue', speaker: 'Second', text: 'two' },
+  ] }), 'turn') }
+  const history = [entry('user', 'start'), first, entry('user', 'later'), entry('assistant', 'future')]
+  const stops = storyStops(history)
+
+  assert.equal(stops.length, 3)
+  assert.equal(storyStopIndex(history, { entryId: first.id, blockIndex: 0 }), 0)
+  const trimmed = trimHistoryAtStoryStop(history, stops[0])
+  assert.deepEqual(trimmed.map((item) => item.id), ['start', first.id])
+  assert.equal(trimmed.at(-1)?.text, 'First: one')
+  assert.equal(trimmed.at(-1)?.storyTurn?.blocks.length, 1)
 })
 
 test('plain-text and malformed structured responses fall back without losing content', () => {

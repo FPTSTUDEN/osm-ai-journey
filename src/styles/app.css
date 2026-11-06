@@ -284,6 +284,13 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
 .dialogue-nameplate span { padding: 4px 6px; border-radius: 4px; background: #274836; color: #c5e3a4; font: 8px ui-monospace, monospace; letter-spacing: .08em; }
 .dialogue-nameplate .listener-tag { background: #34423a; color: #a9b5aa; }
 .dialogue-heading-actions { display: flex; align-items: center; gap: 8px; pointer-events: auto; }
+.branch-select { max-width: 170px; padding: 6px 8px; border: 1px solid #496b5a; border-radius: 7px; background: #12201c; color: #cbd8c9; font: 9px ui-monospace, monospace; }
+.story-progress-controls { display: flex; align-items: center; gap: 4px; }
+.story-progress-controls button { min-width: 26px; padding: 5px 7px; border: 1px solid #496b5a; border-radius: 7px; background: #12201ca8; color: #d3e2d4; font: 11px ui-monospace, monospace; }
+.story-progress-controls button:hover:not(:disabled) { border-color: #c5e3a4; color: #e0edbc; }
+.story-progress-controls button:disabled { cursor: not-allowed; opacity: .42; }
+.story-progress-controls span { min-width: 30px; color: #9bb6a5; font: 9px ui-monospace, monospace; text-align: center; }
+.story-progress-controls .skip-story-button { padding-inline: 8px; color: #c5e3a4; }
 .log-toggle, .dialogue-error button, .optional-suggestions button, .stop-button { padding: 7px 10px; border: 1px solid #496b5a; border-radius: 8px; background: #12201ca8; color: #d3e2d4; font: 10px ui-monospace, monospace; }
 .log-toggle:hover, .dialogue-error button:hover, .optional-suggestions button:hover { border-color: #c5e3a4; color: #e0edbc; }
 .dialogue-panel .conversation { margin: 0 12px; padding: 8px 12px; border: 1px solid #496b5a88; border-radius: 14px; background: #12201caa; }
@@ -327,6 +334,19 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
 .optional-suggestions button { flex: 0 0 auto; padding: 5px 8px; font-size: 9px; }
 .stop-button { border-color: #b88270; color: #f0c2ae; }
 .stop-button:hover { background: #472b26; }
+.skip-summary-backdrop { position: fixed; z-index: 30; inset: 0; display: grid; place-items: center; padding: 20px; background: #07100de6; backdrop-filter: blur(8px); }
+.skip-summary-panel { display: flex; flex-direction: column; gap: 14px; width: min(700px, 100%); max-height: min(78vh, 760px); padding: 20px; border: 1px solid #60816b; border-radius: 16px; background: #14221d; box-shadow: 0 28px 90px #000a; }
+.skip-summary-panel > header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.skip-summary-panel > header .eyebrow { color: #a7c194; }
+.skip-summary-panel > header h2 { margin-top: 5px; color: #f0f4e9; font: 500 22px Georgia, 'Times New Roman', serif; }
+.skip-summary-panel > header button { width: 34px; height: 34px; border: 1px solid #496b5a; border-radius: 8px; background: transparent; color: #d3e2d4; font-size: 20px; }
+.skip-summary-content { display: grid; gap: 10px; overflow-y: auto; padding-right: 4px; }
+.skip-summary-item { padding: 10px 12px; border-left: 2px solid #708c76; border-radius: 0 8px 8px 0; background: #1b2c25; }
+.skip-summary-item span { display: block; margin-bottom: 4px; color: #c5e3a4; font: 10px ui-monospace, monospace; }
+.skip-summary-item p { color: #d0dbce; font-size: 12px; line-height: 1.55; white-space: pre-wrap; }
+.skip-summary-scene, .skip-summary-event { border-left-color: #c5e3a4; background: #28362a; }
+.skip-summary-narration { background: #172721; }
+.skip-summary-return { align-self: end; padding: 9px 13px; border: 1px solid #79966c; border-radius: 8px; background: #c5e3a4; color: #15231b; font-size: 11px; font-weight: 600; }
 .dialogue-panel .composer, .dialogue-panel .journey-footer { width: calc(100% - 24px); margin-right: 12px; margin-left: 12px; }
 .opening-screen { position: absolute; z-index: 2; top: 34%; left: 50%; display: grid; justify-items: center; width: min(900px, calc(100vw - 160px)); padding: 0 20px; text-align: center; transform: translate(-50%, -50%); }
 .opening-screen > .eyebrow { color: #c5e3a4; letter-spacing: .18em; }
@@ -384,6 +404,10 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
   .dialogue-panel .conversation-expanded { max-height: 24vh; }
   .dialogue-panel .message p { font-size: 14px; line-height: 1.45; }
   .dialogue-panel .dialogue-heading { min-height: 28px; }
+  .dialogue-heading-actions { gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+  .branch-select { max-width: 110px; padding: 5px; font-size: 8px; }
+  .story-progress-controls { gap: 2px; }
+  .story-progress-controls button { min-width: 23px; padding: 4px 5px; }
   .dialogue-panel .optional-suggestions { gap: 5px; }
   .dialogue-panel .journey-footer { display: none; }
   .opening-screen { top: 34%; width: calc(100vw - 28px); padding: 8px; }

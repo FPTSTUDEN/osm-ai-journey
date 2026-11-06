@@ -1,4 +1,4 @@
-import type { ChatEntry, StoryBlock, StoryPresentationMode } from '../types/domain'
+import type { ChatEntry, StoryBlock, StoryPresentationMode, StoryProgress } from '../types/domain'
 
 type Props = {
   entries: ChatEntry[]
@@ -9,6 +9,8 @@ type Props = {
   revealedLength: number
   reduceMotion: boolean
   expanded: boolean
+  storyProgress: StoryProgress | null
+  onAdvance: () => void
 }
 
 function initials(name: string) {
@@ -60,8 +62,13 @@ function VisualNovelEntry({ entry, props }: { entry: ChatEntry; props: Props }) 
   if (entry.role === 'event') return <div className="vn-event" key={entry.id}><span>Journey event</span><p>{entry.text}</p></div>
   if (entry.role === 'user') return <div className="vn-player-line" key={entry.id}><span>You</span><p>{entry.text}</p></div>
   const blocks = entry.storyTurn?.blocks ?? [{ id: `${entry.id}:1`, type: 'prose' as const, text: visibleText(entry, props) }]
-  return <div className="vn-story-turn" key={entry.id}>
-    {blocks.map((block) => {
+  const currentBlock = props.storyProgress?.entryId === entry.id ? props.storyProgress.blockIndex : blocks.length - 1
+  const presentedBlocks = props.expanded ? blocks : [blocks[currentBlock] ?? blocks.at(-1)].filter((block): block is StoryBlock => Boolean(block))
+  return <div className="vn-story-turn" key={entry.id} onClick={(event) => {
+    if (event.target instanceof Element && event.target.closest('button,a,input,textarea,select,[contenteditable="true"]')) return
+    props.onAdvance()
+  }}>
+    {presentedBlocks.map((block) => {
       if (block.type === 'scene') return <div className="vn-event" key={block.id}><span>Scene</span><p>{block.text}</p></div>
       if (block.type === 'narration') return <p className="vn-narration" key={block.id}>{block.text}</p>
       const speaker = block.type === 'dialogue' ? block.speaker : props.personaName

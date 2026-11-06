@@ -25,7 +25,8 @@ function App() {
     destinationHistory, setDestinationHistory, currentScene, setCurrentScene, narrativeEvents,
     setNarrativeEvents, knownPeople, setKnownPeople, knownEntities, setKnownEntities, userFacts,
     setUserFacts, conversationSummary, setConversationSummary, summaryMessageCount,
-    setSummaryMessageCount, journeyReady, applyJourney: applyJourneyState,
+    setSummaryMessageCount, journeyReady, storyProgress, setStoryProgress, branches,
+    checkpoint, forkAt, switchBranch, applyJourney: applyJourneyState,
     resetJourney: resetJourneyState, snapshot: journeySnapshot, deleteJourney: deleteSavedJourney,
     appendArrival,
   } = useJourney()
@@ -48,6 +49,9 @@ function App() {
     summaryMessageCount,
     setSummaryMessageCount,
     setConversationSummary,
+    checkpoint: checkpoint(),
+    onForkTimeline: forkStoryTimeline,
+    onStoryProgressChange: setStoryProgress,
     onUserMessage: (text) => setNarrativeEvents((current) => [...current, newJourneyEvent('message', text)]),
   })
   const { llmState, llmError, animatedEntryId, summaryState } = chat
@@ -135,12 +139,30 @@ function App() {
     void completeTransition(place, false)
   }
 
-  function sendMessage(event: React.FormEvent) {
+  function sendMessage(event: React.FormEvent, rewindTo?: typeof storyProgress) {
     event.preventDefault()
     const trimmed = message.trim()
     if (!trimmed) return
     setMessage('')
-    chat.send(trimmed)
+    chat.send(trimmed, false, presentationMode === 'visual-novel' ? rewindTo : null)
+  }
+
+  function switchStoryBranch(branchId: string) {
+    switchBranch(branchId)
+    setRoute(null)
+    setPendingDestination(null)
+    setRouteState('idle')
+    setRouteMessage('')
+    setSelectedPhoto(null)
+  }
+
+  function forkStoryTimeline(messagesOnBranch: Parameters<typeof forkAt>[0], checkpointAtBranch: Parameters<typeof forkAt>[1], progress: Parameters<typeof forkAt>[2]) {
+    forkAt(messagesOnBranch, checkpointAtBranch, progress)
+    setRoute(null)
+    setPendingDestination(null)
+    setRouteState('idle')
+    setRouteMessage('')
+    setSelectedPhoto(null)
   }
 
   return (
@@ -218,6 +240,10 @@ function App() {
           destinationCount={destinationHistory.length}
           routesEnabled={settings.calculateWalkingRoutes}
           presentationMode={presentationMode}
+          storyProgress={storyProgress}
+          onStoryProgressChange={setStoryProgress}
+          branches={branches}
+          onSwitchBranch={switchStoryBranch}
           animatedEntryId={animatedEntryId}
           companionImageUrl={companionImageUrl}
         />
