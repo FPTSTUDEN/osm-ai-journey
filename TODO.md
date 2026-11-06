@@ -22,12 +22,12 @@ Expand the existing journey and roleplay app into three interchangeable story pr
 
 ## Phase 2: Mode selection and shared content rendering
 
-- [ ] Add Novel, Visual novel, and Chat as the app's story presentation modes and persist the selection using the existing settings/journey storage conventions.
-- [ ] Replace the single-purpose “Show companion” top-bar toggle with a mode selector; decide whether artwork visibility also needs a separate preference.
-- [ ] Keep the current prose presentation as Novel mode, including the existing composer and story controls.
-- [ ] Add the Chat renderer with speaker avatars/bubbles and visually distinct narration and scene events.
-- [ ] Add the Visual novel renderer with a stable scene stage, dialogue/nameplate treatment, and left/right character illustration slots.
-- [ ] Keep destination/map panels, journey state, and persona behavior consistent when switching modes.
+- [x] Add Novel, Visual novel, and Chat as app-wide story presentation modes and persist the selection in browser settings.
+- [x] Replace the single-purpose “Show companion” top-bar toggle with a mode selector; show uploaded companion art automatically in Visual novel mode, with no separate visibility toggle.
+- [x] Keep the current prose presentation as Novel mode, including the existing composer and story controls.
+- [x] Add the Chat renderer with speaker avatars/bubbles and visually distinct narration and scene events.
+- [x] Add the Visual novel renderer with a stable scene stage, dialogue/nameplate treatment, and left/right character portrait/placeholder slots.
+- [x] Keep destination/map panels, journey state, and persona behavior consistent when switching modes.
 
 ## Phase 3: Visual novel pacing and history
 

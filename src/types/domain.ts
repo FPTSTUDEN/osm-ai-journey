@@ -44,7 +44,10 @@ export type PlacePhoto = {
   photoCoordinates?: Coordinates
 }
 
+export type StoryPresentationMode = 'novel' | 'visual-novel' | 'chat'
+
 export type UserSettings = {
+  storyPresentationMode?: StoryPresentationMode
   llmProvider: 'ollama' | 'openai' | 'lmstudio' | 'vllm' | 'custom'
   llmBaseUrl: string
   llmModel: string

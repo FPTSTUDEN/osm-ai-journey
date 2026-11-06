@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import type { ChatEntry } from '../types/domain'
+import type { ChatEntry, StoryPresentationMode } from '../types/domain'
 import { revealedTextLength } from './typewriter'
+import { StoryMessageList } from './StoryMessageList'
 
 type DialogueBoxProps = {
   entries: ChatEntry[]
@@ -16,7 +17,7 @@ type DialogueBoxProps = {
   destinationName: string | null
   destinationCount: number
   routesEnabled: boolean
-  companionVisible: boolean
+  presentationMode: StoryPresentationMode
   animatedEntryId: string | null
   companionImageUrl: string | null
 }
@@ -37,7 +38,7 @@ export function DialogueBox({
   destinationName,
   destinationCount,
   routesEnabled,
-  companionVisible,
+  presentationMode,
   animatedEntryId,
   companionImageUrl,
 }: DialogueBoxProps) {
@@ -45,7 +46,7 @@ export function DialogueBox({
   const [revealCompleteId, setRevealCompleteId] = useState<string | null>(null)
   const [revealedLength, setRevealedLength] = useState(0)
   const revealStart = useRef<{ id: string; at: number } | null>(null)
-  const visibleEntries = expanded ? entries : entries.slice(-1)
+  const visibleEntries = expanded || presentationMode === 'chat' ? entries : entries.slice(-1)
   const latestEntry = entries.at(-1)
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
@@ -81,11 +82,6 @@ export function DialogueBox({
 
   return (
     <section className="journey-panel dialogue-panel">
-      {companionVisible && <div className="companion-sprite" aria-label="Companion illustration placeholder">
-        {companionImageUrl ? <img src={companionImageUrl} alt="Companion illustration" /> : <span aria-hidden="true">✦</span>}
-        {!companionImageUrl && <p>Companion illustration</p>}
-        <small>Illustration{companionImageUrl ? '' : ' · placeholder'}</small>
-      </div>}
       <header className="dialogue-heading">
         <div className="dialogue-nameplate">
           {latestEntry?.role !== 'event' && <><strong>{latestEntry?.role === 'user' ? 'You' : personaName}</strong><span className={latestEntry?.role === 'user' ? 'listener-tag' : 'companion-tag'}>{latestEntry?.role === 'user' ? 'LISTENER' : 'COMPANION'}</span></>}
@@ -95,9 +91,16 @@ export function DialogueBox({
           <button type="button" className="log-toggle" aria-expanded={expanded} onClick={() => setExpanded((open) => !open)}>{expanded ? 'Close log' : 'Log'}</button>
         </div>
       </header>
-      <div className={`conversation ${expanded ? 'conversation-expanded' : 'conversation-latest'}`} role="log" aria-live="polite" aria-label="Journey narration">
-        {visibleEntries.map((entry) => <div className={`message ${entry.role === 'user' ? 'user-action' : entry.role === 'event' ? 'narration event' : 'narration'}`} key={entry.id}><p>{entry.id === latestEntry?.id && entry.id === animatedEntryId && entry.role === 'assistant' && !reduceMotion && revealCompleteId !== entry.id ? entry.text.slice(0, revealedLength) : entry.text}</p></div>)}
-      </div>
+      <StoryMessageList
+        entries={visibleEntries}
+        mode={presentationMode}
+        personaName={personaName}
+        companionImageUrl={companionImageUrl}
+        animatedEntryId={revealCompleteId === latestEntry?.id ? null : animatedEntryId}
+        revealedLength={revealedLength}
+        reduceMotion={reduceMotion}
+        expanded={expanded}
+      />
       {llmState === 'error' && <div className="dialogue-error" role="alert"><p className="provider-error">{llmError}</p><button type="button" onClick={onRetry}>Retry</button></div>}
       <div className="optional-suggestions" aria-label="Suggestions, optional">
         <span>Suggestions · optional</span>

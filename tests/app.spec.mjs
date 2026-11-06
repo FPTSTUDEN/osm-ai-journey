@@ -374,7 +374,7 @@ test('opening screen makes no provider request until an explicit shortcut is sel
   await mockSearch(page)
   await resetBrowser(page)
   await expect(page.getByRole('heading', { name: 'Every place on Earth is a doorway into a story.' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Show companion' })).toHaveAttribute('aria-pressed', 'false')
+  await expect(page.getByRole('combobox', { name: 'Story presentation' })).toHaveValue('novel')
   await expect(page.locator('.story-dock button').nth(1)).toBeDisabled()
   expect(providerRequests).toEqual([])
 
@@ -400,6 +400,42 @@ test('renders structured assistant turns as readable story text', async ({ page 
   await expect(conversation).toContainText('Rain begins to fall.')
   await expect(conversation).toContainText('Mira: Let’s find shelter.')
   await expect(conversation).not.toContainText('"blocks"')
+})
+
+test('switches between novel, visual novel, and chat renderers with the same structured turn', async ({ page }) => {
+  const structuredTurn = JSON.stringify({ blocks: [
+    { type: 'narration', text: 'Rain begins to fall.' },
+    { type: 'dialogue', speaker: 'The Wayfinder', text: 'Let’s find shelter.' },
+    { type: 'scene', text: 'The station lights flicker.' },
+  ] })
+  await page.route('http://localhost:11434/v1/chat/completions', (route) => route.fulfill({
+    status: 200,
+    contentType: 'text/event-stream',
+    body: `data: ${JSON.stringify({ choices: [{ delta: { content: structuredTurn } }] })}\n\ndata: [DONE]\n\n`,
+  }))
+  await resetBrowser(page)
+  const mode = page.getByRole('combobox', { name: 'Story presentation' })
+  await page.getByPlaceholder(/Speak freely/).fill('What happens next?')
+  await page.getByRole('button', { name: 'Send message' }).click()
+  await expect(page.locator('.story-conversation')).toContainText('Let’s find shelter.')
+
+  await mode.selectOption('chat')
+  await expect(page.locator('.chat-line-user')).toContainText('What happens next?')
+  await expect(page.locator('.chat-narration:not(.chat-narration-scene)')).toContainText('Rain begins to fall.')
+  await expect(page.locator('.chat-narration-scene')).toContainText('The station lights flicker.')
+  await expect(page.getByText('Let’s find shelter.', { exact: true })).toBeVisible()
+
+  await mode.selectOption('visual-novel')
+  await expect(page.locator('.vn-character-left')).toContainText('You')
+  await expect(page.locator('.vn-character-right')).toContainText('The Wayfinder')
+  await expect(page.locator('.vn-narration')).toContainText('Rain begins to fall.')
+  await expect(page.locator('.vn-event')).toContainText('The station lights flicker.')
+  await expect(page.locator('.vn-dialogue')).toContainText('Let’s find shelter.')
+
+  await mode.selectOption('novel')
+  await expect(page.locator('.story-conversation-novel .message')).toContainText('Rain begins to fall.')
+  await page.reload()
+  await expect(mode).toHaveValue('novel')
 })
 
 test('Retry resends the last user turn after a provider failure', async ({ page }) => {
@@ -467,11 +503,11 @@ test('uploaded companion illustration persists as browser-local data', async ({ 
   })
   await expect(page.getByRole('button', { name: 'Remove illustration' })).toBeVisible()
   await page.getByRole('button', { name: 'Toggle settings' }).click()
-  await page.getByRole('button', { name: 'Show companion' }).click()
-  await expect(page.getByRole('img', { name: 'Companion illustration' })).toBeVisible()
+  await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('visual-novel')
+  await expect(page.locator('.vn-character-right img')).toBeVisible()
   await page.reload()
-  await page.getByRole('button', { name: 'Show companion' }).click()
-  await expect(page.getByRole('img', { name: 'Companion illustration' })).toBeVisible()
+  await expect(page.getByRole('combobox', { name: 'Story presentation' })).toHaveValue('visual-novel')
+  await expect(page.locator('.vn-character-right img')).toBeVisible()
 })
 
 test('dialogue box does not overlap open panels at desktop, tablet, or mobile widths', async ({ page }) => {

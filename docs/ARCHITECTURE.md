@@ -45,7 +45,7 @@ MapLibre uses OpenFreeMap's public vector style initially. A user may instead se
 
 ## Persistence
 
-- `localStorage`: provider settings, feature toggles, and UI preferences.
+- `localStorage`: provider settings, feature toggles, UI preferences, and the app-wide story presentation mode (`novel`, `visual-novel`, or `chat`). Invalid or missing mode values normalize to `novel`.
 - IndexedDB: journey records, chat messages, destination snapshots, and online geocoder results.
 - Cache Storage: static assets and recently viewed map resources through the service worker.
 - Local PMTiles archives: held as a selected browser `File` for the current session; no server or cache copy is created.
@@ -70,7 +70,7 @@ Journey state is intentionally soft. It coordinates map and narrative consistenc
 - Ordered `StoryTurn` blocks on assistant messages, with per-turn block IDs and speaker identity for dialogue
 - Suggested actions, which are never required
 
-Older persisted assistant messages are normalized to one prose block on read. Structured turns also retain flattened text so the current novel-style renderer and existing context/summarization paths continue to work.
+Older persisted assistant messages are normalized to one prose block on read. Structured turns also retain flattened text so existing context and summarization paths continue to work. The presentation selector changes only rendering: Novel keeps the existing text-first dialogue/log; Visual novel stages the latest turn with narration, dialogue nameplates, and character portrait/placeholder slots; Chat renders the full history as avatar bubbles with distinct narration and scene events. The uploaded persona image appears in Visual novel and Chat when its speaker matches the configured persona. The selected mode is an app-wide local preference, not per-journey state.
 
 ## Static-hosting constraints
 

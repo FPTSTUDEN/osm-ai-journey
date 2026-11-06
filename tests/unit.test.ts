@@ -12,6 +12,7 @@ import { revealedTextLength } from '../src/components/typewriter'
 import { shouldSummarize } from '../src/hooks/chat'
 import { journeyJson, parseJourneyJson } from '../src/storage/journeyTransfer'
 import { normalizeMessages } from '../src/storage/messages'
+import { normalizeStoryPresentationMode } from '../src/storage/settings'
 import type { ChatEntry, Place } from '../src/types/domain'
 
 const place = (id: string, name: string, category?: string): Place => ({ id, name, category, coordinates: [2.35, 48.85], source: 'map' })
@@ -243,6 +244,13 @@ test('typewriter reveal advances with elapsed time and never exceeds the message
   assert.equal(revealedTextLength('abcdefghij', 100, 20), 2)
   assert.equal(revealedTextLength('abc', 10000), 3)
   assert.equal(revealedTextLength('abc', -10), 0)
+})
+
+test('story presentation settings accept supported modes and default invalid values to novel', () => {
+  assert.equal(normalizeStoryPresentationMode('novel'), 'novel')
+  assert.equal(normalizeStoryPresentationMode('visual-novel'), 'visual-novel')
+  assert.equal(normalizeStoryPresentationMode('chat'), 'chat')
+  assert.equal(normalizeStoryPresentationMode('unknown'), 'novel')
 })
 
 test('conversation summaries respect minimum history and growth thresholds', () => {
