@@ -374,13 +374,142 @@ test('opening screen makes no provider request until an explicit shortcut is sel
   await mockSearch(page)
   await resetBrowser(page)
   await expect(page.getByRole('heading', { name: 'Every place on Earth is a doorway into a story.' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Show companion' })).toHaveAttribute('aria-pressed', 'false')
+  await expect(page.getByRole('combobox', { name: 'Story presentation' })).toHaveValue('novel')
   await expect(page.locator('.story-dock button').nth(1)).toBeDisabled()
   expect(providerRequests).toEqual([])
 
   await page.getByRole('button', { name: 'Trevi Fountain' }).click()
   await expect.poll(() => providerRequests.some((url) => url.includes('nominatim.openstreetmap.org/search'))).toBe(true)
   await expect(page.getByRole('status')).toContainText('You arrive at Test Destination')
+})
+
+test('renders structured assistant turns as readable story text', async ({ page }) => {
+  const content = JSON.stringify({ blocks: [
+    { type: 'narration', text: 'Rain begins to fall.' },
+    { type: 'dialogue', speaker: 'Mira', text: 'Let’s find shelter.' },
+  ] })
+  await page.route('http://localhost:11434/v1/chat/completions', (route) => route.fulfill({
+    status: 200,
+    contentType: 'text/event-stream',
+    body: `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\ndata: [DONE]\n\n`,
+  }))
+  await resetBrowser(page)
+  await page.getByPlaceholder(/Speak freely/).fill('What happens next?')
+  await page.getByRole('button', { name: 'Send message' }).click()
+  const conversation = page.locator('.conversation')
+  await expect(conversation).toContainText('Rain begins to fall.')
+  await expect(conversation).toContainText('Mira: Let’s find shelter.')
+  await expect(conversation).not.toContainText('"blocks"')
+})
+
+test('switches between novel, visual novel, and chat renderers with the same structured turn', async ({ page }) => {
+  const structuredTurn = JSON.stringify({ blocks: [
+    { type: 'narration', text: 'Rain begins to fall.' },
+    { type: 'dialogue', speaker: 'The Wayfinder', text: 'Let’s find shelter.' },
+    { type: 'scene', text: 'The station lights flicker.' },
+  ] })
+  await page.route('http://localhost:11434/v1/chat/completions', (route) => route.fulfill({
+    status: 200,
+    contentType: 'text/event-stream',
+    body: `data: ${JSON.stringify({ choices: [{ delta: { content: structuredTurn } }] })}\n\ndata: [DONE]\n\n`,
+  }))
+  await resetBrowser(page)
+  const mode = page.getByRole('combobox', { name: 'Story presentation' })
+  await page.getByPlaceholder(/Speak freely/).fill('What happens next?')
+  await page.getByRole('button', { name: 'Send message' }).click()
+  await expect(page.locator('.story-conversation')).toContainText('Let’s find shelter.')
+
+  await mode.selectOption('chat')
+  await expect(page.locator('.chat-line-user')).toContainText('What happens next?')
+  await expect(page.locator('.chat-narration:not(.chat-narration-scene)')).toContainText('Rain begins to fall.')
+  await expect(page.locator('.chat-narration-scene')).toContainText('The station lights flicker.')
+  await expect(page.getByText('Let’s find shelter.', { exact: true })).toBeVisible()
+
+  await mode.selectOption('visual-novel')
+  await expect(page.locator('.vn-character-left')).toContainText('You')
+  await expect(page.locator('.vn-character-right')).toContainText('The Wayfinder')
+  await expect(page.locator('.vn-narration')).toContainText('Rain begins to fall.')
+  await page.getByRole('button', { name: 'Next story block' }).click()
+  await expect(page.locator('.vn-dialogue')).toContainText('Let’s find shelter.')
+  await page.getByRole('button', { name: 'Next story block' }).click()
+  await expect(page.locator('.vn-event')).toContainText('The station lights flicker.')
+
+  await mode.selectOption('novel')
+  await expect(page.locator('.story-conversation-novel .message')).toContainText('Rain begins to fall.')
+  await page.reload()
+  await expect(mode).toHaveValue('novel')
+})
+
+test('Visual novel progression can skip blocks, review the skipped content, and return to the scene', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  const reply = JSON.stringify({ blocks: [
+    { type: 'narration', text: 'Fog gathers around the platform.' },
+    { type: 'dialogue', speaker: 'The Wayfinder', text: 'The last train is near.' },
+    { type: 'scene', text: 'A distant headlight appears.' },
+    { type: 'dialogue', speaker: 'The Wayfinder', text: 'The doors slide open.' },
+  ] })
+  await page.route('http://localhost:11434/v1/chat/completions', (route) => route.fulfill({
+    status: 200,
+    contentType: 'text/event-stream',
+    body: `data: ${JSON.stringify({ choices: [{ delta: { content: reply } }] })}\n\ndata: [DONE]\n\n`,
+  }))
+  await resetBrowser(page)
+  await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('visual-novel')
+  await page.getByPlaceholder(/Speak freely/).fill('Continue the journey')
+  await page.getByRole('button', { name: 'Send message' }).click()
+  await expect(page.locator('.vn-narration')).toContainText('Fog gathers around the platform.')
+  await page.locator('.vn-story-turn').click()
+  await expect(page.locator('.vn-dialogue')).toContainText('The last train is near.')
+  await page.keyboard.press('ArrowRight')
+  await expect(page.locator('.vn-event')).toContainText('A distant headlight appears.')
+  await page.getByRole('button', { name: 'Skip' }).click()
+  const summary = page.getByRole('dialog', { name: 'Review what you skipped' })
+  await expect(summary).toContainText('The doors slide open.')
+  await expect(page.locator('.vn-dialogue')).toContainText('The doors slide open.')
+  await summary.getByRole('button', { name: 'Return to current scene' }).click()
+  await expect(summary).toHaveCount(0)
+})
+
+test('rewinding and continuing preserves the original future as a returnable branch', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  let requests = 0
+  const response = (text) => JSON.stringify({ blocks: [
+    { type: 'dialogue', speaker: 'The Wayfinder', text },
+    { type: 'scene', text: `${text} ends.` },
+  ] })
+  await page.route('http://localhost:11434/v1/chat/completions', (route) => {
+    requests += 1
+    const text = requests === 1 ? 'First chapter' : requests === 2 ? 'Later future' : 'New branch future'
+    return route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: `data: ${JSON.stringify({ choices: [{ delta: { content: response(text) } }] })}\n\ndata: [DONE]\n\n`,
+    })
+  })
+  await resetBrowser(page)
+  await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('visual-novel')
+  const composer = page.getByPlaceholder(/Speak freely/)
+  const send = page.getByRole('button', { name: 'Send message' })
+  await composer.fill('Start the first chapter')
+  await send.click()
+  await expect(page.locator('.vn-dialogue')).toContainText('First chapter')
+  await page.getByRole('button', { name: 'Next story block' }).click()
+  await composer.fill('Continue the story')
+  await send.click()
+  await expect(page.locator('.vn-dialogue')).toContainText('Later future')
+  await page.getByRole('button', { name: 'Previous story block' }).click()
+  await page.getByRole('button', { name: 'Previous story block' }).click()
+  await expect(page.locator('.vn-dialogue')).toContainText('First chapter')
+  await composer.fill('Take another path')
+  await send.click()
+  await expect(page.locator('.vn-dialogue')).toContainText('New branch future')
+  await page.waitForTimeout(450)
+  await page.reload()
+  const timeline = page.getByRole('combobox', { name: 'Switch timeline' })
+  await expect(timeline).toContainText('Rewound timeline 1')
+  await timeline.selectOption({ label: 'Rewound timeline 1' })
+  await expect(page.locator('.vn-event')).toContainText('Later future ends.')
+  await expect(timeline).toContainText('Previous active timeline')
 })
 
 test('Retry resends the last user turn after a provider failure', async ({ page }) => {
@@ -448,11 +577,11 @@ test('uploaded companion illustration persists as browser-local data', async ({ 
   })
   await expect(page.getByRole('button', { name: 'Remove illustration' })).toBeVisible()
   await page.getByRole('button', { name: 'Toggle settings' }).click()
-  await page.getByRole('button', { name: 'Show companion' }).click()
-  await expect(page.getByRole('img', { name: 'Companion illustration' })).toBeVisible()
+  await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('visual-novel')
+  await expect(page.locator('.vn-character-right img')).toBeVisible()
   await page.reload()
-  await page.getByRole('button', { name: 'Show companion' }).click()
-  await expect(page.getByRole('img', { name: 'Companion illustration' })).toBeVisible()
+  await expect(page.getByRole('combobox', { name: 'Story presentation' })).toHaveValue('visual-novel')
+  await expect(page.locator('.vn-character-right img')).toBeVisible()
 })
 
 test('dialogue box does not overlap open panels at desktop, tablet, or mobile widths', async ({ page }) => {

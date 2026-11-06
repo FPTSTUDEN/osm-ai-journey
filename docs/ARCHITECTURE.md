@@ -35,6 +35,8 @@ External services must be behind small interfaces. The UI should not know whethe
 - `RoutingProvider`: optional walking route calculation.
 - `LLMProvider`: streaming chat using an OpenAI-compatible request shape.
 
+Assistant replies request one JSON object containing ordered narration, dialogue, and scene blocks. The app normalizes that into a `StoryTurn`; plain-text, malformed, or unsupported responses become a single prose block without requiring provider-specific structured-output APIs. Structured stream content is buffered until it can be parsed so raw JSON is not shown; plain-text fallback can stream directly. The existing `ChatEntry.text` remains a readable flattened form for current UI, conversation history, and summaries.
+
 ## Map and tile strategy
 
 MapLibre uses OpenFreeMap's public vector style initially. A user may instead select a local raster or vector `.pmtiles` file; the archive stays in the browser session and is not uploaded or persisted. The local vector style is intentionally generic, recognizes common water/land/building/road source layers, and omits labels to avoid glyph-network requests. OpenFreeMap attribution remains visible for the hosted map; local map display credits OpenStreetMap contributors.
@@ -43,12 +45,12 @@ MapLibre uses OpenFreeMap's public vector style initially. A user may instead se
 
 ## Persistence
 
-- `localStorage`: provider settings, feature toggles, and UI preferences.
+- `localStorage`: provider settings, feature toggles, UI preferences, and the app-wide story presentation mode (`novel`, `visual-novel`, or `chat`). Invalid or missing mode values normalize to `novel`.
 - IndexedDB: journey records, chat messages, destination snapshots, and online geocoder results.
 - Cache Storage: static assets and recently viewed map resources through the service worker.
 - Local PMTiles archives: held as a selected browser `File` for the current session; no server or cache copy is created.
 
-The current scaffold includes a small storage boundary; full journey persistence can be added without coupling components to browser APIs.
+Journey persistence is accessed through the storage boundary, keeping IndexedDB operations out of presentation components. Journey exports include active history, progress, checkpoints, and alternate timeline snapshots.
 
 Destination photos are illustrative only. Photo titles, captions, authors, dates, and source links are passed to the language model as source-backed metadata; image pixels are not sent to the model.
 
@@ -65,7 +67,12 @@ Journey state is intentionally soft. It coordinates map and narrative consistenc
 - Source-backed destination context
 - Illustrative destination photos and their written source metadata
 - Narrative events and conversation summary
+- Ordered `StoryTurn` blocks on assistant messages, with per-turn block IDs and speaker identity for dialogue
+- Visual novel progress cursor into the ordered assistant blocks
+- Per-user-turn journey checkpoints and returnable alternate timeline snapshots
 - Suggested actions, which are never required
+
+Older persisted assistant messages are normalized to one prose block on read. Structured turns also retain flattened text so existing context and summarization paths continue to work. The presentation selector changes only rendering: Novel keeps the existing text-first dialogue/log; Visual novel stages the latest turn with narration, dialogue nameplates, and character portrait/placeholder slots; Chat renders the full history as avatar bubbles with distinct narration and scene events. The uploaded persona image appears in Visual novel and Chat when its speaker matches the configured persona. The selected mode is an app-wide local preference, not per-journey state. Visual novel progress is stored as an entry/block cursor. Skipping opens a local review of the original later blocks and events; it does not issue an extra LLM request. User messages carry a checkpoint of journey context. Sending from an earlier block archives the current timeline, trims active conversation to that block, restores its checkpoint, and begins a new continuation. Alternate timelines preserve their conversation, map destination, scene, journey memory, and summary in IndexedDB and journey exports.
 
 ## Static-hosting constraints
 

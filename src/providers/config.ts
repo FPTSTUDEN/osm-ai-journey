@@ -3,6 +3,7 @@ import type { UserSettings } from '../types/domain'
 export const OPENFREEMAP_STYLE = 'https://tiles.openfreemap.org/styles/bright'
 
 export const DEFAULT_SETTINGS: UserSettings = {
+  storyPresentationMode: 'novel',
   llmProvider: 'ollama',
   llmBaseUrl: 'http://localhost:11434/v1',
   llmModel: 'llama3.2',

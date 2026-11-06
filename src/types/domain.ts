@@ -44,7 +44,10 @@ export type PlacePhoto = {
   photoCoordinates?: Coordinates
 }
 
+export type StoryPresentationMode = 'novel' | 'visual-novel' | 'chat'
+
 export type UserSettings = {
+  storyPresentationMode?: StoryPresentationMode
   llmProvider: 'ollama' | 'openai' | 'lmstudio' | 'vllm' | 'custom'
   llmBaseUrl: string
   llmModel: string
@@ -68,16 +71,18 @@ export type NarrativeEvent = {
   placeId?: string
 }
 
-export type ChatEntry = {
-  id: string
-  /** `event` entries are app-generated narration (e.g. arrivals); they are never sent to the model as a user turn. */
-  role: 'user' | 'assistant' | 'event'
-  text: string
-  createdAt: string
+export type StoryBlock =
+  | { id: string; type: 'prose' | 'narration' | 'scene'; text: string }
+  | { id: string; type: 'dialogue'; speaker: string; text: string }
+
+export type StoryTurn = {
+  format: 'structured' | 'plain-text'
+  blocks: StoryBlock[]
 }
 
-export type JourneyState = {
-  id: 'active'
+export type StoryProgress = { entryId: string; blockIndex: number }
+
+export type JourneyTimeline = {
   currentDestination: Place | null
   mapViewport?: MapViewport | null
   destinationHistory: Place[]
@@ -88,4 +93,29 @@ export type JourneyState = {
   userFacts: string[]
   narrativeEvents: NarrativeEvent[]
   conversationSummary?: string
+  storyProgress?: StoryProgress | null
+}
+
+export type StoryCheckpoint = Omit<JourneyTimeline, 'messages' | 'storyProgress'>
+
+export type StoryBranch = {
+  id: string
+  label: string
+  createdAt: string
+  snapshot: JourneyTimeline
+}
+
+export type ChatEntry = {
+  id: string
+  /** `event` entries are app-generated narration (e.g. arrivals); they are never sent to the model as a user turn. */
+  role: 'user' | 'assistant' | 'event'
+  text: string
+  storyTurn?: StoryTurn
+  checkpoint?: StoryCheckpoint
+  createdAt: string
+}
+
+export type JourneyState = JourneyTimeline & {
+  id: 'active'
+  branches?: StoryBranch[]
 }

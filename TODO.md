@@ -13,29 +13,29 @@ Expand the existing journey and roleplay app into three interchangeable story pr
 
 ## Phase 1: Story turn model and compatibility
 
-- [ ] Define an ordered story-block schema for narration, character dialogue, and scene changes, with stable IDs and speaker identity where relevant.
-- [ ] Normalize structured LLM responses and plain-text responses into the same internal story-turn representation; malformed or unsupported structured output must fall back without losing text.
-- [ ] Update prompt/context assembly to request the structured turn format while continuing to use the selected LLM and existing provider contract.
-- [ ] Preserve current free-form user input, streaming cancellation, retry, and conversation summarization behavior.
-- [ ] Migrate or normalize existing persisted `ChatEntry` and journey data so existing journeys remain readable.
-- [ ] Add unit tests for valid structured responses, plain-text fallback, malformed output, ordering, and legacy journey data.
+- [x] Define an ordered story-block schema for narration, character dialogue, and scene changes, with stable IDs and speaker identity where relevant.
+- [x] Normalize structured LLM responses and plain-text responses into the same internal story-turn representation; malformed or unsupported structured output must fall back without losing text.
+- [x] Update prompt/context assembly to request the structured turn format while continuing to use the selected LLM and existing provider contract.
+- [x] Preserve current free-form user input, streaming cancellation, retry, and conversation summarization behavior.
+- [x] Migrate or normalize existing persisted `ChatEntry` and journey data so existing journeys remain readable.
+- [x] Add unit tests for valid structured responses, plain-text fallback, malformed output, ordering, and legacy journey data.
 
 ## Phase 2: Mode selection and shared content rendering
 
-- [ ] Add Novel, Visual novel, and Chat as the app's story presentation modes and persist the selection using the existing settings/journey storage conventions.
-- [ ] Replace the single-purpose “Show companion” top-bar toggle with a mode selector; decide whether artwork visibility also needs a separate preference.
-- [ ] Keep the current prose presentation as Novel mode, including the existing composer and story controls.
-- [ ] Add the Chat renderer with speaker avatars/bubbles and visually distinct narration and scene events.
-- [ ] Add the Visual novel renderer with a stable scene stage, dialogue/nameplate treatment, and left/right character illustration slots.
-- [ ] Keep destination/map panels, journey state, and persona behavior consistent when switching modes.
+- [x] Add Novel, Visual novel, and Chat as app-wide story presentation modes and persist the selection in browser settings.
+- [x] Replace the single-purpose “Show companion” top-bar toggle with a mode selector; show uploaded companion art automatically in Visual novel mode, with no separate visibility toggle.
+- [x] Keep the current prose presentation as Novel mode, including the existing composer and story controls.
+- [x] Add the Chat renderer with speaker avatars/bubbles and visually distinct narration and scene events.
+- [x] Add the Visual novel renderer with a stable scene stage, dialogue/nameplate treatment, and left/right character portrait/placeholder slots.
+- [x] Keep destination/map panels, journey state, and persona behavior consistent when switching modes.
 
 ## Phase 3: Visual novel pacing and history
 
-- [ ] Add click/keyboard progression for story blocks without blocking free-text input or requiring a click after every beat.
-- [ ] Add a visible Skip action that advances through pending story content and opens a summary panel of skipped dialogue and events.
-- [ ] Let users review the summary and return to the current scene; preserve access to the underlying story history.
-- [ ] Define rewind behavior for dialogue and scene history, including how continuing from an earlier point affects later events and journey state.
-- [ ] Ensure progression, skip, summary, rewind, and retry keep the displayed story and LLM conversation context in sync.
+- [x] Add click/keyboard progression for story blocks without blocking free-text input or requiring a click after every beat.
+- [x] Add a visible Skip action that advances through pending story content and opens a review panel of skipped dialogue and events.
+- [x] Let users review skipped content and return to the current scene; preserve access to the underlying story history.
+- [x] Preserve later history as a returnable alternate branch when continuing from an earlier dialogue or scene; restore its destination, scene, memory, and conversation checkpoint.
+- [x] Ensure progression, skip, summary, rewind, and retry keep the displayed story and LLM conversation context in sync.
 
 ## Phase 4: Character artwork and accessibility
 

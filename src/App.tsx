@@ -25,7 +25,8 @@ function App() {
     destinationHistory, setDestinationHistory, currentScene, setCurrentScene, narrativeEvents,
     setNarrativeEvents, knownPeople, setKnownPeople, knownEntities, setKnownEntities, userFacts,
     setUserFacts, conversationSummary, setConversationSummary, summaryMessageCount,
-    setSummaryMessageCount, journeyReady, applyJourney: applyJourneyState,
+    setSummaryMessageCount, journeyReady, storyProgress, setStoryProgress, branches,
+    checkpoint, forkAt, switchBranch, applyJourney: applyJourneyState,
     resetJourney: resetJourneyState, snapshot: journeySnapshot, deleteJourney: deleteSavedJourney,
     appendArrival,
   } = useJourney()
@@ -48,6 +49,9 @@ function App() {
     summaryMessageCount,
     setSummaryMessageCount,
     setConversationSummary,
+    checkpoint: checkpoint(),
+    onForkTimeline: forkStoryTimeline,
+    onStoryProgressChange: setStoryProgress,
     onUserMessage: (text) => setNarrativeEvents((current) => [...current, newJourneyEvent('message', text)]),
   })
   const { llmState, llmError, animatedEntryId, summaryState } = chat
@@ -55,7 +59,7 @@ function App() {
   const [pendingDestination, setPendingDestination] = useState<Place | null>(null)
   const [routeState, setRouteState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [routeMessage, setRouteMessage] = useState('')
-  const [showCompanion, setShowCompanion] = useState(false)
+  const presentationMode = settings.storyPresentationMode ?? 'novel'
   const localPmtiles = useLocalPmtiles()
   const [arrivalCard, setArrivalCard] = useState<string | null>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
@@ -135,16 +139,34 @@ function App() {
     void completeTransition(place, false)
   }
 
-  function sendMessage(event: React.FormEvent) {
+  function sendMessage(event: React.FormEvent, rewindTo?: typeof storyProgress) {
     event.preventDefault()
     const trimmed = message.trim()
     if (!trimmed) return
     setMessage('')
-    chat.send(trimmed)
+    chat.send(trimmed, false, presentationMode === 'visual-novel' ? rewindTo : null)
+  }
+
+  function switchStoryBranch(branchId: string) {
+    switchBranch(branchId)
+    setRoute(null)
+    setPendingDestination(null)
+    setRouteState('idle')
+    setRouteMessage('')
+    setSelectedPhoto(null)
+  }
+
+  function forkStoryTimeline(messagesOnBranch: Parameters<typeof forkAt>[0], checkpointAtBranch: Parameters<typeof forkAt>[1], progress: Parameters<typeof forkAt>[2]) {
+    forkAt(messagesOnBranch, checkpointAtBranch, progress)
+    setRoute(null)
+    setPendingDestination(null)
+    setRouteState('idle')
+    setRouteMessage('')
+    setSelectedPhoto(null)
   }
 
   return (
-    <main className={`app-shell ${storyMode ? 'story-mode' : 'explore-mode'} ${storyMode && storyPanels.includes('map') && storyPanels.includes('destination') ? 'story-map-and-destination' : ''} ${storyMode && storyPanels.includes('destination') && storyPanels.includes('travelogue') ? 'story-panels-stacked' : ''}`}>
+    <main className={`app-shell presentation-${presentationMode} ${storyMode ? 'story-mode' : 'explore-mode'} ${storyMode && storyPanels.includes('map') && storyPanels.includes('destination') ? 'story-map-and-destination' : ''} ${storyMode && storyPanels.includes('destination') && storyPanels.includes('travelogue') ? 'story-panels-stacked' : ''}`}>
       <header className="topbar">
         <div className="brand-lockup">
           <div className="brand-mark" aria-hidden="true">✦</div>
@@ -158,9 +180,14 @@ function App() {
           <button className="mode-toggle" type="button" onClick={toggleMode} aria-pressed={storyMode}>
             {storyMode ? 'Story' : 'Explore'}
           </button>
-          <button className={`companion-top-toggle ${showCompanion ? 'active' : ''}`} type="button" onClick={() => setShowCompanion((visible) => !visible)} aria-pressed={showCompanion} aria-label={showCompanion ? 'Hide companion' : 'Show companion'}>
-            <span aria-hidden="true">✦</span><span>{showCompanion ? 'Hide companion' : 'Show companion'}</span>
-          </button>
+          <label className="story-presentation-control">
+            <span className="sr-only">Story presentation</span>
+            <select aria-label="Story presentation" value={presentationMode} onChange={(event) => setSettings((current) => ({ ...current, storyPresentationMode: event.target.value as NonNullable<typeof current.storyPresentationMode> }))}>
+              <option value="novel">Novel</option>
+              <option value="visual-novel">Visual novel</option>
+              <option value="chat">Chat</option>
+            </select>
+          </label>
           <button ref={settingsButton} className="icon-button" onClick={() => setShowSettings((visible) => !visible)} aria-label="Toggle settings">⚙</button>
         </div>
       </header>
@@ -212,7 +239,11 @@ function App() {
           destinationName={selectedPlace?.name ?? null}
           destinationCount={destinationHistory.length}
           routesEnabled={settings.calculateWalkingRoutes}
-          companionVisible={showCompanion}
+          presentationMode={presentationMode}
+          storyProgress={storyProgress}
+          onStoryProgressChange={setStoryProgress}
+          branches={branches}
+          onSwitchBranch={switchStoryBranch}
           animatedEntryId={animatedEntryId}
           companionImageUrl={companionImageUrl}
         />

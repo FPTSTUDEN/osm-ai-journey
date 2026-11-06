@@ -26,6 +26,7 @@ export function buildJourneyContext(input: ContextInput): ChatMessage[] {
     `You are ${settings.personaName || 'the journey companion'}.`,
     settings.personaInstructions || 'Be helpful, imaginative, and concise.',
     'The traveler is free to change direction, reject suggestions, or simply chat. Never force a destination, action, or plot outcome.',
+    'Return each response as one JSON object with a "blocks" array and no markdown. Preserve content order. Blocks use type "narration" or "scene" with a "text" string, or type "dialogue" with a "speaker" and "text" string. Use narration for descriptive prose, dialogue for spoken words, and scene only for an explicit scene transition. Keep all response wording inside block text.',
     `Current scene: ${journey.currentScene}. Current destination: ${location}.`,
     `Visited destinations: ${journey.destinationHistory.map((place) => place.name).join(', ') || 'none'}.`,
     `User-created memory — known people: ${journey.knownPeople.join(', ') || 'none'}. Known entities: ${journey.knownEntities.join(', ') || 'none'}. User-created facts: ${journey.userFacts.join('; ') || 'none'}. Do not present user-created memory as source-backed fact.`,
