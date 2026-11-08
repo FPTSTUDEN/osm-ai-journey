@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { DialogueBox } from './components/DialogueBox'
 import { OpeningScreen } from './components/OpeningScreen'
 import { StoryPanels } from './components/StoryPanels'
@@ -11,17 +11,16 @@ import { useLocalPmtiles } from './hooks/useLocalPmtiles'
 import { useJourneyManagement } from './hooks/useJourneyManagement'
 import { useJourney, newJourneyEvent } from './hooks/useJourney'
 import { useChat } from './hooks/useChat'
-import type { Place, PlacePhoto, WalkingRoute } from './types/domain'
+import { DEFAULT_PERSONA, DEFAULT_PERSONA_ID, PERSONA_SPRITES } from './providers/config'
+import type { PersonaProfile, Place, PlacePhoto, WalkingRoute } from './types/domain'
 import './styles/app.css'
 
 function App() {
   const storyPanelState = useStoryPanels()
   const { storyMode, storyPanels, settingsOpen: showSettings, setSettingsOpen: setShowSettings, toggleStoryPanel, closeAllPanels, toggleMode, settingsButton } = storyPanelState
   const companionArtInputRef = useRef<HTMLInputElement>(null)
-  const appSettings = useAppSettings(showSettings, companionArtInputRef)
-  const { settings, setSettings, connectionState, connectionMessage, offlineStatus, offlineError, refreshOfflineStatus, clearOfflineData, checkLlmConnection, changeProvider, companionImageUrl, companionArtError, uploadCompanionArt, removeCompanionArt } = appSettings
   const {
-    selectedPlace, setSelectedPlace, mapViewport, setMapViewport, messages, setMessages,
+    selectedPlace, setSelectedPlace, personaId, setPersonaId, mapViewport, setMapViewport, messages, setMessages,
     destinationHistory, setDestinationHistory, currentScene, setCurrentScene, narrativeEvents,
     setNarrativeEvents, knownPeople, setKnownPeople, knownEntities, setKnownEntities, userFacts,
     setUserFacts, conversationSummary, setConversationSummary, summaryMessageCount,
@@ -30,6 +29,16 @@ function App() {
     resetJourney: resetJourneyState, snapshot: journeySnapshot, deleteJourney: deleteSavedJourney,
     appendArrival,
   } = useJourney()
+  const appSettings = useAppSettings(showSettings, companionArtInputRef, personaId)
+  const { settings, setSettings, connectionState, connectionMessage, offlineStatus, offlineError, refreshOfflineStatus, clearOfflineData, checkLlmConnection, changeProvider, companionImageUrl, companionArtError, uploadCompanionArt, removeCompanionArt } = appSettings
+  const personaProfiles = settings.personaProfiles ?? [DEFAULT_PERSONA]
+  const activePersona = personaProfiles.find((profile) => profile.id === personaId) ?? personaProfiles[0] ?? DEFAULT_PERSONA
+  const activePersonaId = personaProfiles.some((profile) => profile.id === personaId) ? personaId : DEFAULT_PERSONA_ID
+  const personaImageUrl = companionImageUrl ?? PERSONA_SPRITES[activePersona.spriteId]?.src ?? PERSONA_SPRITES[DEFAULT_PERSONA.spriteId].src
+  const chatSettings = useMemo(() => ({ ...settings, personaName: activePersona.name, personaInstructions: activePersona.instructions }), [activePersona.instructions, activePersona.name, settings])
+  useEffect(() => {
+    if (personaId !== activePersonaId) setPersonaId(activePersonaId)
+  }, [activePersonaId, personaId, setPersonaId])
   const [message, setMessage] = useState('')
   const placeData = usePlaceData(selectedPlace, settings)
   const { context: placeContext, contextState, contextCached, photos: destinationPhotos, photosState, photosCached, weather, weatherState, weatherError, loadWeather } = placeData
@@ -40,11 +49,11 @@ function App() {
   const chat = useChat({
     entries: messages,
     setEntries: setMessages,
-    journey: { destinationHistory, currentScene, knownPeople, knownEntities, userFacts, conversationSummary },
+    journey: { personaId, destinationHistory, currentScene, knownPeople, knownEntities, userFacts, conversationSummary },
     place: selectedPlace,
     placeData,
     selectedPhoto,
-    settings,
+    settings: chatSettings,
     journeyReady,
     summaryMessageCount,
     setSummaryMessageCount,
@@ -139,6 +148,32 @@ function App() {
     void completeTransition(place, false)
   }
 
+  function updateActivePersona(updates: Partial<PersonaProfile>) {
+    setSettings((current) => ({
+      ...current,
+      personaProfiles: (current.personaProfiles ?? [DEFAULT_PERSONA]).map((profile) => profile.id === activePersona.id ? { ...profile, ...updates } : profile),
+    }))
+  }
+
+  function createPersona() {
+    const profile: PersonaProfile = {
+      id: crypto.randomUUID(),
+      name: `Persona ${personaProfiles.length}`,
+      instructions: DEFAULT_PERSONA.instructions,
+      spriteId: DEFAULT_PERSONA.spriteId,
+    }
+    setSettings((current) => ({ ...current, personaProfiles: [...(current.personaProfiles ?? [DEFAULT_PERSONA]), profile] }))
+    setPersonaId(profile.id)
+  }
+
+  function deleteActivePersona() {
+    if (activePersona.id === DEFAULT_PERSONA_ID) return
+    const nextProfiles = personaProfiles.filter((profile) => profile.id !== activePersona.id)
+    setSettings((current) => ({ ...current, personaProfiles: nextProfiles.length ? nextProfiles : [DEFAULT_PERSONA] }))
+    void removeCompanionArt(activePersona.id)
+    setPersonaId(DEFAULT_PERSONA_ID)
+  }
+
   function sendMessage(event: React.FormEvent, rewindTo?: typeof storyProgress) {
     event.preventDefault()
     const trimmed = message.trim()
@@ -227,7 +262,7 @@ function App() {
         />
         <DialogueBox
           entries={messages}
-          personaName={settings.personaName}
+          personaName={activePersona.name}
           message={message}
           onMessageChange={setMessage}
           onSubmit={sendMessage}
@@ -245,7 +280,7 @@ function App() {
           branches={branches}
           onSwitchBranch={switchStoryBranch}
           animatedEntryId={animatedEntryId}
-          companionImageUrl={companionImageUrl}
+          companionImageUrl={personaImageUrl}
         />
       </section>
 
@@ -256,6 +291,15 @@ function App() {
         journeyActions={journeyActions}
         importInputRef={importInputRef}
         companionArtInputRef={companionArtInputRef}
+        personaProfiles={personaProfiles}
+        activePersona={activePersona}
+        activePersonaId={activePersonaId}
+        hasCustomPersonaArt={Boolean(companionImageUrl)}
+        personaArtUrl={personaImageUrl}
+        onPersonaSelect={setPersonaId}
+        onPersonaUpdate={updateActivePersona}
+        onPersonaCreate={createPersona}
+        onPersonaDelete={deleteActivePersona}
         localPmtiles={localPmtiles}
         conversationSummary={conversationSummary}
         summaryState={summaryState}

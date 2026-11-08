@@ -12,7 +12,8 @@ import { revealedTextLength } from '../src/components/typewriter'
 import { shouldSummarize } from '../src/hooks/chat'
 import { journeyJson, parseJourneyJson } from '../src/storage/journeyTransfer'
 import { normalizeMessages } from '../src/storage/messages'
-import { normalizeStoryPresentationMode } from '../src/storage/settings'
+import { normalizePersonaProfiles, normalizeStoryPresentationMode } from '../src/storage/settings'
+import { DEFAULT_PERSONA, DEFAULT_PERSONA_ID } from '../src/providers/config'
 import type { ChatEntry, Place } from '../src/types/domain'
 
 const place = (id: string, name: string, category?: string): Place => ({ id, name, category, coordinates: [2.35, 48.85], source: 'map' })
@@ -109,6 +110,7 @@ test('photo metadata is included as untrusted text context without image content
 test('journey export round-trips and rejects malformed data', () => {
   const journey = {
     id: 'active' as const,
+    personaId: 'wayfinder',
     currentDestination: place('current', 'Current'),
     mapViewport: null,
     destinationHistory: [place('current', 'Current')],
@@ -123,13 +125,16 @@ test('journey export round-trips and rejects malformed data', () => {
     branches: [{
       id: 'branch-1', label: 'Earlier future', createdAt: '2026-01-02T00:00:00.000Z',
       snapshot: {
-        currentDestination: place('current', 'Current'), mapViewport: null, destinationHistory: [place('current', 'Current')], currentScene: 2,
+        personaId: 'wayfinder', currentDestination: place('current', 'Current'), mapViewport: null, destinationHistory: [place('current', 'Current')], currentScene: 2,
         messages: [{ id: 'm1', role: 'user' as const, text: 'hello', createdAt: '2026-01-01T00:00:00.000Z' }],
         knownPeople: ['Ada'], knownEntities: [], userFacts: ['A fact'], narrativeEvents: [], conversationSummary: '', storyProgress: null,
       },
     }],
   }
   assert.deepEqual(parseJourneyJson(JSON.parse(journeyJson(journey))), JSON.parse(JSON.stringify(journey)))
+  const legacyJourney = { ...journey }
+  delete (legacyJourney as Partial<typeof journey>).personaId
+  assert.equal(parseJourneyJson(legacyJourney).personaId, 'wayfinder')
   assert.throws(() => parseJourneyJson({ id: 'wrong' }), /invalid id/)
 })
 
@@ -269,6 +274,19 @@ test('typewriter reveal advances with elapsed time and never exceeds the message
   assert.equal(revealedTextLength('abcdefghij', 100, 20), 2)
   assert.equal(revealedTextLength('abc', 10000), 3)
   assert.equal(revealedTextLength('abc', -10), 0)
+})
+
+test('persona profiles migrate legacy settings and normalize built-in sprite choices', () => {
+  const migrated = normalizePersonaProfiles(undefined, { personaName: 'My Guide', personaInstructions: 'Speak gently.' })
+  assert.deepEqual(migrated, [{ ...DEFAULT_PERSONA, name: 'My Guide', instructions: 'Speak gently.' }])
+  assert.equal(migrated[0].id, DEFAULT_PERSONA_ID)
+
+  const normalized = normalizePersonaProfiles([
+    { id: 'wayfinder', name: 'Wayfinder', instructions: 'Default', spriteId: 'aurelio' },
+    { id: 'custom', name: 'Custom', instructions: 'Custom prompt', spriteId: 'not-a-sprite' },
+  ])
+  assert.equal(normalized[1].spriteId, DEFAULT_PERSONA.spriteId)
+  assert.equal(normalizePersonaProfiles([]).length, 1)
 })
 
 test('story presentation settings accept supported modes and default invalid values to novel', () => {

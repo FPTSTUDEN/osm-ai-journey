@@ -93,8 +93,10 @@ export function useChat({
     const reply = newEntry('assistant', '')
     const requestHistory = retrying ? history : activeHistory
     const requestJourney = shouldFork
-      ? { ...journey, destinationHistory: checkpointAtTurn.destinationHistory, currentScene: checkpointAtTurn.currentScene, knownPeople: checkpointAtTurn.knownPeople, knownEntities: checkpointAtTurn.knownEntities, userFacts: checkpointAtTurn.userFacts, conversationSummary: checkpointAtTurn.conversationSummary ?? '' }
+      ? { ...journey, personaId: checkpointAtTurn.personaId ?? journey.personaId, destinationHistory: checkpointAtTurn.destinationHistory, currentScene: checkpointAtTurn.currentScene, knownPeople: checkpointAtTurn.knownPeople, knownEntities: checkpointAtTurn.knownEntities, userFacts: checkpointAtTurn.userFacts, conversationSummary: checkpointAtTurn.conversationSummary ?? '' }
       : journey
+    const requestPersona = settings.personaProfiles?.find((profile) => profile.id === requestJourney.personaId)
+    const requestSettings = requestPersona ? { ...settings, personaName: requestPersona.name, personaInstructions: requestPersona.instructions } : settings
     const requestPlace = shouldFork ? checkpointAtTurn.currentDestination : place
     const placeIsAtCheckpoint = !shouldFork || requestPlace?.id === place?.id
     const requestPhoto = placeIsAtCheckpoint ? selectedPhoto : null
@@ -125,7 +127,7 @@ export function useChat({
     const config = { baseUrl: settings.llmBaseUrl, model: settings.llmModel, apiKey: settings.llmApiKey }
     void import('../providers/context').then(({ buildJourneyContext }) => {
       const chatMessages = buildJourneyContext({
-        settings,
+        settings: requestSettings,
         selectedPlace: requestPlace,
         messages: requestHistory,
         userMessage: text,

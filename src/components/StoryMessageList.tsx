@@ -13,10 +13,6 @@ type Props = {
   onAdvance: () => void
 }
 
-function initials(name: string) {
-  return name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]?.toUpperCase() ?? '').join('') || '✦'
-}
-
 function visibleText(entry: ChatEntry, props: Props) {
   if (entry.role === 'assistant' && entry.id === props.animatedEntryId && !props.reduceMotion && entry.storyTurn?.format !== 'structured') {
     return entry.text.slice(0, props.revealedLength)
@@ -24,9 +20,9 @@ function visibleText(entry: ChatEntry, props: Props) {
   return entry.text
 }
 
-function CharacterAvatar({ name, imageUrl, side }: { name: string; imageUrl?: string | null; side?: string }) {
-  return <span className={`story-avatar ${side ? `story-avatar-${side}` : ''}`} aria-hidden="true">
-    {imageUrl ? <img src={imageUrl} alt="" /> : initials(name)}
+function CharacterAvatar({ imageUrl, side }: { name: string; imageUrl?: string | null; side?: string }) {
+  return <span className={`story-avatar ${imageUrl ? '' : 'story-avatar-empty'} ${side ? `story-avatar-${side}` : ''}`} aria-hidden="true">
+    {imageUrl && <img src={imageUrl} alt="" />}
   </span>
 }
 
@@ -38,7 +34,6 @@ function NovelEntry({ entry, props }: { entry: ChatEntry; props: Props }) {
 function ChatEntryView({ entry, props }: { entry: ChatEntry; props: Props }) {
   if (entry.role === 'event') return <div className="chat-narration chat-narration-event" key={entry.id}><span>Journey event</span><p>{entry.text}</p></div>
   if (entry.role === 'user') return <article className="chat-line chat-line-user" key={entry.id}>
-    <CharacterAvatar name="You" />
     <div className="chat-bubble"><span className="chat-speaker">You</span><p>{entry.text}</p></div>
   </article>
 
@@ -49,7 +44,7 @@ function ChatEntryView({ entry, props }: { entry: ChatEntry; props: Props }) {
         <span>{block.type === 'scene' ? 'Scene' : 'Narration'}</span><p>{block.text}</p>
       </div>
       const speaker = block.type === 'dialogue' ? block.speaker : props.personaName
-      const imageUrl = speaker.toLocaleLowerCase() === props.personaName.toLocaleLowerCase() ? props.companionImageUrl : null
+      const imageUrl = speaker.trim().toLocaleLowerCase() === props.personaName.trim().toLocaleLowerCase() ? props.companionImageUrl : null
       return <article className="chat-line" key={block.id}>
         <CharacterAvatar name={speaker} imageUrl={imageUrl} />
         <div className="chat-bubble"><span className="chat-speaker">{speaker}</span><p>{block.text}</p></div>
@@ -83,8 +78,7 @@ function VisualNovelEntry({ entry, props }: { entry: ChatEntry; props: Props }) 
 export function StoryMessageList(props: Props) {
   const conversationDepth = props.expanded || props.mode === 'chat' ? 'conversation-expanded' : 'conversation-latest'
   return <div className={`conversation ${conversationDepth} story-conversation story-conversation-${props.mode}`} role="log" aria-live="polite" aria-label="Journey story">
-    {props.mode === 'visual-novel' && <div className="vn-character-stage" aria-label="Story characters">
-      <div className="vn-character vn-character-left"><CharacterAvatar name="You" side="left" /><span>You</span></div>
+    {props.mode === 'visual-novel' && <div className="vn-character-stage" aria-label="Story character">
       <div className="vn-character vn-character-right"><CharacterAvatar name={props.personaName} imageUrl={props.companionImageUrl} side="right" /><span>{props.personaName}</span></div>
     </div>}
     <div className={`story-entry-list ${props.mode === 'visual-novel' ? 'story-entry-list-vn' : ''}`}>

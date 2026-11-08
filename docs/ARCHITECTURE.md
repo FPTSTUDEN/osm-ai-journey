@@ -45,8 +45,10 @@ MapLibre uses OpenFreeMap's public vector style initially. A user may instead se
 
 ## Persistence
 
-- `localStorage`: provider settings, feature toggles, UI preferences, and the app-wide story presentation mode (`novel`, `visual-novel`, or `chat`). Invalid or missing mode values normalize to `novel`.
-- IndexedDB: journey records, chat messages, destination snapshots, and online geocoder results.
+- `localStorage`: provider settings, UI preferences, story presentation mode, and persona profile definitions. Legacy `personaName`/`personaInstructions` settings migrate into the built-in Wayfinder profile.
+- Journey IndexedDB records: active persona ID, persisted alongside destination, scene, messages, progress, checkpoints, and branches; older records default to Wayfinder.
+- IndexedDB `companion-art`: optional uploaded portrait blobs keyed by persona ID. The legacy `active` portrait is used as the Wayfinder portrait when no keyed portrait exists.
+- IndexedDB: journey records (including chat messages, destination snapshots, progress, and branches) and online geocoder results.
 - Cache Storage: static assets and recently viewed map resources through the service worker.
 - Local PMTiles archives: held as a selected browser `File` for the current session; no server or cache copy is created.
 
@@ -72,7 +74,7 @@ Journey state is intentionally soft. It coordinates map and narrative consistenc
 - Per-user-turn journey checkpoints and returnable alternate timeline snapshots
 - Suggested actions, which are never required
 
-Older persisted assistant messages are normalized to one prose block on read. Structured turns also retain flattened text so existing context and summarization paths continue to work. The presentation selector changes only rendering: Novel keeps the existing text-first dialogue/log; Visual novel stages the latest turn with narration, dialogue nameplates, and character portrait/placeholder slots; Chat renders the full history as avatar bubbles with distinct narration and scene events. The uploaded persona image appears in Visual novel and Chat when its speaker matches the configured persona. The selected mode is an app-wide local preference, not per-journey state. Visual novel progress is stored as an entry/block cursor. Skipping opens a local review of the original later blocks and events; it does not issue an extra LLM request. User messages carry a checkpoint of journey context. Sending from an earlier block archives the current timeline, trims active conversation to that block, restores its checkpoint, and begins a new continuation. Alternate timelines preserve their conversation, map destination, scene, journey memory, and summary in IndexedDB and journey exports.
+Older persisted assistant messages are normalized to one prose block on read. Structured turns also retain flattened text so existing context and summarization paths continue to work. The presentation selector changes only rendering: Novel keeps the existing text-first dialogue/log; Visual novel stages the latest turn with narration, dialogue nameplates, and character portrait/placeholder slots; Chat renders the full history as avatar bubbles with distinct narration and scene events. Persona profiles are global settings containing natural-language instructions and a bundled sprite choice; optional uploaded portraits are stored separately by persona ID. Each journey persists its active persona ID, so the selected profile supplies both the LLM instructions and the displayed portrait. The traveler has no sprite; NPC speaker avatars remain blank until NPC identity/portrait management is implemented. The selected presentation mode is an app-wide local preference, not per-journey state. Visual novel progress is stored as an entry/block cursor. Skipping opens a local review of the original later blocks and events; it does not issue an extra LLM request. User messages carry a checkpoint of journey context. Sending from an earlier block archives the current timeline, trims active conversation to that block, restores its checkpoint, and begins a new continuation. Alternate timelines preserve their conversation, map destination, scene, journey memory, and summary in IndexedDB and journey exports.
 
 ## Static-hosting constraints
 

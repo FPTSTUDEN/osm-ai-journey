@@ -1,4 +1,5 @@
 import type { JourneyState, JourneyTimeline, StoryBranch, StoryProgress } from '../types/domain'
+import { DEFAULT_PERSONA_ID } from '../providers/config'
 import { get, put, remove } from './db'
 import { normalizeMessages } from './messages'
 
@@ -21,6 +22,7 @@ function normalizeTimeline(value: unknown): JourneyTimeline | null {
     || !Array.isArray(timeline.destinationHistory) || typeof timeline.currentScene !== 'number' || !Number.isInteger(timeline.currentScene)
     || !Array.isArray(timeline.knownPeople) || !Array.isArray(timeline.knownEntities) || !Array.isArray(timeline.userFacts) || !Array.isArray(timeline.narrativeEvents)) return null
   return {
+    personaId: typeof timeline.personaId === 'string' ? timeline.personaId : DEFAULT_PERSONA_ID,
     currentDestination: timeline.currentDestination ?? null,
     mapViewport: timeline.mapViewport ?? null,
     destinationHistory: timeline.destinationHistory,

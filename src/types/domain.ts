@@ -46,8 +46,18 @@ export type PlacePhoto = {
 
 export type StoryPresentationMode = 'novel' | 'visual-novel' | 'chat'
 
+export type PersonaSpriteId = 'aurelio' | 'aurelio-watercolor' | 'aurelio-ink' | 'aurelio-anime' | 'historian-watercolor' | 'historian-noir' | 'historian-ink' | 'historian-anime'
+
+export type PersonaProfile = {
+  id: string
+  name: string
+  instructions: string
+  spriteId: PersonaSpriteId
+}
+
 export type UserSettings = {
   storyPresentationMode?: StoryPresentationMode
+  personaProfiles?: PersonaProfile[]
   llmProvider: 'ollama' | 'openai' | 'lmstudio' | 'vllm' | 'custom'
   llmBaseUrl: string
   llmModel: string
@@ -83,6 +93,7 @@ export type StoryTurn = {
 export type StoryProgress = { entryId: string; blockIndex: number }
 
 export type JourneyTimeline = {
+  personaId?: string
   currentDestination: Place | null
   mapViewport?: MapViewport | null
   destinationHistory: Place[]

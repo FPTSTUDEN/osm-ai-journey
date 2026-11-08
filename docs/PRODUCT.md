@@ -22,7 +22,9 @@ Osm AI Journey turns map exploration into an open-ended narrative journey. A use
 - Visual novel separates narration, dialogue, and scene changes on a character stage; it shows the uploaded persona illustration when available and keeps a placeholder for the traveler.
 - Chat uses speaker avatars and bubbles, with narration and scene events presented separately.
 - The selected presentation is an app-wide browser preference and survives reloads; changing it does not change journey state or conversation history.
-- Companion artwork is shown automatically in Visual novel mode; there is no separate visibility toggle. The existing upload/remove control remains in settings.
+- Personas are reusable profiles with natural-language instructions and a portrait. The built-in Wayfinder persona and portrait are ready to use; users can create/edit/select additional profiles and choose a bundled sprite or upload a portrait.
+- The active persona is saved per journey and controls both the LLM persona instructions and speaker portrait. Legacy single-persona settings and uploaded companion art migrate to the built-in profile.
+- The traveler is first-person and has no sprite. NPC identities and portraits are deferred; NPCs have blank avatars/placeholders for now.
 - All modes share the same ordered `StoryTurn` blocks and free-text composer. In Visual novel mode, previous/next controls, stage clicks, and left/right arrow keys move through story blocks; text input remains usable at any point.
 - Skip jumps to the end of the remaining story and opens a review panel with the original skipped dialogue and events. Closing it returns to the current scene; the full log remains available.
 - Rewinding and continuing creates a returnable alternate timeline. The selected point's destination, scene, conversation, and journey memory are restored for the new continuation.

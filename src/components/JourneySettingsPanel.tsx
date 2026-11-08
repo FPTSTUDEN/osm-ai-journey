@@ -3,6 +3,7 @@ import { SettingsDrawer } from './SettingsDrawer'
 import type { useAppSettings } from '../hooks/useAppSettings'
 import type { useLocalPmtiles } from '../hooks/useLocalPmtiles'
 import type { useJourneyManagement } from '../hooks/useJourneyManagement'
+import type { PersonaProfile } from '../types/domain'
 
 type Props = {
   open: boolean
@@ -11,6 +12,15 @@ type Props = {
   journeyActions: ReturnType<typeof useJourneyManagement>
   importInputRef: RefObject<HTMLInputElement | null>
   companionArtInputRef: RefObject<HTMLInputElement | null>
+  personaProfiles: PersonaProfile[]
+  activePersona: PersonaProfile
+  activePersonaId: string
+  hasCustomPersonaArt: boolean
+  personaArtUrl: string
+  onPersonaSelect: (personaId: string) => void
+  onPersonaUpdate: (updates: Partial<PersonaProfile>) => void
+  onPersonaCreate: () => void
+  onPersonaDelete: () => void
   localPmtiles: ReturnType<typeof useLocalPmtiles>
   conversationSummary: string
   summaryState: 'idle' | 'loading'
@@ -19,7 +29,7 @@ type Props = {
   memory: { people: string[]; entities: string[]; facts: string[] }
 }
 
-export function JourneySettingsPanel({ open, onClose, appSettings, journeyActions, importInputRef, companionArtInputRef, localPmtiles, conversationSummary, summaryState, destinationCount, eventCount, memory }: Props) {
+export function JourneySettingsPanel({ open, onClose, appSettings, journeyActions, importInputRef, companionArtInputRef, personaProfiles, activePersona, activePersonaId, hasCustomPersonaArt, personaArtUrl, onPersonaSelect, onPersonaUpdate, onPersonaCreate, onPersonaDelete, localPmtiles, conversationSummary, summaryState, destinationCount, eventCount, memory }: Props) {
   if (!open) return null
   return <SettingsDrawer
     settings={appSettings.settings}
@@ -27,8 +37,17 @@ export function JourneySettingsPanel({ open, onClose, appSettings, journeyAction
     onProviderChange={appSettings.changeProvider}
     onClose={onClose}
     companionArtInputRef={companionArtInputRef}
-    onUploadCompanionArt={(file) => void appSettings.uploadCompanionArt(file)}
-    onRemoveCompanionArt={() => void appSettings.removeCompanionArt()}
+    personaProfiles={personaProfiles}
+    activePersona={activePersona}
+    activePersonaId={activePersonaId}
+    hasCustomPersonaArt={hasCustomPersonaArt}
+    personaArtUrl={personaArtUrl}
+    onPersonaSelect={onPersonaSelect}
+    onPersonaUpdate={onPersonaUpdate}
+    onPersonaCreate={onPersonaCreate}
+    onPersonaDelete={onPersonaDelete}
+    onUploadCompanionArt={(file) => void appSettings.uploadCompanionArt(file, activePersona.id)}
+    onRemoveCompanionArt={() => void appSettings.removeCompanionArt(activePersona.id)}
     companionArtError={appSettings.companionArtError}
     connectionState={appSettings.connectionState}
     connectionMessage={appSettings.connectionMessage}

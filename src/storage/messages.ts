@@ -21,6 +21,7 @@ function isStoryCheckpoint(value: unknown): value is StoryCheckpoint {
   if (!value || typeof value !== 'object') return false
   const checkpoint = value as Partial<StoryCheckpoint>
   return (checkpoint.currentDestination === null || Boolean(checkpoint.currentDestination && typeof checkpoint.currentDestination === 'object'))
+    && (checkpoint.personaId === undefined || typeof checkpoint.personaId === 'string')
     && Array.isArray(checkpoint.destinationHistory)
     && typeof checkpoint.currentScene === 'number'
     && Number.isInteger(checkpoint.currentScene)

@@ -37,12 +37,17 @@ Expand the existing journey and roleplay app into three interchangeable story pr
 - [x] Preserve later history as a returnable alternate branch when continuing from an earlier dialogue or scene; restore its destination, scene, memory, and conversation checkpoint.
 - [x] Ensure progression, skip, summary, rewind, and retry keep the displayed story and LLM conversation context in sync.
 
-## Phase 4: Character artwork and accessibility
+## Phase 4: Persona profiles and presentation accessibility
 
-- [ ] Associate illustrations with character/speaker identities so the correct character appears for each dialogue block; retain a graceful placeholder when art is unavailable.
-- [ ] Reuse browser-local artwork where suitable and define the UI for adding or removing character illustrations.
-- [ ] Make scene composition responsive for mobile and desktop, with no overlap with the map, panels, or composer.
-- [ ] Support keyboard operation, screen-reader labels for controls and speakers, reduced motion, and readable contrast in all three modes.
+Focus character artwork on user-selectable personas first. NPC identity tracking, NPC sprite assignment, and NPC rosters are deferred; NPCs have no sprite and use a blank avatar/placeholder for now. The traveler remains first-person with no sprite.
+
+- [x] Ship a default persona profile with natural-language instructions and a built-in default sprite.
+- [x] Let users create, edit, select, and remove multiple persona profiles, each with its own name, natural-language instructions, and configurable sprite.
+- [x] Persist the selected persona per journey so its instructions and sprite stay together when switching journeys.
+- [x] Use the active persona profile for LLM context and consistently render its sprite in Visual novel and Chat modes; retain a graceful placeholder if custom or default art is unavailable.
+- [x] Migrate existing single-persona settings and browser-local companion art without losing user configuration.
+- [x] Make scene composition responsive for mobile and desktop, with no overlap with the map, panels, or composer.
+- [x] Support keyboard operation, screen-reader labels for controls and speakers, reduced motion, and readable contrast in all three modes.
 
 ## Phase 5: Validation and documentation
 

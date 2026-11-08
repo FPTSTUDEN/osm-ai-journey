@@ -426,7 +426,7 @@ test('switches between novel, visual novel, and chat renderers with the same str
   await expect(page.getByText('Let’s find shelter.', { exact: true })).toBeVisible()
 
   await mode.selectOption('visual-novel')
-  await expect(page.locator('.vn-character-left')).toContainText('You')
+  await expect(page.locator('.vn-character-left')).toHaveCount(0)
   await expect(page.locator('.vn-character-right')).toContainText('The Wayfinder')
   await expect(page.locator('.vn-narration')).toContainText('Rain begins to fall.')
   await page.getByRole('button', { name: 'Next story block' }).click()
@@ -567,15 +567,15 @@ test('Log expands and reduced motion displays streamed text immediately', async 
   await expect(page.locator('.conversation .message')).toHaveCount(1)
 })
 
-test('uploaded companion illustration persists as browser-local data', async ({ page }) => {
+test('default persona portrait uploads remain browser-local and appear in VN mode', async ({ page }) => {
   await resetBrowser(page)
   await page.getByRole('button', { name: 'Toggle settings' }).click()
-  await page.getByLabel('Companion illustration').setInputFiles({
+  await page.getByLabel('Use a custom portrait').setInputFiles({
     name: 'companion.png',
     mimeType: 'image/png',
     buffer: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
   })
-  await expect(page.getByRole('button', { name: 'Remove illustration' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Restore built-in sprite' })).toBeVisible()
   await page.getByRole('button', { name: 'Toggle settings' }).click()
   await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('visual-novel')
   await expect(page.locator('.vn-character-right img')).toBeVisible()
@@ -584,10 +584,100 @@ test('uploaded companion illustration persists as browser-local data', async ({ 
   await expect(page.locator('.vn-character-right img')).toBeVisible()
 })
 
-test('dialogue box does not overlap open panels at desktop, tablet, or mobile widths', async ({ page }) => {
+test('custom persona profiles save their prompt, sprite, portrait, and per-journey selection', async ({ page }) => {
+  let requestMessages = []
+  const reply = JSON.stringify({ blocks: [
+    { type: 'dialogue', speaker: 'Mira', text: 'We can take the quieter street.' },
+    { type: 'dialogue', speaker: 'A local', text: 'The riverside path is open.' },
+  ] })
+  await page.route('http://localhost:11434/v1/chat/completions', async (route) => {
+    const body = route.request().postDataJSON()
+    requestMessages = body.messages
+    return route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: `data: ${JSON.stringify({ choices: [{ delta: { content: reply } }] })}\n\ndata: [DONE]\n\n`,
+    })
+  })
+  await resetBrowser(page)
+  await page.getByRole('button', { name: 'Toggle settings' }).click()
+  await page.getByRole('button', { name: 'New persona' }).click()
+  await page.getByLabel('Persona name').fill('Mira')
+  await page.getByLabel('Persona instructions').fill('Use short, thoughtful sentences.')
+  await page.getByLabel('Built-in sprite').selectOption('historian-noir')
+  await expect(page.locator('.persona-art-preview img')).toHaveAttribute('src', '/sprites/historian-sprite-noir.png')
+  await page.getByLabel('Use a custom portrait').setInputFiles({
+    name: 'mira.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+  })
+  await expect(page.locator('.persona-art-preview')).toContainText('Custom portrait')
+  await page.getByRole('button', { name: 'Restore built-in sprite' }).click()
+  await expect(page.locator('.persona-art-preview img')).toHaveAttribute('src', '/sprites/historian-sprite-noir.png')
+  await page.getByLabel('Use a custom portrait').setInputFiles({
+    name: 'mira.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+  })
+  await page.getByRole('button', { name: 'Toggle settings' }).click()
+  await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('visual-novel')
+  await page.getByPlaceholder(/Speak freely/).fill('Which way?')
+  await page.getByRole('button', { name: 'Send message' }).click()
+  await expect(page.locator('.vn-dialogue')).toContainText('We can take the quieter street.')
+  expect(requestMessages[0].content).toContain('You are Mira.')
+  expect(requestMessages[0].content).toContain('Use short, thoughtful sentences.')
+  await expect(page.locator('.vn-character-right img')).toBeVisible()
+  await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('chat')
+  await expect(page.locator('.chat-assistant-turn .story-avatar img').first()).toBeVisible()
+  await expect(page.locator('.chat-line-user .story-avatar')).toHaveCount(0)
+  await expect(page.locator('.chat-assistant-turn .story-avatar-empty')).toBeVisible()
+  await page.waitForTimeout(450)
+  await page.reload()
+  await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('visual-novel')
+  await expect(page.locator('.vn-character-right')).toContainText('Mira')
+  await expect(page.locator('.vn-character-right img')).toBeVisible()
+  await page.getByRole('button', { name: 'Toggle settings' }).click()
+  await expect(page.getByRole('combobox', { name: 'Active persona' })).toContainText('Mira')
+  await expect(page.getByLabel('Persona name')).toHaveValue('Mira')
+})
+
+test('legacy persona settings and companion art migrate to the default persona profile', async ({ page }) => {
+  await resetBrowser(page)
+  await page.evaluate(async () => {
+    const key = 'osm-ai-journey.settings.v1'
+    const legacy = JSON.parse(localStorage.getItem(key) ?? '{}')
+    delete legacy.personaProfiles
+    legacy.personaName = 'Legacy Guide'
+    legacy.personaInstructions = 'Use the old saved voice.'
+    localStorage.setItem(key, JSON.stringify(legacy))
+    const request = indexedDB.open('osm-ai-journey', 4)
+    await new Promise((resolve, reject) => {
+      request.onsuccess = () => {
+        const database = request.result
+        const transaction = database.transaction('companion-art', 'readwrite')
+        transaction.objectStore('companion-art').put({ key: 'active', image: new Blob(['legacy portrait'], { type: 'image/png' }) })
+        transaction.oncomplete = () => { database.close(); resolve() }
+        transaction.onerror = () => reject(transaction.error)
+      }
+      request.onerror = () => reject(request.error)
+    })
+  })
+  await page.reload()
+  await page.getByRole('button', { name: 'Toggle settings' }).click()
+  await expect(page.getByLabel('Persona name')).toHaveValue('Legacy Guide')
+  await expect(page.getByLabel('Persona instructions')).toHaveValue('Use the old saved voice.')
+  await expect(page.locator('.persona-art-preview')).toContainText('Custom portrait')
+  await page.getByRole('button', { name: 'Toggle settings' }).click()
+  await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('visual-novel')
+  await expect(page.locator('.vn-character-right img')).toBeVisible()
+})
+
+test('visual novel portrait and dialogue box fit beside open panels at desktop, tablet, and mobile widths', async ({ page }) => {
   await mockSearch(page)
   await resetBrowser(page)
+  await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('visual-novel')
   await chooseOnlinePlace(page)
+  await expect(page.locator('.vn-character-right img')).toBeVisible()
   const dockButtons = page.locator('.story-dock button')
   await dockButtons.nth(1).click()
 

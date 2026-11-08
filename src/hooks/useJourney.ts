@@ -3,9 +3,10 @@ import { deleteActiveJourney, loadActiveJourney, saveActiveJourney } from '../st
 import { newEntry, starterEntries, STARTER_MESSAGE } from '../storage/messages'
 import type { ChatEntry, JourneyState, JourneyTimeline, MapViewport, NarrativeEvent, Place, StoryBranch, StoryCheckpoint, StoryProgress } from '../types/domain'
 import { latestStoryStop } from '../providers/storyFormat'
+import { DEFAULT_PERSONA_ID } from '../providers/config'
 
 function emptyJourney(): JourneyState {
-  return { id: 'active', currentDestination: null, mapViewport: null, destinationHistory: [], currentScene: 1, messages: starterEntries(), knownPeople: [], knownEntities: [], userFacts: [], narrativeEvents: [], conversationSummary: '', storyProgress: null, branches: [] }
+  return { id: 'active', personaId: DEFAULT_PERSONA_ID, currentDestination: null, mapViewport: null, destinationHistory: [], currentScene: 1, messages: starterEntries(), knownPeople: [], knownEntities: [], userFacts: [], narrativeEvents: [], conversationSummary: '', storyProgress: null, branches: [] }
 }
 
 export function newJourneyEvent(type: NarrativeEvent['type'], text: string, placeId?: string): NarrativeEvent {
@@ -14,6 +15,7 @@ export function newJourneyEvent(type: NarrativeEvent['type'], text: string, plac
 
 export function useJourney() {
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null)
+  const [personaId, setPersonaId] = useState(DEFAULT_PERSONA_ID)
   const [mapViewport, setMapViewport] = useState<MapViewport | null>(null)
   const [messages, setMessages] = useState<ChatEntry[]>(starterEntries)
   const [destinationHistory, setDestinationHistory] = useState<Place[]>([])
@@ -29,7 +31,7 @@ export function useJourney() {
   const [journeyReady, setJourneyReady] = useState(false)
 
   function timeline(): JourneyTimeline {
-    return { currentDestination: selectedPlace, mapViewport, destinationHistory, currentScene, messages, knownPeople, knownEntities, userFacts, narrativeEvents, conversationSummary, storyProgress }
+    return { personaId, currentDestination: selectedPlace, mapViewport, destinationHistory, currentScene, messages, knownPeople, knownEntities, userFacts, narrativeEvents, conversationSummary, storyProgress }
   }
 
   function checkpoint(): StoryCheckpoint {
@@ -38,6 +40,7 @@ export function useJourney() {
   }
 
   function restoreTimeline(snapshot: JourneyTimeline) {
+    setPersonaId(snapshot.personaId ?? DEFAULT_PERSONA_ID)
     setSelectedPlace(snapshot.currentDestination)
     setMapViewport(snapshot.mapViewport ?? null)
     setDestinationHistory(snapshot.destinationHistory)
@@ -53,6 +56,7 @@ export function useJourney() {
   }
 
   function restoreCheckpoint(snapshot: StoryCheckpoint) {
+    setPersonaId(snapshot.personaId ?? DEFAULT_PERSONA_ID)
     setSelectedPlace(snapshot.currentDestination)
     setMapViewport(snapshot.mapViewport ?? null)
     setDestinationHistory(snapshot.destinationHistory)
@@ -67,6 +71,7 @@ export function useJourney() {
   useEffect(() => {
     void loadActiveJourney().then((journey) => {
       const restored = journey ?? emptyJourney()
+      setPersonaId(restored.personaId ?? DEFAULT_PERSONA_ID)
       setSelectedPlace(restored.currentDestination)
       setMapViewport(restored.mapViewport ?? null)
       setDestinationHistory(restored.destinationHistory)
@@ -89,6 +94,7 @@ export function useJourney() {
     const timer = window.setTimeout(() => {
       void saveActiveJourney({
         id: 'active',
+        personaId,
         currentDestination: selectedPlace,
         mapViewport,
         destinationHistory,
@@ -104,9 +110,10 @@ export function useJourney() {
       })
     }, 400)
     return () => window.clearTimeout(timer)
-  }, [branches, conversationSummary, currentScene, destinationHistory, journeyReady, knownEntities, knownPeople, mapViewport, messages, narrativeEvents, selectedPlace, storyProgress, userFacts])
+  }, [branches, conversationSummary, currentScene, destinationHistory, journeyReady, knownEntities, knownPeople, mapViewport, messages, narrativeEvents, personaId, selectedPlace, storyProgress, userFacts])
 
   function applyJourney(journey: JourneyState) {
+    setPersonaId(journey.personaId ?? DEFAULT_PERSONA_ID)
     setSelectedPlace(journey.currentDestination)
     setMapViewport(journey.mapViewport ?? null)
     setDestinationHistory(journey.destinationHistory)
@@ -124,6 +131,7 @@ export function useJourney() {
 
   function resetJourney() {
     const journey = emptyJourney()
+    setPersonaId(DEFAULT_PERSONA_ID)
     setSelectedPlace(journey.currentDestination)
     setMapViewport(journey.mapViewport ?? null)
     setDestinationHistory(journey.destinationHistory)
@@ -183,6 +191,7 @@ export function useJourney() {
 
   return {
     selectedPlace, setSelectedPlace,
+    personaId, setPersonaId,
     mapViewport, setMapViewport,
     messages, setMessages,
     destinationHistory, setDestinationHistory,

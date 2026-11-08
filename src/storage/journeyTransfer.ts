@@ -1,4 +1,5 @@
 import type { JourneyState, JourneyTimeline, Place, StoryBranch, StoryProgress } from '../types/domain'
+import { DEFAULT_PERSONA_ID } from '../providers/config'
 import { normalizeMessages } from './messages'
 
 function isPlace(value: unknown): value is Place {
@@ -30,6 +31,7 @@ function parseTimeline(value: unknown): JourneyTimeline {
     ? { entryId: progress.entryId!, blockIndex: progress.blockIndex }
     : null
   return {
+    personaId: typeof timeline.personaId === 'string' ? timeline.personaId : DEFAULT_PERSONA_ID,
     currentDestination: timeline.currentDestination ?? null,
     mapViewport: timeline.mapViewport ?? null,
     destinationHistory: timeline.destinationHistory,
@@ -70,6 +72,7 @@ export function parseJourneyJson(value: unknown): JourneyState {
   if (!Array.isArray(journey.narrativeEvents) || !journey.narrativeEvents.every((item) => item && typeof item === 'object')) throw new Error('Journey file has invalid events')
   return {
     id: 'active',
+    personaId: typeof journey.personaId === 'string' ? journey.personaId : DEFAULT_PERSONA_ID,
     currentDestination: journey.currentDestination ?? null,
     mapViewport: journey.mapViewport ?? null,
     destinationHistory: journey.destinationHistory,
