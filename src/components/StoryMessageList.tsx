@@ -79,7 +79,7 @@ export function StoryMessageList(props: Props) {
   const conversationDepth = props.expanded || props.mode === 'chat' ? 'conversation-expanded' : 'conversation-latest'
   return <div className={`conversation ${conversationDepth} story-conversation story-conversation-${props.mode}`} role="log" aria-live="polite" aria-label="Journey story">
     {props.mode === 'visual-novel' && <div className="vn-character-stage" aria-label="Story character">
-      <div className="vn-character vn-character-right"><CharacterAvatar name={props.personaName} imageUrl={props.companionImageUrl} side="right" /><span>{props.personaName}</span></div>
+      <div className="vn-character vn-character-left"><CharacterAvatar name={props.personaName} imageUrl={props.companionImageUrl} side="left" /><span>{props.personaName}</span></div>
     </div>}
     <div className={`story-entry-list ${props.mode === 'visual-novel' ? 'story-entry-list-vn' : ''}`}>
       {props.entries.map((entry) => props.mode === 'chat'

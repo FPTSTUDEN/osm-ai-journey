@@ -201,7 +201,7 @@ function App() {
   }
 
   return (
-    <main className={`app-shell presentation-${presentationMode} ${storyMode ? 'story-mode' : 'explore-mode'} ${storyMode && storyPanels.includes('map') && storyPanels.includes('destination') ? 'story-map-and-destination' : ''} ${storyMode && storyPanels.includes('destination') && storyPanels.includes('travelogue') ? 'story-panels-stacked' : ''}`}>
+    <main className={`app-shell presentation-${presentationMode} ${storyMode ? 'story-mode' : 'explore-mode'} ${storyMode && storyPanels.length === 0 ? 'story-no-side-panels' : ''} ${storyMode && storyPanels.includes('map') && storyPanels.includes('destination') ? 'story-map-and-destination' : ''} ${storyMode && storyPanels.includes('destination') && storyPanels.includes('travelogue') ? 'story-panels-stacked' : ''}`}>
       <header className="topbar">
         <div className="brand-lockup">
           <div className="brand-mark" aria-hidden="true">✦</div>

@@ -83,7 +83,7 @@ export function DialogueBox({
   const [revealedLength, setRevealedLength] = useState(0)
   const revealStart = useRef<{ id: string; at: number } | null>(null)
   const latestEntry = entries.at(-1)
-  const progress = storyProgress ?? (latestEntry?.role === 'assistant' ? latestStoryStop(entries) : null)
+  const progress = storyProgress ?? latestStoryStop(entries)
   const allStops = storyStops(entries)
   const activeStopIndex = storyStopIndex(entries, progress)
   const activeEntry = progress ? entries.find((entry) => entry.id === progress.entryId) : latestEntry
@@ -171,11 +171,13 @@ export function DialogueBox({
             <option value="">Alternate timelines ({branches.length})</option>
             {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.label}</option>)}
           </select>}
-          {presentationMode === 'visual-novel' && activeEntry?.role === 'assistant' && progress && <div className="story-progress-controls" aria-label="Story progression">
-            <button type="button" onClick={() => moveProgress(-1)} disabled={!canMovePrevious} aria-label="Previous story block">‹</button>
-            <span>{activeStopIndex + 1}/{allStops.length}</span>
-            <button type="button" onClick={() => moveProgress(1)} disabled={!canMoveNext} aria-label="Next story block">›</button>
-            <button type="button" className="skip-story-button" onClick={skipToEnd} disabled={!skipped.length}>Skip</button>
+          {presentationMode === 'visual-novel' && <div className="story-progress-controls" aria-label="Story progression">
+            <button type="button" onClick={() => moveProgress(-1)} disabled={!progress || !canMovePrevious} aria-label="Previous story block">‹</button>
+            <span>{progress ? `${activeStopIndex + 1}/${allStops.length}` : 'Ready'}</span>
+            <button type="button" onClick={() => moveProgress(1)} disabled={!progress || !canMoveNext} aria-label="Next story block">›</button>
+            {progress
+              ? <button type="button" className="skip-story-button" onClick={skipToEnd} disabled={!skipped.length}>Skip</button>
+              : <span className="story-progress-hint">Send a message to start</span>}
           </div>}
           <button type="button" className="log-toggle" aria-expanded={expanded} onClick={() => setExpanded((open) => !open)}>{expanded ? 'Close log' : 'Log'}</button>
         </div>

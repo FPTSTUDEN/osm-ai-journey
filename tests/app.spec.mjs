@@ -402,6 +402,57 @@ test('renders structured assistant turns as readable story text', async ({ page 
   await expect(conversation).not.toContainText('"blocks"')
 })
 
+test('Visual novel navigation is visible and explains when a story has not started', async ({ page }) => {
+  await resetBrowser(page)
+  await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('visual-novel')
+  const controls = page.locator('.story-progress-controls')
+  await expect(controls).toBeVisible()
+  await expect(controls.getByRole('button', { name: 'Previous story block' })).toBeDisabled()
+  await expect(controls.getByRole('button', { name: 'Next story block' })).toBeDisabled()
+  await expect(controls).toContainText('Send a message to start')
+})
+
+test('keeps VN navigation available when the latest history entry is from the user', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  const turn = JSON.stringify({ blocks: [
+    { type: 'dialogue', speaker: 'The Wayfinder', text: 'The gate opens.' },
+    { type: 'dialogue', speaker: 'The Wayfinder', text: 'A lantern lights the path.' },
+  ] })
+  const responseBody = `data: ${JSON.stringify({ choices: [{ delta: { content: turn } }] })}\n\ndata: [DONE]\n\n`
+  let requestCount = 0
+  let releaseSecondResponse
+  let resolveSecondRequest
+  const secondRequestStarted = new Promise((resolve) => { resolveSecondRequest = resolve })
+  await page.route('http://localhost:11434/v1/chat/completions', async (route) => {
+    requestCount += 1
+    if (requestCount === 2) {
+      resolveSecondRequest()
+      await new Promise((resolve) => {
+        releaseSecondResponse = async () => { await route.fulfill({ status: 200, contentType: 'text/event-stream', body: responseBody }); resolve() }
+      })
+      return
+    }
+    await route.fulfill({ status: 200, contentType: 'text/event-stream', body: responseBody })
+  })
+  await resetBrowser(page)
+  await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('visual-novel')
+  await page.getByPlaceholder(/Speak freely/).fill('Start the story')
+  await page.getByRole('button', { name: 'Send message' }).click()
+  await expect(page.locator('.vn-dialogue')).toContainText('The gate opens.')
+  await page.getByRole('button', { name: 'Next story block' }).click()
+  await expect(page.locator('.vn-dialogue')).toContainText('A lantern lights the path.')
+
+  await page.getByPlaceholder(/Speak freely/).fill('Continue')
+  await page.getByRole('button', { name: 'Send message' }).click()
+  await secondRequestStarted
+  const controls = page.locator('.story-progress-controls')
+  await expect(controls).toContainText('2/2')
+  await expect(controls.getByRole('button', { name: 'Previous story block' })).toBeEnabled()
+  await expect(controls.getByRole('button', { name: 'Next story block' })).toBeDisabled()
+  await expect(controls).not.toContainText('Send a message to start')
+  releaseSecondResponse()
+})
+
 test('switches between novel, visual novel, and chat renderers with the same structured turn', async ({ page }) => {
   const structuredTurn = JSON.stringify({ blocks: [
     { type: 'narration', text: 'Rain begins to fall.' },
@@ -426,8 +477,22 @@ test('switches between novel, visual novel, and chat renderers with the same str
   await expect(page.getByText('Let’s find shelter.', { exact: true })).toBeVisible()
 
   await mode.selectOption('visual-novel')
-  await expect(page.locator('.vn-character-left')).toHaveCount(0)
-  await expect(page.locator('.vn-character-right')).toContainText('The Wayfinder')
+  await expect(page.locator('.vn-character-right')).toHaveCount(0)
+  await expect(page.locator('.vn-character-left')).toContainText('The Wayfinder')
+  await page.setViewportSize({ width: 1084, height: 748 })
+  const stage = await page.locator('.vn-character-stage').boundingBox()
+  const character = await page.locator('.vn-character-left').boundingBox()
+  expect(character.x).toBeLessThan(stage.x + stage.width * 0.25)
+  expect((await page.locator('.vn-character-left .story-avatar').boundingBox()).height).toBeGreaterThan(150)
+  const spriteFrame = await page.locator('.vn-character-left .story-avatar').evaluate((element) => ({ borderWidth: getComputedStyle(element).borderWidth, backgroundColor: getComputedStyle(element).backgroundColor, boxShadow: getComputedStyle(element).boxShadow }))
+  expect(spriteFrame).toEqual({ borderWidth: '0px', backgroundColor: 'rgba(0, 0, 0, 0)', boxShadow: 'none' })
+  const conversationMetrics = await page.locator('.story-conversation').evaluate((element) => ({ clientHeight: element.clientHeight, scrollHeight: element.scrollHeight }))
+  expect(conversationMetrics.scrollHeight).toBeLessThanOrEqual(conversationMetrics.clientHeight + 1)
+  await page.setViewportSize({ width: 390, height: 844 })
+  const mobileMetrics = await page.locator('.story-conversation').evaluate((element) => ({ clientHeight: element.clientHeight, scrollHeight: element.scrollHeight, width: element.scrollWidth }))
+  expect(mobileMetrics.scrollHeight).toBeLessThanOrEqual(mobileMetrics.clientHeight + 1)
+  expect(mobileMetrics.width).toBeLessThanOrEqual(390)
+  await page.setViewportSize({ width: 1084, height: 748 })
   await expect(page.locator('.vn-narration')).toContainText('Rain begins to fall.')
   await page.getByRole('button', { name: 'Next story block' }).click()
   await expect(page.locator('.vn-dialogue')).toContainText('Let’s find shelter.')
@@ -578,10 +643,10 @@ test('default persona portrait uploads remain browser-local and appear in VN mod
   await expect(page.getByRole('button', { name: 'Restore built-in sprite' })).toBeVisible()
   await page.getByRole('button', { name: 'Toggle settings' }).click()
   await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('visual-novel')
-  await expect(page.locator('.vn-character-right img')).toBeVisible()
+  await expect(page.locator('.vn-character-left img')).toBeVisible()
   await page.reload()
   await expect(page.getByRole('combobox', { name: 'Story presentation' })).toHaveValue('visual-novel')
-  await expect(page.locator('.vn-character-right img')).toBeVisible()
+  await expect(page.locator('.vn-character-left img')).toBeVisible()
 })
 
 test('custom persona profiles save their prompt, sprite, portrait, and per-journey selection', async ({ page }) => {
@@ -626,7 +691,7 @@ test('custom persona profiles save their prompt, sprite, portrait, and per-journ
   await expect(page.locator('.vn-dialogue')).toContainText('We can take the quieter street.')
   expect(requestMessages[0].content).toContain('You are Mira.')
   expect(requestMessages[0].content).toContain('Use short, thoughtful sentences.')
-  await expect(page.locator('.vn-character-right img')).toBeVisible()
+  await expect(page.locator('.vn-character-left img')).toBeVisible()
   await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('chat')
   await expect(page.locator('.chat-assistant-turn .story-avatar img').first()).toBeVisible()
   await expect(page.locator('.chat-line-user .story-avatar')).toHaveCount(0)
@@ -634,8 +699,8 @@ test('custom persona profiles save their prompt, sprite, portrait, and per-journ
   await page.waitForTimeout(450)
   await page.reload()
   await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('visual-novel')
-  await expect(page.locator('.vn-character-right')).toContainText('Mira')
-  await expect(page.locator('.vn-character-right img')).toBeVisible()
+  await expect(page.locator('.vn-character-left')).toContainText('Mira')
+  await expect(page.locator('.vn-character-left img')).toBeVisible()
   await page.getByRole('button', { name: 'Toggle settings' }).click()
   await expect(page.getByRole('combobox', { name: 'Active persona' })).toContainText('Mira')
   await expect(page.getByLabel('Persona name')).toHaveValue('Mira')
@@ -669,7 +734,7 @@ test('legacy persona settings and companion art migrate to the default persona p
   await expect(page.locator('.persona-art-preview')).toContainText('Custom portrait')
   await page.getByRole('button', { name: 'Toggle settings' }).click()
   await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('visual-novel')
-  await expect(page.locator('.vn-character-right img')).toBeVisible()
+  await expect(page.locator('.vn-character-left img')).toBeVisible()
 })
 
 test('visual novel portrait and dialogue box fit beside open panels at desktop, tablet, and mobile widths', async ({ page }) => {
@@ -677,7 +742,7 @@ test('visual novel portrait and dialogue box fit beside open panels at desktop, 
   await resetBrowser(page)
   await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('visual-novel')
   await chooseOnlinePlace(page)
-  await expect(page.locator('.vn-character-right img')).toBeVisible()
+  await expect(page.locator('.vn-character-left img')).toBeVisible()
   const dockButtons = page.locator('.story-dock button')
   await dockButtons.nth(1).click()
 

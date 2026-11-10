@@ -290,11 +290,16 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
 .story-progress-controls button:hover:not(:disabled) { border-color: #c5e3a4; color: #e0edbc; }
 .story-progress-controls button:disabled { cursor: not-allowed; opacity: .42; }
 .story-progress-controls span { min-width: 30px; color: #9bb6a5; font: 9px ui-monospace, monospace; text-align: center; }
+.story-progress-controls .story-progress-hint { min-width: 0; color: #a9bcac; font: 9px ui-monospace, monospace; }
 .story-progress-controls .skip-story-button { padding-inline: 8px; color: #c5e3a4; }
 .log-toggle, .dialogue-error button, .optional-suggestions button, .stop-button { padding: 7px 10px; border: 1px solid #496b5a; border-radius: 8px; background: #12201ca8; color: #d3e2d4; font: 10px ui-monospace, monospace; }
 .log-toggle:hover, .dialogue-error button:hover, .optional-suggestions button:hover { border-color: #c5e3a4; color: #e0edbc; }
 .dialogue-panel .conversation { margin: 0 12px; padding: 8px 12px; border: 1px solid #496b5a88; border-radius: 14px; background: #12201caa; }
 .dialogue-panel .conversation-latest { max-height: 26vh; overflow-y: auto; }
+.dialogue-panel .conversation-latest.story-conversation-visual-novel { max-height: min(42vh, 320px); scrollbar-color: #718c78 #101b17; scrollbar-width: thin; }
+.dialogue-panel .conversation-latest.story-conversation-visual-novel::-webkit-scrollbar { width: 8px; }
+.dialogue-panel .conversation-latest.story-conversation-visual-novel::-webkit-scrollbar-track { border-radius: 8px; background: #101b17; }
+.dialogue-panel .conversation-latest.story-conversation-visual-novel::-webkit-scrollbar-thumb { border: 2px solid #101b17; border-radius: 8px; background: #718c78; }
 .dialogue-panel .conversation-expanded { max-height: 48vh; overflow-y: auto; }
 .dialogue-panel .message:last-child { margin-bottom: 0; }
 .dialogue-panel .message.event p { color: #aec4b3; }
@@ -315,12 +320,12 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
 .persona-art-preview { display: flex; align-items: center; gap: 12px; min-height: 80px; padding: 8px; border-radius: 8px; background: #172521; }
 .persona-art-preview img { width: 56px; height: 72px; border-radius: 6px; object-fit: cover; object-position: top; }
 .persona-art-preview p { color: #9bb6a5; font-size: 10px; line-height: 1.4; }
-.vn-character-stage { justify-content: flex-end; }
-.vn-character-left { display: none; }
-.vn-character .story-avatar { border: 0; border-radius: 0; background: transparent; }
-.vn-character .story-avatar img { object-fit: contain; object-position: bottom; filter: drop-shadow(0 8px 20px #0008); }
-.story-conversation-visual-novel .vn-character-stage .story-avatar { width: clamp(100px, 14vw, 190px); height: clamp(124px, 25vh, 280px); }
-@media (max-width: 520px) { .story-conversation-visual-novel .vn-character-stage .story-avatar { width: 78px; height: 104px; } }
+.vn-character-stage { justify-content: flex-start; }
+.vn-character-left { margin-right: auto; }
+.vn-character .story-avatar { overflow: visible; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.vn-character .story-avatar img { object-fit: contain; object-position: bottom; }
+.story-conversation-visual-novel .vn-character-stage .story-avatar { width: clamp(180px, 20vw, 280px); height: clamp(220px, 34vh, 300px); }
+@media (max-width: 520px) { .story-conversation-visual-novel .vn-character-stage .story-avatar { width: clamp(140px, 38vw, 180px); height: clamp(180px, 30vh, 250px); } }
 .chat-bubble { min-width: 0; padding: 10px 13px; border: 1px solid #496b5a88; border-radius: 14px 14px 14px 4px; background: #21352d; }
 .chat-line-user .chat-bubble { border-color: #879c6f88; border-radius: 14px 14px 4px 14px; background: #344334; }
 .chat-speaker { display: block; margin-bottom: 4px; color: #c5e3a4; font: 10px ui-monospace, monospace; }
@@ -331,9 +336,8 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
 .chat-narration-scene, .vn-event { border-left-color: #c5e3a4; background: #c5e3a40d; }
 .vn-character-stage { display: flex; flex: 0 0 auto; justify-content: space-between; align-items: end; min-height: 116px; padding: 0 6%; }
 .vn-character { display: grid; justify-items: center; gap: 5px; color: #c5d5c6; font: 9px ui-monospace, monospace; text-align: center; }
-.vn-character .story-avatar { width: clamp(66px, 8vw, 112px); height: clamp(82px, 13vh, 150px); border-radius: 48% 48% 14px 14px; box-shadow: 0 8px 26px #0006; }
-.vn-character-left .story-avatar { background: linear-gradient(155deg, #6f8064, #33473b 62%, #17251f); }
-.vn-character-right .story-avatar { background: linear-gradient(155deg, #a9bb88, #526c55 62%, #24362c); }
+.vn-character .story-avatar { width: clamp(66px, 8vw, 112px); height: clamp(82px, 13vh, 150px); }
+.vn-character-left .story-avatar { background: transparent; }
 .story-conversation-visual-novel .story-entry-list { flex: 1 1 auto; justify-content: end; }
 .vn-story-turn { display: grid; gap: 10px; }
 .vn-narration { align-self: center; max-width: 86%; color: #d0dbce !important; font: italic 13px/1.65 Georgia, 'Times New Roman', serif !important; text-align: center; }
@@ -444,4 +448,14 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
 }
 @media (max-width: 380px) {
  .opening-description { display: none; }
+}
+@media (max-width: 1100px) {
+  .story-mode.story-no-side-panels .dialogue-panel { min-height: min(84vh, 620px); max-height: min(84vh, 620px); }
+  .story-mode.story-no-side-panels .dialogue-panel .conversation-latest.story-conversation-visual-novel { flex: 1 1 auto; max-height: min(62vh, 460px); }
+  .story-mode.story-no-side-panels .story-conversation-visual-novel .vn-character-stage .story-avatar { width: clamp(150px, 22vw, 240px); height: clamp(190px, 34vh, 260px); }
+}
+@media (max-width: 520px) {
+  .story-mode.story-no-side-panels .dialogue-panel { min-height: min(68vh, 560px); max-height: min(68vh, 560px); }
+  .story-mode.story-no-side-panels .dialogue-panel .conversation-latest.story-conversation-visual-novel { max-height: min(48vh, 390px); }
+  .story-mode.story-no-side-panels .story-conversation-visual-novel .vn-character-stage .story-avatar { width: clamp(140px, 38vw, 180px); height: clamp(180px, 30vh, 250px); }
 }
