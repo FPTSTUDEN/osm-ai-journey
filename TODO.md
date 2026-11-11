@@ -51,8 +51,8 @@ Focus character artwork on user-selectable personas first. NPC identity tracking
 
 ## Phase 5: Validation and documentation
 
-- [ ] Add component and integration tests for all three renderers, mode switching, and narration-vs-dialogue presentation.
-- [ ] Add end-to-end coverage for a journey across mode changes, structured output and fallback, VN skip/summary/rewind, and existing free-text chat.
-- [ ] Verify existing journeys and current chat behavior remain intact after storage normalization.
-- [ ] Update product and architecture documentation with the shared story-turn model, mode behavior, persistence, and fallback rules.
-- [ ] Update screenshots/mockups if the mode selector or story layouts materially change.
+- [x] Add unit and browser integration tests for all three renderers, mode switching, and narration-vs-dialogue presentation.
+- [x] Add end-to-end coverage for a journey across mode changes, structured output and plain-text fallback, VN skip/review/rewind, and existing free-text chat.
+- [x] Verify existing journeys and current chat behavior remain intact after storage normalization.
+- [x] Update product and architecture documentation with the shared story-turn model, mode behavior, persistence, and fallback rules.
+- [x] Update the Visual novel mockup for the presentation selector and current left-side sprite layout.

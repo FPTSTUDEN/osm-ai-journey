@@ -14,6 +14,7 @@ import { journeyJson, parseJourneyJson } from '../src/storage/journeyTransfer'
 import { normalizeMessages } from '../src/storage/messages'
 import { normalizePersonaProfiles, normalizeStoryPresentationMode } from '../src/storage/settings'
 import { DEFAULT_PERSONA, DEFAULT_PERSONA_ID } from '../src/providers/config'
+import { parsePersonaSpriteFilename } from '../src/providers/personaSprites'
 import type { ChatEntry, Place } from '../src/types/domain'
 
 const place = (id: string, name: string, category?: string): Place => ({ id, name, category, coordinates: [2.35, 48.85], source: 'map' })
@@ -276,6 +277,16 @@ test('typewriter reveal advances with elapsed time and never exceeds the message
   assert.equal(revealedTextLength('abc', -10), 0)
 })
 
+test('persona sprite filenames derive stable IDs, labels, and descriptions', () => {
+  assert.deepEqual(parsePersonaSpriteFilename('aurelio-sprite-classic.png'), {
+    id: 'aurelio', personaName: 'Aurelio', styleName: 'Classic', label: 'Aurelio · Classic', description: 'Classic style portrait for Aurelio.',
+  })
+  assert.deepEqual(parsePersonaSpriteFilename('sprites/historian-sprite-painterly.webp'), {
+    id: 'historian-painterly', personaName: 'Historian', styleName: 'Painterly', label: 'Historian · Painterly', description: 'Painterly style portrait for Historian.',
+  })
+  assert.equal(parsePersonaSpriteFilename('not-a-sprite.png'), null)
+})
+
 test('persona profiles migrate legacy settings and normalize built-in sprite choices', () => {
   const migrated = normalizePersonaProfiles(undefined, { personaName: 'My Guide', personaInstructions: 'Speak gently.' })
   assert.deepEqual(migrated, [{ ...DEFAULT_PERSONA, name: 'My Guide', instructions: 'Speak gently.' }])
@@ -283,9 +294,11 @@ test('persona profiles migrate legacy settings and normalize built-in sprite cho
 
   const normalized = normalizePersonaProfiles([
     { id: 'wayfinder', name: 'Wayfinder', instructions: 'Default', spriteId: 'aurelio' },
+    { id: 'historian', name: 'Historian', instructions: 'Research carefully.', spriteId: 'historian-painterly' },
     { id: 'custom', name: 'Custom', instructions: 'Custom prompt', spriteId: 'not-a-sprite' },
-  ])
-  assert.equal(normalized[1].spriteId, DEFAULT_PERSONA.spriteId)
+  ], undefined, ['aurelio', 'historian-painterly'])
+  assert.equal(normalized[1].spriteId, 'historian-painterly')
+  assert.equal(normalized[2].spriteId, DEFAULT_PERSONA.spriteId)
   assert.equal(normalizePersonaProfiles([]).length, 1)
 })
 

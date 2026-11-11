@@ -4,7 +4,7 @@ A static, local-first journey app that combines OpenStreetMap destinations, dest
 
 ## Current status
 
-The repository contains the initial product documentation and a Vite/React scaffold. The first slice is deliberately client-side: settings and journey data remain in the browser, while external providers are optional and replaceable.
+The app is a client-side Vite/React journey experience with Novel, Visual novel, and Chat presentation modes. Settings and journey data remain in the browser; external providers are optional and replaceable. All modes share ordered story turns, with plain-text fallback when a model does not return structured content.
 
 ## Quick start
 
@@ -19,6 +19,8 @@ Open the local URL printed by Vite. The production build is static:
 pnpm build
 pnpm preview
 ```
+
+Run validation with `pnpm test:unit` and `pnpm test:e2e`.
 
 ## Product decisions
 

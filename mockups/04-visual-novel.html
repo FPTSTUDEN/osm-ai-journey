@@ -44,6 +44,9 @@ button{font:inherit;cursor:pointer;color:inherit;background:none;border:0}
 .gb{display:inline-flex;align-items:center;gap:7px;height:38px;padding:0 13px;border-radius:999px;border:1px solid var(--hair);background:var(--glass);backdrop-filter:blur(10px);color:var(--soft);font:11px var(--mono)}
 .gb[aria-pressed=true]{border-color:var(--accd);color:var(--acc);background:rgba(197,227,164,.14)}
 .gb.sq{width:38px;padding:0;justify-content:center;font-size:16px}
+.presentation select{max-width:130px;border:0;outline:0;background:transparent;color:var(--soft);font:11px var(--mono)}
+.presentation option{background:#172521;color:var(--ink)}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 
 /* ---- dock (left, vertically centred) ---- */
 .dock{position:absolute;z-index:17;left:24px;top:50%;transform:translateY(-50%);display:grid;gap:8px}
@@ -96,12 +99,11 @@ button{font:inherit;cursor:pointer;color:inherit;background:none;border:0}
 .say input::placeholder{color:var(--faint)}
 .send{display:grid;place-items:center;flex:none;width:36px;height:36px;border-radius:9px;background:var(--acc);color:#132119;font-size:16px}
 
-/* ---- companion illustration (placeholder) ---- */
-.sprite{position:absolute;z-index:4;bottom:200px;width:min(300px,28vw);height:min(480px,calc(100vh - 380px));border-radius:50% 50% 44% 44%/58% 58% 42% 42%;background:linear-gradient(180deg,rgba(197,227,164,.16),rgba(60,90,70,.05));box-shadow:0 0 90px 24px rgba(197,227,164,.09);filter:drop-shadow(0 20px 40px rgba(0,0,0,.5));-webkit-mask-image:linear-gradient(180deg,#000 72%,transparent 99%);mask-image:linear-gradient(180deg,#000 72%,transparent 99%)}
-.sprite:before{content:"";position:absolute;left:50%;top:9%;width:46%;aspect-ratio:1;transform:translateX(-50%);border-radius:50%;background:radial-gradient(circle at 42% 38%,#cfe6ae,#9cbd83 60%,#5f7d52)}
-.sprite:after{content:"";position:absolute;left:50%;top:34%;width:70%;height:80%;transform:translateX(-50%);border-radius:40% 40% 0 0;background:linear-gradient(180deg,#3c5a49,#243a30)}
-/* caption is a SIBLING of .sprite (the sprite's mask clips its children to the rounded outline) */
-.spritecap{position:absolute;z-index:5;bottom:calc(200px + min(480px,calc(100vh - 380px)) + 8px);width:min(300px,28vw);text-align:center;font:9px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--faint);text-shadow:0 1px 8px #000}
+/* ---- companion illustration placeholder; bundled transparent art occupies this stage ---- */
+.sprite{position:absolute;z-index:4;bottom:200px;width:min(360px,32vw);height:min(560px,calc(100vh - 320px));pointer-events:none}
+.sprite:before{content:"";position:absolute;left:50%;top:2%;width:38%;aspect-ratio:1;transform:translateX(-50%);border-radius:50%;background:radial-gradient(circle at 42% 38%,#cfe6ae,#9cbd83 60%,#5f7d52)}
+.sprite:after{content:"";position:absolute;left:50%;top:30%;width:72%;height:75%;transform:translateX(-50%);border-radius:42% 42% 0 0;background:linear-gradient(180deg,#3c5a49,#243a30)}
+.spritecap{position:absolute;z-index:5;bottom:calc(200px + min(560px,calc(100vh - 320px)) + 8px);width:min(360px,32vw);text-align:center;font:9px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--faint);text-shadow:0 1px 8px #000}
 
 /* ---- responsive (mirrors shipped breakpoints 900 / 520) ---- */
 @media (max-width:1100px){
@@ -109,8 +111,8 @@ button{font:inherit;cursor:pointer;color:inherit;background:none;border:0}
   .sceneid{top:68px}
 }
 @media (max-width:900px){
-  .sprite{width:min(240px,32vw)}
-  .spritecap{width:min(240px,32vw)}
+  .sprite{width:min(280px,34vw)}
+  .spritecap{width:min(280px,34vw)}
 }
 @media (max-width:520px){
   .top{top:12px;left:14px;right:14px}
@@ -134,7 +136,7 @@ button{font:inherit;cursor:pointer;color:inherit;background:none;border:0}
   .sugs .eyebrow{display:none}
   .sugs button{white-space:nowrap}
   .note,.mockflag,.spritecap{display:none}
-  .sprite{left:auto;right:8px;top:120px;bottom:auto;width:104px;height:150px}
+  .sprite{left:5%;right:auto;top:auto;bottom:calc(34vh + 90px);width:min(170px,42vw);height:min(250px,32vh)}
 }
 
 .sprite.at-left{left:9%}
@@ -188,7 +190,7 @@ button{font:inherit;cursor:pointer;color:inherit;background:none;border:0}
     <div class="brand"><div class="mark"><svg class="i"><use href="#i-star"/></svg></div><div><div class="eyebrow">Your companion · Aurelio</div><h1>Osm AI Journey</h1></div></div>
     <div class="ta">
       <div class="toggle" role="group" aria-label="View mode"><button>Explore</button><button class="on" aria-pressed="true">Story</button></div>
-      <button class="gb" aria-pressed="true" aria-label="Hide companion"><svg class="i"><use href="#i-user"/></svg><span class="lbl">Hide companion</span></button>
+      <label class="gb presentation"><span class="sr-only">Story presentation</span><select aria-label="Story presentation"><option>Novel</option><option selected>Visual novel</option><option>Chat</option></select></label>
       <button class="gb sq" aria-label="Settings"><svg class="i"><use href="#i-sliders"/></svg></button>
     </div>
   </header>

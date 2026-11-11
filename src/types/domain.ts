@@ -46,7 +46,7 @@ export type PlacePhoto = {
 
 export type StoryPresentationMode = 'novel' | 'visual-novel' | 'chat'
 
-export type PersonaSpriteId = 'aurelio' | 'aurelio-watercolor' | 'aurelio-ink' | 'aurelio-anime' | 'historian-watercolor' | 'historian-noir' | 'historian-ink' | 'historian-anime'
+export type PersonaSpriteId = string
 
 export type PersonaProfile = {
   id: string

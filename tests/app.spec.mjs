@@ -402,6 +402,25 @@ test('renders structured assistant turns as readable story text', async ({ page 
   await expect(conversation).not.toContainText('"blocks"')
 })
 
+test('plain-text model replies remain readable when switching between all presentation modes', async ({ page }) => {
+  const reply = 'A quiet street stretches toward the station.'
+  await page.route('http://localhost:11434/v1/chat/completions', (route) => route.fulfill({
+    status: 200,
+    contentType: 'text/event-stream',
+    body: `data: ${JSON.stringify({ choices: [{ delta: { content: reply } }] })}\n\ndata: [DONE]\n\n`,
+  }))
+  await resetBrowser(page)
+  const mode = page.getByRole('combobox', { name: 'Story presentation' })
+  await mode.selectOption('visual-novel')
+  await page.getByPlaceholder(/Speak freely/).fill('Continue')
+  await page.getByRole('button', { name: 'Send message' }).click()
+  await expect(page.locator('.vn-dialogue')).toContainText(reply)
+  await mode.selectOption('chat')
+  await expect(page.locator('.chat-assistant-turn .chat-bubble').last()).toContainText(reply)
+  await mode.selectOption('novel')
+  await expect(page.locator('.story-conversation-novel .message')).toContainText(reply)
+})
+
 test('Visual novel navigation is visible and explains when a story has not started', async ({ page }) => {
   await resetBrowser(page)
   await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('visual-novel')
@@ -632,6 +651,17 @@ test('Log expands and reduced motion displays streamed text immediately', async 
   await expect(page.locator('.conversation .message')).toHaveCount(1)
 })
 
+test('built-in sprites are discovered and labeled from their filenames', async ({ page }) => {
+  await resetBrowser(page)
+  await page.getByRole('button', { name: 'Toggle settings' }).click()
+  const spriteSelect = page.getByLabel('Built-in sprite')
+  await expect(spriteSelect.locator('option')).toHaveCount(9)
+  await expect(spriteSelect.locator('option[value="historian-painterly"]')).toHaveText('Historian · Painterly')
+  await spriteSelect.selectOption('historian-painterly')
+  await expect(page.locator('.persona-art-preview img')).toHaveAttribute('src', /historian-sprite-painterly/)
+  await expect(page.locator('.persona-art-preview')).toContainText('Painterly style portrait for Historian.')
+})
+
 test('default persona portrait uploads remain browser-local and appear in VN mode', async ({ page }) => {
   await resetBrowser(page)
   await page.getByRole('button', { name: 'Toggle settings' }).click()
@@ -670,7 +700,7 @@ test('custom persona profiles save their prompt, sprite, portrait, and per-journ
   await page.getByLabel('Persona name').fill('Mira')
   await page.getByLabel('Persona instructions').fill('Use short, thoughtful sentences.')
   await page.getByLabel('Built-in sprite').selectOption('historian-noir')
-  await expect(page.locator('.persona-art-preview img')).toHaveAttribute('src', '/sprites/historian-sprite-noir.png')
+  await expect(page.locator('.persona-art-preview img')).toHaveAttribute('src', '/src/assets/sprites/historian-sprite-noir.png')
   await page.getByLabel('Use a custom portrait').setInputFiles({
     name: 'mira.png',
     mimeType: 'image/png',
@@ -678,7 +708,7 @@ test('custom persona profiles save their prompt, sprite, portrait, and per-journ
   })
   await expect(page.locator('.persona-art-preview')).toContainText('Custom portrait')
   await page.getByRole('button', { name: 'Restore built-in sprite' }).click()
-  await expect(page.locator('.persona-art-preview img')).toHaveAttribute('src', '/sprites/historian-sprite-noir.png')
+  await expect(page.locator('.persona-art-preview img')).toHaveAttribute('src', '/src/assets/sprites/historian-sprite-noir.png')
   await page.getByLabel('Use a custom portrait').setInputFiles({
     name: 'mira.png',
     mimeType: 'image/png',

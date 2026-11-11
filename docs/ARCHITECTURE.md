@@ -45,7 +45,7 @@ MapLibre uses OpenFreeMap's public vector style initially. A user may instead se
 
 ## Persistence
 
-- `localStorage`: provider settings, UI preferences, story presentation mode, and persona profile definitions. Legacy `personaName`/`personaInstructions` settings migrate into the built-in Wayfinder profile.
+- `localStorage`: provider settings, UI preferences, story presentation mode, and persona profile definitions. Legacy `personaName`/`personaInstructions` settings migrate into the built-in Wayfinder profile. Persona sprite IDs are derived from bundled sprite filenames and validated against the discovered assets at load time.
 - Journey IndexedDB records: active persona ID, persisted alongside destination, scene, messages, progress, checkpoints, and branches; older records default to Wayfinder.
 - IndexedDB `companion-art`: optional uploaded portrait blobs keyed by persona ID. The legacy `active` portrait is used as the Wayfinder portrait when no keyed portrait exists.
 - IndexedDB: journey records (including chat messages, destination snapshots, progress, and branches) and online geocoder results.
@@ -53,6 +53,8 @@ MapLibre uses OpenFreeMap's public vector style initially. A user may instead se
 - Local PMTiles archives: held as a selected browser `File` for the current session; no server or cache copy is created.
 
 Journey persistence is accessed through the storage boundary, keeping IndexedDB operations out of presentation components. Journey exports include active history, progress, checkpoints, and alternate timeline snapshots.
+
+Bundled persona sprites live in `src/assets/sprites/` so Vite can discover and bundle them with `import.meta.glob`. Name each file `<persona>-sprite-<style>.<png|webp|jpg|jpeg>` using lowercase kebab-case (for example, `historian-sprite-painterly.png`). The filename provides the stable sprite ID, persona/style display names, option label, and short description; `classic` maps to the legacy persona-only ID to keep existing settings compatible. Add a correctly named asset to expose it automatically in the persona settings selector—no sprite registry or type-union update is required. Invalid filenames are ignored, and missing IDs fall back to the default sprite.
 
 Destination photos are illustrative only. Photo titles, captions, authors, dates, and source links are passed to the language model as source-backed metadata; image pixels are not sent to the model.
 
@@ -87,6 +89,7 @@ src/
   components/       UI and map components
   features/         destination, journey, and roleplay logic
   providers/        external service contracts and defaults
+  assets/sprites/   filename-discovered bundled persona artwork
   storage/          local browser persistence
   types/            shared domain types
   styles/           visual system

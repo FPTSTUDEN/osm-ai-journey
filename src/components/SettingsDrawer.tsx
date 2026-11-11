@@ -1,7 +1,8 @@
 import type { RefObject } from 'react'
 import type { OfflineCacheStatus } from '../storage/offlineCache'
 import type { PersonaProfile, UserSettings } from '../types/domain'
-import { DEFAULT_PERSONA_ID, PERSONA_SPRITES } from '../providers/config'
+import { DEFAULT_PERSONA_ID } from '../providers/config'
+import { PERSONA_SPRITES } from '../providers/bundledPersonaSprites'
 
 type MemoryKind = 'people' | 'entities' | 'facts'
 type JourneyItem = Record<MemoryKind, string>
@@ -109,6 +110,7 @@ export function SettingsDrawer({
   onSelectLocalPmtiles,
   onClearLocalPmtiles,
 }: SettingsDrawerProps) {
+  const activeSprite = PERSONA_SPRITES[activePersona.spriteId]
   return (
     <aside className="settings panel" role="dialog" aria-modal="false" aria-labelledby="settings-title">
       <div className="settings-header"><div><p className="eyebrow">Local configuration</p><h2 id="settings-title">Journey settings</h2></div><button className="close-button" type="button" onClick={onClose} aria-label="Close settings">×</button></div>
@@ -123,8 +125,8 @@ export function SettingsDrawer({
         <div className="persona-profile-actions"><span>{activePersona.id === DEFAULT_PERSONA_ID ? 'Default persona' : 'Custom persona'}</span>{activePersona.id !== DEFAULT_PERSONA_ID && <button type="button" onClick={onPersonaDelete}>Delete persona</button>}</div>
         <label>Persona name<input value={activePersona.name} onChange={(event) => onPersonaUpdate({ name: event.target.value })} /></label>
         <label>Persona instructions<textarea className="persona-input" value={activePersona.instructions} onChange={(event) => onPersonaUpdate({ instructions: event.target.value })} rows={3} /></label>
-        <label>Built-in sprite<select value={activePersona.spriteId} onChange={(event) => onPersonaUpdate({ spriteId: event.target.value as PersonaProfile['spriteId'] })}>{Object.entries(PERSONA_SPRITES).map(([id, sprite]) => <option key={id} value={id}>{sprite.label}</option>)}</select></label>
-        <div className="persona-art-preview"><img src={personaArtUrl} alt={`${activePersona.name || 'Persona'} portrait`} /><p>{hasCustomPersonaArt ? 'Custom portrait' : 'Built-in portrait'} · used in Visual novel and Chat modes</p></div>
+        <label>Built-in sprite<select value={activePersona.spriteId} onChange={(event) => onPersonaUpdate({ spriteId: event.target.value as PersonaProfile['spriteId'] })}>{Object.entries(PERSONA_SPRITES).map(([id, sprite]) => <option key={id} value={id} title={sprite.description}>{sprite.label}</option>)}</select></label>
+                <div className="persona-art-preview"><img src={personaArtUrl} alt={`${activePersona.name || 'Persona'} portrait`} /><p>{hasCustomPersonaArt ? 'Custom portrait' : `${activeSprite?.description ?? 'Built-in portrait'} · used in Visual novel and Chat modes`}</p></div>
         <div className="companion-art-setting"><label>Use a custom portrait<input ref={companionArtInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { onUploadCompanionArt(event.target.files?.[0]); event.currentTarget.value = '' }} /></label>{hasCustomPersonaArt && <button type="button" onClick={onRemoveCompanionArt}>Restore built-in sprite</button>}{companionArtError && <p className="connection-error" role="alert">{companionArtError}</p>}</div>
         <p className="settings-note">Persona instructions are natural-language roleplay guidance. The selected persona is saved with this journey.</p>
       </section>

@@ -1,12 +1,13 @@
 import { useEffect, useState, type RefObject } from 'react'
 import { LLM_PROVIDER_PRESETS } from '../providers/config'
+import { PERSONA_SPRITES } from '../providers/bundledPersonaSprites'
 import { clearOfflineCache, getOfflineCacheStatus, type OfflineCacheStatus } from '../storage/offlineCache'
 import { deleteCompanionArt, loadCompanionArt, saveCompanionArt } from '../storage/companionArt'
 import { loadSettings, saveSettings } from '../storage/settings'
 import type { UserSettings } from '../types/domain'
 
 export function useAppSettings(settingsOpen: boolean, companionArtInputRef: RefObject<HTMLInputElement | null>, activePersonaId: string) {
-  const [settings, setSettings] = useState<UserSettings>(loadSettings)
+  const [settings, setSettings] = useState<UserSettings>(() => loadSettings(Object.keys(PERSONA_SPRITES)))
   const [connectionState, setConnectionState] = useState<'idle' | 'testing' | 'ready' | 'error'>('idle')
   const [connectionMessage, setConnectionMessage] = useState('')
   const [offlineStatus, setOfflineStatus] = useState<OfflineCacheStatus | null>(null)
