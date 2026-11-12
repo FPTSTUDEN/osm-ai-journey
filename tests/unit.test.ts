@@ -143,6 +143,13 @@ const entry = (role: ChatEntry['role'], text: string): ChatEntry => ({ id: text,
 const settings = { llmProvider: 'ollama' as const, llmBaseUrl: '', llmModel: 't', llmApiKey: '', personaName: 'P', personaInstructions: '', onlineGeocoder: 'nominatim' as const, calculateWalkingRoutes: false, routingBaseUrl: '', liveDataEnabled: false, weatherBaseUrl: '', overpassApiUrl: 'https://overpass-api.de/api/interpreter' }
 const journey = { destinationHistory: [], currentScene: 1, knownPeople: [], knownEntities: [], userFacts: [], conversationSummary: '' }
 
+test('journey prompt keeps concise roleplay boundaries', () => {
+  const system = buildJourneyContext({ settings, selectedPlace: null, journey, userMessage: 'hello', messages: [] })[0].content
+  assert.match(system, /Stay in character and treat the user as the traveler/)
+  assert.match(system, /Never invent the traveler’s words, thoughts, choices, or actions/)
+  assert.match(system, /leave the next action open/)
+})
+
 test('legacy string messages migrate with the old role alternation and arrival lines become events', () => {
   const entries = normalizeMessages(['Start', 'hi', 'hello there', 'You arrive at Louvre. Continuing without a walking route.', 'again', 'sure'])!
   assert.deepEqual(entries.map((item) => item.role), ['assistant', 'user', 'assistant', 'event', 'user', 'assistant'])

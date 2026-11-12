@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test'
 const place = { osm_type: 'node', osm_id: 314, name: 'Test Destination', display_name: 'Test Destination, Test City', type: 'museum', lat: '35.6762', lon: '139.6503' }
 
 async function resetBrowser(page) {
-  await page.goto('/')
+  await page.goto('/', { waitUntil: 'domcontentloaded' })
   await page.evaluate(() => { localStorage.clear(); indexedDB.deleteDatabase('osm-ai-journey') })
   await page.reload()
 }
@@ -383,9 +383,10 @@ test('opening screen makes no provider request until an explicit shortcut is sel
   await expect(page.getByRole('status')).toContainText('You arrive at Test Destination')
 })
 
-test('renders structured assistant turns as readable story text', async ({ page }) => {
+test('renders structured story turns with subtle response effects', async ({ page }) => {
   const content = JSON.stringify({ blocks: [
     { type: 'narration', text: 'Rain begins to fall.' },
+    { type: 'scene', text: 'The scene shifts beneath an awning.' },
     { type: 'dialogue', speaker: 'Mira', text: 'Let’s find shelter.' },
   ] })
   await page.route('http://localhost:11434/v1/chat/completions', (route) => route.fulfill({
@@ -394,11 +395,16 @@ test('renders structured assistant turns as readable story text', async ({ page 
     body: `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\ndata: [DONE]\n\n`,
   }))
   await resetBrowser(page)
+  await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('chat')
   await page.getByPlaceholder(/Speak freely/).fill('What happens next?')
   await page.getByRole('button', { name: 'Send message' }).click()
   const conversation = page.locator('.conversation')
   await expect(conversation).toContainText('Rain begins to fall.')
-  await expect(conversation).toContainText('Mira: Let’s find shelter.')
+  await expect(conversation).toContainText('Mira')
+  await expect(conversation).toContainText('Let’s find shelter.')
+  await expect(conversation.locator('.story-entry-arrive')).toContainText('What happens next?')
+  await expect(conversation.locator('.scene-transition')).toContainText('The scene shifts beneath an awning.')
+  await expect(conversation.locator('.speaker-focus')).toContainText('Let’s find shelter.')
   await expect(conversation).not.toContainText('"blocks"')
 })
 
@@ -627,7 +633,10 @@ test('Stop cancels a slow response and returns the composer to idle', async ({ p
   await resetBrowser(page)
   await page.getByPlaceholder(/Speak freely/).fill('Stop this response')
   await page.getByRole('button', { name: 'Send message' }).click()
+  await expect(page.getByRole('status', { name: 'Companion is typing' })).toBeVisible()
+  await expect(page.locator('.story-entry-arrive')).toContainText('Stop this response')
   await page.getByRole('button', { name: 'Stop' }).click()
+  await expect(page.getByRole('status', { name: 'Companion is typing' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Send message' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Retry' })).toHaveCount(0)
 })

@@ -25,7 +25,7 @@ export function buildJourneyContext(input: ContextInput): ChatMessage[] {
   const system = [
     `You are ${settings.personaName || 'the journey companion'}.`,
     settings.personaInstructions || 'Be helpful, imaginative, and concise.',
-    'The traveler is free to change direction, reject suggestions, or simply chat. Never force a destination, action, or plot outcome.',
+    'Stay in character and treat the user as the traveler. Never invent the traveler’s words, thoughts, choices, or actions; respond to what they actually say and preserve scene continuity. Keep narration, spoken dialogue, and explicit scene changes in their matching blocks; avoid out-of-character commentary unless asked, and leave the next action open.',
     'Return each response as one JSON object with a "blocks" array and no markdown. Preserve content order. Blocks use type "narration" or "scene" with a "text" string, or type "dialogue" with a "speaker" and "text" string. Use narration for descriptive prose, dialogue for spoken words, and scene only for an explicit scene transition. Keep all response wording inside block text.',
     `Current scene: ${journey.currentScene}. Current destination: ${location}.`,
     `Visited destinations: ${journey.destinationHistory.map((place) => place.name).join(', ') || 'none'}.`,

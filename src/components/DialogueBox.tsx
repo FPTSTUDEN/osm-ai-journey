@@ -96,6 +96,7 @@ export function DialogueBox({
   const canMoveNext = activeStopIndex >= 0 && activeStopIndex < allStops.length - 1
   const skipped = skippedContent(entries, progress)
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  const isTyping = llmState === 'loading' && !entries.some((entry) => entry.id === animatedEntryId && entry.text)
 
   useEffect(() => {
     if (!latestEntry || latestEntry.role !== 'assistant' || latestEntry.id !== animatedEntryId || reduceMotion || revealCompleteId === latestEntry.id) {
@@ -190,6 +191,7 @@ export function DialogueBox({
         animatedEntryId={revealCompleteId === latestEntry?.id ? null : animatedEntryId}
         revealedLength={revealedLength}
         reduceMotion={reduceMotion}
+        isTyping={isTyping}
         expanded={expanded}
         storyProgress={progress}
         onAdvance={() => { if (!expanded) moveProgress(1) }}
