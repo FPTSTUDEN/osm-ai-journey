@@ -43,6 +43,10 @@ export function useJourney() {
   const [activeConversationId, setActiveConversationId] = useState(initialConversation.id)
   const [summaryMessageCount, setSummaryMessageCount] = useState(0)
   const [journeyReady, setJourneyReady] = useState(false)
+  const [journeyLoadState, setJourneyLoadState] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [journeyLoadStage, setJourneyLoadStage] = useState<'storage' | 'restore'>('storage')
+  const [journeyLoadError, setJourneyLoadError] = useState<Error | null>(null)
+  const [journeyLoadAttempt, setJourneyLoadAttempt] = useState(0)
 
   function timeline(): JourneyTimeline {
     return { personaId, currentDestination: selectedPlace, mapViewport, destinationHistory, currentScene, messages, knownPeople, knownEntities, userFacts, narrativeEvents, conversationSummary, storyProgress }
@@ -105,7 +109,14 @@ export function useJourney() {
   }
 
   useEffect(() => {
-    void loadActiveJourney().then((journey) => {
+    let active = true
+    setJourneyLoadState('loading')
+    setJourneyLoadStage('storage')
+    setJourneyLoadError(null)
+    void loadActiveJourney(() => {
+      if (active) setJourneyLoadStage('restore')
+    }).then((journey) => {
+      if (!active) return
       const restored = journey ?? emptyJourney()
       setPersonaId(restored.personaId ?? DEFAULT_PERSONA_ID)
       setSelectedPlace(restored.currentDestination)
@@ -120,13 +131,19 @@ export function useJourney() {
         messages: restored.messages.length ? restored.messages : starterEntries(), narrativeEvents: restored.narrativeEvents,
         conversationSummary: restored.conversationSummary ?? '', storyProgress: restored.storyProgress ?? null, branches: restored.branches ?? [],
       }]
-      const active = records.find((conversation) => conversation.id === restored.activeConversationId) ?? records[0]
+      const activeConversation = records.find((conversation) => conversation.id === restored.activeConversationId) ?? records[0]
       setConversations(records)
-      setActiveConversationId(active.id)
-      restoreConversation(active)
+      setActiveConversationId(activeConversation.id)
+      restoreConversation(activeConversation)
       setJourneyReady(true)
+      setJourneyLoadState('ready')
+    }).catch((error: unknown) => {
+      if (!active) return
+      setJourneyLoadError(error instanceof Error ? error : new Error('Unknown local storage error'))
+      setJourneyLoadState('error')
     })
-  }, [])
+    return () => { active = false }
+  }, [journeyLoadAttempt])
 
   useEffect(() => {
     if (!journeyReady) return
@@ -187,6 +204,16 @@ export function useJourney() {
     setActiveConversationId(journey.activeConversationId ?? '')
     restoreConversation(journey.conversations?.[0] ?? newConversation())
     setSummaryMessageCount(0)
+  }
+
+  function retryJourneyLoad() {
+    setJourneyLoadAttempt((attempt) => attempt + 1)
+  }
+
+  function continueWithoutSavedJourney() {
+    applyJourney(emptyJourney())
+    setJourneyReady(true)
+    setJourneyLoadState('ready')
   }
 
   function snapshot(): JourneyState {
@@ -273,6 +300,11 @@ export function useJourney() {
     conversationSummary, setConversationSummary,
     summaryMessageCount, setSummaryMessageCount,
     journeyReady,
+    journeyLoadState,
+    journeyLoadStage,
+    journeyLoadError,
+    retryJourneyLoad,
+    continueWithoutSavedJourney,
     storyProgress,
     setStoryProgress,
     branches,

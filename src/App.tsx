@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { DialogueBox } from './components/DialogueBox'
 import { OpeningScreen } from './components/OpeningScreen'
+import { StartupScreen } from './components/StartupScreen'
 import { StoryPanels } from './components/StoryPanels'
 import { JourneySettingsPanel } from './components/JourneySettingsPanel'
 import { useAppSettings } from './hooks/useAppSettings'
@@ -25,7 +26,8 @@ function App() {
     destinationHistory, setDestinationHistory, currentScene, setCurrentScene, narrativeEvents,
     setNarrativeEvents, knownPeople, setKnownPeople, knownEntities, setKnownEntities, userFacts,
     setUserFacts, conversationSummary, setConversationSummary, summaryMessageCount,
-    setSummaryMessageCount, journeyReady, storyProgress, setStoryProgress, branches,
+    setSummaryMessageCount, journeyReady, journeyLoadState, journeyLoadStage, journeyLoadError,
+    retryJourneyLoad, continueWithoutSavedJourney, storyProgress, setStoryProgress, branches,
     conversations, activeConversationId, createConversation, switchConversation, deleteConversation,
     checkpoint, forkAt, switchBranch, applyJourney: applyJourneyState,
     resetJourney: resetJourneyState, snapshot: journeySnapshot, deleteJourney: deleteSavedJourney,
@@ -223,7 +225,9 @@ function App() {
   }
 
   return (
-    <main className={`app-shell presentation-${presentationMode} ${storyMode ? 'story-mode' : 'explore-mode'} ${storyMode && storyPanels.length === 0 && (Boolean(selectedPlace) || messages.some((entry) => entry.role === 'user')) ? 'story-no-side-panels' : ''} ${storyMode && storyPanels.includes('map') && storyPanels.includes('destination') ? 'story-map-and-destination' : ''} ${storyMode && storyPanels.includes('destination') && storyPanels.includes('travelogue') ? 'story-panels-stacked' : ''}`}>
+    <>
+      <StartupScreen state={journeyLoadState} stage={journeyLoadStage} error={journeyLoadError} onRetry={retryJourneyLoad} onContinue={continueWithoutSavedJourney} />
+      <main inert={journeyLoadState !== 'ready'} className={`app-shell presentation-${presentationMode} ${storyMode ? 'story-mode' : 'explore-mode'} ${storyMode && storyPanels.length === 0 && (Boolean(selectedPlace) || messages.some((entry) => entry.role === 'user')) ? 'story-no-side-panels' : ''} ${storyMode && storyPanels.includes('map') && storyPanels.includes('destination') ? 'story-map-and-destination' : ''} ${storyMode && storyPanels.includes('destination') && storyPanels.includes('travelogue') ? 'story-panels-stacked' : ''}`}>
       <header className="topbar">
         <div className="brand-lockup">
           <div className="brand-mark" aria-hidden="true">✦</div>
@@ -334,7 +338,8 @@ function App() {
         eventCount={narrativeEvents.length}
         memory={{ people: knownPeople, entities: knownEntities, facts: userFacts }}
       />
-    </main>
+      </main>
+    </>
   )
 }
 

@@ -1,6 +1,29 @@
 :root { color: #e6ece5; background: #101917; font-family: system-ui, sans-serif; font-synthesis: none; }
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 0; background: #101917; }
+.startup-overlay { position: fixed; z-index: 10000; inset: 0; display: grid; place-items: center; padding: 20px; background: #101917ed; backdrop-filter: blur(10px); }
+.startup-card { width: min(440px, 100%); padding: 30px; border: 1px solid #385449; border-radius: 20px; background: linear-gradient(145deg, #1b302c, #14221f); box-shadow: 0 24px 80px #0008; }
+.startup-card > .startup-mark { margin: 0 auto 12px; }
+.startup-card h2 { margin: 0 0 22px; color: #e6ece5; text-align: center; font-size: 20px; }
+.startup-loading > p { margin: 0 0 18px; color: #c5e3a4; text-align: center; }
+.startup-loading ol { display: grid; gap: 12px; margin: 0 0 22px; padding: 0; list-style: none; color: #8fa99a; font-size: 13px; }
+.startup-loading li::before { display: inline-block; width: 22px; color: #668476; content: '○'; }
+.startup-loading li.complete::before { color: #c5e3a4; content: '✓'; }
+.startup-loading li.current { color: #e6ece5; }
+.startup-loading li.current::before { color: #c5e3a4; content: '◌'; }
+.startup-overlay .startup-progress { display: block; width: 100%; }
+.startup-failure { color: #a9c4b1; font-size: 13px; line-height: 1.5; }
+.startup-failure > strong { color: #f0cfaa; font-size: 15px; }
+.startup-failure p { margin: 9px 0 16px; }
+.startup-actions { display: flex; flex-wrap: wrap; gap: 9px; }
+.startup-actions button { min-height: 40px; padding: 8px 12px; border: 1px solid #49675a; border-radius: 10px; background: #203a32; color: #e6ece5; }
+.startup-actions .startup-primary { border-color: #c5e3a4; background: #c5e3a4; color: #14221f; font-weight: 700; }
+.startup-actions button:focus-visible, .startup-failure summary:focus-visible { outline: 2px solid #c5e3a4; outline-offset: 3px; }
+.startup-failure .startup-warning { margin: 13px 0; color: #e8bb8b; font-size: 12px; }
+.startup-failure details { border-top: 1px solid #385449; padding-top: 11px; }
+.startup-failure summary { width: fit-content; cursor: pointer; color: #c5e3a4; }
+.startup-failure code { display: block; margin-top: 8px; color: #c4cec7; font: 11px/1.5 ui-monospace, monospace; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) { .startup-progress i { animation: none; width: 100%; } }
 button, input, textarea { font: inherit; }
 button { cursor: pointer; }
 .app-shell { min-height: 100vh; padding: 24px; background: radial-gradient(circle at 80% -10%, #29423a 0, transparent 35%), #101917; }

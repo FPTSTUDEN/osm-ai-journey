@@ -13,6 +13,13 @@
       .startup-shell strong { color: #e6ece5; font-size: 16px; }
       .startup-progress { width: 110px; height: 2px; overflow: hidden; background: #29423a; }
       .startup-progress i { display: block; width: 45%; height: 100%; background: #c5e3a4; animation: startup-progress 1.2s ease-in-out infinite alternate; }
+      .startup-shell-failure { width: min(360px, calc(100vw - 40px)); padding: 14px; border: 1px solid #704b3a; border-radius: 12px; background: #1c2825; color: #a9c4b1; line-height: 1.5; }
+      .startup-shell-failure p { margin: 0 0 12px; color: #f0cfaa; }
+      .startup-shell-failure button { padding: 7px 12px; border: 1px solid #c5e3a4; border-radius: 8px; background: #c5e3a4; color: #14221f; font: inherit; font-weight: 700; }
+      .startup-shell-failure details { margin-top: 12px; text-align: left; }
+      .startup-shell-failure summary { cursor: pointer; color: #c5e3a4; }
+      .startup-shell-failure code { display: block; margin-top: 7px; overflow-wrap: anywhere; color: #c4cec7; font: 11px/1.5 ui-monospace, monospace; }
+      .startup-shell.has-error .startup-progress { display: none; }
       @keyframes startup-progress { to { transform: translateX(125%); } }
       @media (prefers-reduced-motion: reduce) { .startup-progress i { animation: none; width: 100%; } }
     </style>
@@ -23,10 +30,43 @@
       <div class="startup-shell" role="status" aria-live="polite">
         <span class="startup-mark" aria-hidden="true">✦</span>
         <strong>Osm AI Journey</strong>
-        <span>Opening your journey…</span>
+        <span id="startup-message">Loading application modules…</span>
         <span class="startup-progress" aria-hidden="true"><i></i></span>
+        <div id="startup-failure" class="startup-shell-failure" role="alert" hidden>
+          <p>The application could not start. Retry, or inspect the details and dev-server output.</p>
+          <button id="startup-retry" type="button">Retry</button>
+          <details>
+            <summary>Technical details</summary>
+            <code id="startup-diagnostic">No details available.</code>
+          </details>
+        </div>
       </div>
     </div>
+    <script>
+      const startupShell = document.querySelector('.startup-shell')
+      const startupFailure = document.querySelector('#startup-failure')
+      const startupMessage = document.querySelector('#startup-message')
+      const startupDiagnostic = document.querySelector('#startup-diagnostic')
+      const showStartupFailure = (value) => {
+        if (!startupShell?.isConnected || !startupFailure || !startupMessage || !startupDiagnostic) return
+        const diagnostic = String(value || 'Startup script failed without an error message.')
+          .replace(/https?:\/\/[^\s"'<>]+/gi, '[URL redacted]')
+          .replace(/\bBearer\s+\S+/gi, 'Bearer [redacted]')
+          .replace(/\b(api[_-]?key|token|authorization)\s*[:=]\s*\S+/gi, '$1=[redacted]')
+          .slice(0, 240)
+        startupShell.classList.add('has-error')
+        startupMessage.textContent = 'Application startup failed.'
+        startupDiagnostic.textContent = diagnostic
+        startupFailure.hidden = false
+        document.querySelector('#startup-retry')?.focus()
+      }
+      window.addEventListener('error', (event) => {
+        if (event instanceof ErrorEvent) showStartupFailure(event.message)
+        else if (event.target instanceof HTMLScriptElement) showStartupFailure('A startup script failed to load.')
+      }, true)
+      window.addEventListener('unhandledrejection', (event) => showStartupFailure(event.reason instanceof Error ? `${event.reason.name}: ${event.reason.message}` : event.reason))
+      document.querySelector('#startup-retry')?.addEventListener('click', () => window.location.reload())
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

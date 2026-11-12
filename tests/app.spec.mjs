@@ -377,9 +377,16 @@ test('shows an immediate loading shell before the app modules finish loading', a
   })
   await page.goto('/', { waitUntil: 'commit' })
   await mainRequested
-  await expect(page.getByRole('status').filter({ hasText: 'Opening your journey' })).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: 'Loading application modules' })).toBeVisible()
+  await page.evaluate(() => window.dispatchEvent(new ErrorEvent('error', { message: 'Failed at https://example.test/start?token=private' })))
+  await expect(page.getByRole('alert')).toContainText('The application could not start')
+  await page.getByText('Technical details').click()
+  await expect(page.locator('#startup-diagnostic')).toContainText('[URL redacted]')
+  await expect(page.locator('#startup-diagnostic')).not.toContainText('private')
+  await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible()
   releaseMain()
 })
+
 
 test('opening screen makes no provider request until an explicit shortcut is selected', async ({ page }) => {
   const providerRequests = []

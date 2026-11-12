@@ -75,38 +75,35 @@ function normalizeConversations(value: unknown): JourneyConversation[] {
   })
 }
 
-export async function loadActiveJourney(): Promise<JourneyState | null> {
-  try {
-    const journey = await get<Omit<JourneyState, 'messages'> & { messages: unknown }>(JOURNEY_STORE, 'active')
-    if (!journey) return null
-    // Journeys saved before structured messages stored string[]; migrate on read.
-    const messages = normalizeMessages(journey.messages) ?? []
-    const branches = normalizeBranches(journey.branches)
-    const storyProgress = normalizeProgress(journey.storyProgress, messages)
-    const conversations = normalizeConversations(journey.conversations)
-    const migratedConversations = conversations.length ? conversations : [{
-      id: crypto.randomUUID(),
-      title: conversationTitle(messages),
-      createdAt: new Date().toISOString(),
-      messages,
-      narrativeEvents: journey.narrativeEvents,
-      conversationSummary: journey.conversationSummary ?? '',
-      storyProgress,
-      branches,
-    }]
-    const activeConversationId = migratedConversations.some((conversation) => conversation.id === journey.activeConversationId)
-      ? journey.activeConversationId
-      : migratedConversations[0].id
-    return {
-      ...journey,
-      messages,
-      branches,
-      storyProgress,
-      conversations: migratedConversations,
-      activeConversationId,
-    }
-  } catch {
-    return null
+export async function loadActiveJourney(onRestore?: () => void): Promise<JourneyState | null> {
+  const journey = await get<Omit<JourneyState, 'messages'> & { messages: unknown }>(JOURNEY_STORE, 'active')
+  onRestore?.()
+  if (!journey) return null
+  // Journeys saved before structured messages stored string[]; migrate on read.
+  const messages = normalizeMessages(journey.messages) ?? []
+  const branches = normalizeBranches(journey.branches)
+  const storyProgress = normalizeProgress(journey.storyProgress, messages)
+  const conversations = normalizeConversations(journey.conversations)
+  const migratedConversations = conversations.length ? conversations : [{
+    id: crypto.randomUUID(),
+    title: conversationTitle(messages),
+    createdAt: new Date().toISOString(),
+    messages,
+    narrativeEvents: journey.narrativeEvents,
+    conversationSummary: journey.conversationSummary ?? '',
+    storyProgress,
+    branches,
+  }]
+  const activeConversationId = migratedConversations.some((conversation) => conversation.id === journey.activeConversationId)
+    ? journey.activeConversationId
+    : migratedConversations[0].id
+  return {
+    ...journey,
+    messages,
+    branches,
+    storyProgress,
+    conversations: migratedConversations,
+    activeConversationId,
   }
 }
 
