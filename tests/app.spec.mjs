@@ -366,6 +366,21 @@ test('story panels open independently and ignore keyboard focus changes', async 
   await expect(journalToggle).toBeFocused()
 })
 
+test('shows an immediate loading shell before the app modules finish loading', async ({ page }) => {
+  let releaseMain
+  let markMainRequested
+  const mainRequested = new Promise((resolve) => { markMainRequested = resolve })
+  await page.route('**/src/main.tsx', async (route) => {
+    markMainRequested()
+    await new Promise((resolve) => { releaseMain = resolve })
+    await route.continue()
+  })
+  await page.goto('/', { waitUntil: 'commit' })
+  await mainRequested
+  await expect(page.getByRole('status').filter({ hasText: 'Opening your journey' })).toBeVisible()
+  releaseMain()
+})
+
 test('opening screen makes no provider request until an explicit shortcut is selected', async ({ page }) => {
   const providerRequests = []
   page.on('request', (request) => {

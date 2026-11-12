@@ -6,10 +6,27 @@
     <meta name="theme-color" content="#11211f" />
     <meta name="description" content="A map-grounded AI journey and roleplay workspace." />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <style>
+      html, body, #root { min-height: 100%; margin: 0; background: #101917; color: #e6ece5; font-family: system-ui, sans-serif; }
+      .startup-shell { min-height: 100vh; display: grid; align-content: center; justify-items: center; gap: 12px; color: #a9c4b1; font-size: 13px; }
+      .startup-mark { display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid #7caa91; border-radius: 14px; color: #c5e3a4; font-size: 22px; }
+      .startup-shell strong { color: #e6ece5; font-size: 16px; }
+      .startup-progress { width: 110px; height: 2px; overflow: hidden; background: #29423a; }
+      .startup-progress i { display: block; width: 45%; height: 100%; background: #c5e3a4; animation: startup-progress 1.2s ease-in-out infinite alternate; }
+      @keyframes startup-progress { to { transform: translateX(125%); } }
+      @media (prefers-reduced-motion: reduce) { .startup-progress i { animation: none; width: 100%; } }
+    </style>
     <title>Osm AI Journey</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="startup-shell" role="status" aria-live="polite">
+        <span class="startup-mark" aria-hidden="true">✦</span>
+        <strong>Osm AI Journey</strong>
+        <span>Opening your journey…</span>
+        <span class="startup-progress" aria-hidden="true"><i></i></span>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
