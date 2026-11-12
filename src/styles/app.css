@@ -475,3 +475,23 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
   .story-entry-arrive, .scene-transition, .chat-line.speaker-focus .chat-bubble, .vn-dialogue.speaker-focus,
   .typing-indicator i, .arrival-card { animation: none !important; }
 }
+.conversation-manager-panel { width: min(560px, 100%); }
+.conversation-manager-list { display: grid; gap: 8px; overflow-y: auto; max-height: min(52vh, 440px); padding: 2px; }
+.conversation-manager-item { display: flex; align-items: center; gap: 8px; padding: 8px; border: 1px solid #324b3e; border-radius: 10px; background: #172721; }
+.conversation-manager-item-active { border-color: #a3c985; background: #1e3025; }
+.conversation-manager-select { display: grid; flex: 1; gap: 5px; min-width: 0; border: 0; background: transparent; color: #e4ecdf; text-align: left; }
+.conversation-manager-select strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 550; }
+.conversation-manager-select span { color: #91a99a; font: 10px ui-monospace, monospace; }
+.conversation-manager-select:disabled { cursor: default; }
+.conversation-manager-delete, .conversation-manager-create { padding: 8px 10px; border: 1px solid #496b5a; border-radius: 8px; background: #12201c; color: #d3e2d4; font-size: 10px; }
+.conversation-manager-delete:not(:disabled):hover { border-color: #cf897a; color: #ffc1b6; }
+.conversation-manager-delete:disabled { cursor: not-allowed; opacity: .45; }
+.conversation-manager-panel > footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 4px; }
+.conversation-manager-panel > footer span { color: #91a99a; font-size: 10px; line-height: 1.45; }
+.conversation-manager-create { flex: 0 0 auto; border-color: #79966c; background: #c5e3a4; color: #15231b; font-weight: 600; }
+.conversation-manager-create:disabled { cursor: not-allowed; opacity: .5; }
+@media (max-width: 520px) {
+  .conversation-manager-panel { padding: 15px; }
+  .conversation-manager-panel > footer { align-items: stretch; flex-direction: column; }
+  .conversation-manager-create { align-self: flex-end; }
+}

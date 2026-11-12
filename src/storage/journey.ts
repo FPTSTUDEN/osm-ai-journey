@@ -1,4 +1,4 @@
-import type { JourneyState, JourneyTimeline, StoryBranch, StoryProgress } from '../types/domain'
+import type { JourneyConversation, JourneyState, JourneyTimeline, StoryBranch, StoryProgress } from '../types/domain'
 import { DEFAULT_PERSONA_ID } from '../providers/config'
 import { get, put, remove } from './db'
 import { normalizeMessages } from './messages'
@@ -49,17 +49,61 @@ function normalizeBranches(value: unknown): StoryBranch[] {
   })
 }
 
+function conversationTitle(messages: JourneyTimeline['messages']): string {
+  const firstMessage = messages.find((entry) => entry.role === 'user')?.text.trim()
+  if (!firstMessage) return 'New conversation'
+  return firstMessage.length > 42 ? `${firstMessage.slice(0, 39).trimEnd()}…` : firstMessage
+}
+
+function normalizeConversations(value: unknown): JourneyConversation[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item) => {
+    if (!item || typeof item !== 'object') return []
+    const conversation = item as Partial<JourneyConversation>
+    const messages = normalizeMessages(conversation.messages)
+    if (typeof conversation.id !== 'string' || typeof conversation.createdAt !== 'string' || !messages) return []
+    return [{
+      id: conversation.id,
+      title: conversationTitle(messages),
+      createdAt: conversation.createdAt,
+      messages,
+      narrativeEvents: Array.isArray(conversation.narrativeEvents) ? conversation.narrativeEvents : [],
+      conversationSummary: typeof conversation.conversationSummary === 'string' ? conversation.conversationSummary : '',
+      storyProgress: normalizeProgress(conversation.storyProgress, messages),
+      branches: normalizeBranches(conversation.branches),
+    }]
+  })
+}
+
 export async function loadActiveJourney(): Promise<JourneyState | null> {
   try {
     const journey = await get<Omit<JourneyState, 'messages'> & { messages: unknown }>(JOURNEY_STORE, 'active')
     if (!journey) return null
     // Journeys saved before structured messages stored string[]; migrate on read.
     const messages = normalizeMessages(journey.messages) ?? []
+    const branches = normalizeBranches(journey.branches)
+    const storyProgress = normalizeProgress(journey.storyProgress, messages)
+    const conversations = normalizeConversations(journey.conversations)
+    const migratedConversations = conversations.length ? conversations : [{
+      id: crypto.randomUUID(),
+      title: conversationTitle(messages),
+      createdAt: new Date().toISOString(),
+      messages,
+      narrativeEvents: journey.narrativeEvents,
+      conversationSummary: journey.conversationSummary ?? '',
+      storyProgress,
+      branches,
+    }]
+    const activeConversationId = migratedConversations.some((conversation) => conversation.id === journey.activeConversationId)
+      ? journey.activeConversationId
+      : migratedConversations[0].id
     return {
       ...journey,
       messages,
-      branches: normalizeBranches(journey.branches),
-      storyProgress: normalizeProgress(journey.storyProgress, messages),
+      branches,
+      storyProgress,
+      conversations: migratedConversations,
+      activeConversationId,
     }
   } catch {
     return null

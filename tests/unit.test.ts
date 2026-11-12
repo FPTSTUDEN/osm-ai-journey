@@ -139,6 +139,34 @@ test('journey export round-trips and rejects malformed data', () => {
   assert.throws(() => parseJourneyJson({ id: 'wrong' }), /invalid id/)
 })
 
+test('journey export preserves conversation history and validates the active conversation', () => {
+  const conversationJourney = {
+    id: 'active' as const,
+    currentDestination: null,
+    mapViewport: null,
+    destinationHistory: [],
+    currentScene: 1,
+    messages: [entry('user', 'A saved chat')],
+    knownPeople: [],
+    knownEntities: [],
+    userFacts: [],
+    narrativeEvents: [],
+    conversationSummary: '',
+    storyProgress: null,
+    branches: [],
+    activeConversationId: 'thread-1',
+    conversations: [{
+      id: 'thread-1', title: 'Old title', createdAt: '2026-01-01T00:00:00.000Z',
+      messages: [entry('user', 'A saved chat')], narrativeEvents: [], conversationSummary: '', storyProgress: null, branches: [],
+    }],
+  }
+  const restored = parseJourneyJson(JSON.parse(journeyJson(conversationJourney)))
+  assert.equal(restored.activeConversationId, 'thread-1')
+  assert.equal(restored.conversations?.[0].title, 'A saved chat')
+  assert.equal(restored.conversations?.[0].messages[0].text, 'A saved chat')
+  assert.throws(() => parseJourneyJson({ ...conversationJourney, activeConversationId: 'missing' }), /invalid active conversation/)
+})
+
 const entry = (role: ChatEntry['role'], text: string): ChatEntry => ({ id: text, role, text, createdAt: '2026-01-01T00:00:00.000Z' })
 const settings = { llmProvider: 'ollama' as const, llmBaseUrl: '', llmModel: 't', llmApiKey: '', personaName: 'P', personaInstructions: '', onlineGeocoder: 'nominatim' as const, calculateWalkingRoutes: false, routingBaseUrl: '', liveDataEnabled: false, weatherBaseUrl: '', overpassApiUrl: 'https://overpass-api.de/api/interpreter' }
 const journey = { destinationHistory: [], currentScene: 1, knownPeople: [], knownEntities: [], userFacts: [], conversationSummary: '' }

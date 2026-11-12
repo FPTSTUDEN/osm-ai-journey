@@ -1,4 +1,4 @@
-import type { JourneyState, JourneyTimeline, Place, StoryBranch, StoryProgress } from '../types/domain'
+import type { JourneyConversation, JourneyState, JourneyTimeline, Place, StoryBranch, StoryProgress } from '../types/domain'
 import { DEFAULT_PERSONA_ID } from '../providers/config'
 import { normalizeMessages } from './messages'
 
@@ -57,6 +57,40 @@ function parseBranches(value: unknown): StoryBranch[] {
   })
 }
 
+function parseConversations(value: unknown): JourneyConversation[] | undefined {
+  if (value === undefined) return undefined
+  if (!Array.isArray(value) || value.length === 0) throw new Error('Journey file has invalid conversations')
+  const conversations = value.map((item) => {
+    if (!item || typeof item !== 'object') throw new Error('Journey file has an invalid conversation')
+    const conversation = item as Partial<JourneyConversation>
+    const messages = normalizeMessages(conversation.messages)
+    if (typeof conversation.id !== 'string' || typeof conversation.createdAt !== 'string' || !messages
+      || !Array.isArray(conversation.narrativeEvents) || !conversation.narrativeEvents.every((event) => event && typeof event === 'object')) {
+      throw new Error('Journey file has an invalid conversation')
+    }
+    const progress = conversation.storyProgress as Partial<StoryProgress> | null | undefined
+    const progressEntry = progress && messages.find((entry) => entry.id === progress.entryId && entry.role === 'assistant')
+    const blockCount = progressEntry?.storyTurn?.blocks.length ?? (progressEntry ? 1 : 0)
+    const storyProgress = progressEntry && typeof progress?.blockIndex === 'number' && Number.isInteger(progress.blockIndex) && progress.blockIndex >= 0 && progress.blockIndex < blockCount
+      ? { entryId: progress.entryId!, blockIndex: progress.blockIndex }
+      : null
+    const firstMessage = messages.find((entry) => entry.role === 'user')?.text.trim()
+    const title = firstMessage ? (firstMessage.length > 42 ? `${firstMessage.slice(0, 39).trimEnd()}…` : firstMessage) : 'New conversation'
+    return {
+      id: conversation.id,
+      title,
+      createdAt: conversation.createdAt,
+      messages,
+      narrativeEvents: conversation.narrativeEvents,
+      conversationSummary: typeof conversation.conversationSummary === 'string' ? conversation.conversationSummary : '',
+      storyProgress,
+      branches: parseBranches(conversation.branches),
+    }
+  })
+  if (new Set(conversations.map((conversation) => conversation.id)).size !== conversations.length) throw new Error('Journey file has duplicate conversation IDs')
+  return conversations
+}
+
 export function parseJourneyJson(value: unknown): JourneyState {
   if (!value || typeof value !== 'object') throw new Error('Journey file must contain a JSON object')
   const journey = value as Partial<JourneyState>
@@ -70,6 +104,10 @@ export function parseJourneyJson(value: unknown): JourneyState {
   if (!Array.isArray(journey.knownEntities) || !journey.knownEntities.every((item) => typeof item === 'string')) throw new Error('Journey file has invalid entities')
   if (!Array.isArray(journey.userFacts) || !journey.userFacts.every((item) => typeof item === 'string')) throw new Error('Journey file has invalid facts')
   if (!Array.isArray(journey.narrativeEvents) || !journey.narrativeEvents.every((item) => item && typeof item === 'object')) throw new Error('Journey file has invalid events')
+  const conversations = parseConversations(journey.conversations)
+  if (conversations && typeof journey.activeConversationId === 'string' && !conversations.some((conversation) => conversation.id === journey.activeConversationId)) {
+    throw new Error('Journey file has an invalid active conversation')
+  }
   return {
     id: 'active',
     personaId: typeof journey.personaId === 'string' ? journey.personaId : DEFAULT_PERSONA_ID,
@@ -85,6 +123,7 @@ export function parseJourneyJson(value: unknown): JourneyState {
     conversationSummary: typeof journey.conversationSummary === 'string' ? journey.conversationSummary : '',
     storyProgress: parseTimeline({ ...journey, storyProgress: journey.storyProgress }).storyProgress ?? null,
     branches: parseBranches(journey.branches),
+    ...(conversations ? { conversations, activeConversationId: journey.activeConversationId ?? conversations[0].id } : {}),
   }
 }
 

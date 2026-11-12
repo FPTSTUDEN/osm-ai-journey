@@ -1,12 +1,23 @@
 import { useEffect, useState } from 'react'
 import { deleteActiveJourney, loadActiveJourney, saveActiveJourney } from '../storage/journey'
 import { newEntry, starterEntries, STARTER_MESSAGE } from '../storage/messages'
-import type { ChatEntry, JourneyState, JourneyTimeline, MapViewport, NarrativeEvent, Place, StoryBranch, StoryCheckpoint, StoryProgress } from '../types/domain'
+import type { ChatEntry, JourneyConversation, JourneyState, JourneyTimeline, MapViewport, NarrativeEvent, Place, StoryBranch, StoryCheckpoint, StoryProgress } from '../types/domain'
 import { latestStoryStop } from '../providers/storyFormat'
 import { DEFAULT_PERSONA_ID } from '../providers/config'
 
+function conversationTitle(messages: ChatEntry[]): string {
+  const firstMessage = messages.find((entry) => entry.role === 'user')?.text.trim()
+  if (!firstMessage) return 'New conversation'
+  return firstMessage.length > 42 ? `${firstMessage.slice(0, 39).trimEnd()}…` : firstMessage
+}
+
+function newConversation(messages = starterEntries()): JourneyConversation {
+  return { id: crypto.randomUUID(), title: conversationTitle(messages), createdAt: new Date().toISOString(), messages, narrativeEvents: [], conversationSummary: '', storyProgress: null, branches: [] }
+}
+
 function emptyJourney(): JourneyState {
-  return { id: 'active', personaId: DEFAULT_PERSONA_ID, currentDestination: null, mapViewport: null, destinationHistory: [], currentScene: 1, messages: starterEntries(), knownPeople: [], knownEntities: [], userFacts: [], narrativeEvents: [], conversationSummary: '', storyProgress: null, branches: [] }
+  const conversation = newConversation()
+  return { id: 'active', personaId: DEFAULT_PERSONA_ID, currentDestination: null, mapViewport: null, destinationHistory: [], currentScene: 1, messages: conversation.messages, knownPeople: [], knownEntities: [], userFacts: [], narrativeEvents: [], conversationSummary: '', storyProgress: null, branches: [], conversations: [conversation], activeConversationId: conversation.id }
 }
 
 export function newJourneyEvent(type: NarrativeEvent['type'], text: string, placeId?: string): NarrativeEvent {
@@ -27,6 +38,9 @@ export function useJourney() {
   const [conversationSummary, setConversationSummary] = useState('')
   const [storyProgress, setStoryProgress] = useState<StoryProgress | null>(null)
   const [branches, setBranches] = useState<StoryBranch[]>([])
+  const [initialConversation] = useState(() => newConversation())
+  const [conversations, setConversations] = useState<JourneyConversation[]>([initialConversation])
+  const [activeConversationId, setActiveConversationId] = useState(initialConversation.id)
   const [summaryMessageCount, setSummaryMessageCount] = useState(0)
   const [journeyReady, setJourneyReady] = useState(false)
 
@@ -37,6 +51,28 @@ export function useJourney() {
   function checkpoint(): StoryCheckpoint {
     const { messages: _messages, storyProgress: _storyProgress, ...snapshot } = timeline()
     return snapshot
+  }
+
+  function currentConversation(): JourneyConversation {
+    const id = activeConversationId || conversations[0]?.id || crypto.randomUUID()
+    const previous = conversations.find((conversation) => conversation.id === id)
+    return { id, title: conversationTitle(messages), createdAt: previous?.createdAt ?? new Date().toISOString(), messages, narrativeEvents, conversationSummary, storyProgress, branches }
+  }
+
+  function conversationList(): JourneyConversation[] {
+    const active = currentConversation()
+    return conversations.some((conversation) => conversation.id === active.id)
+      ? conversations.map((conversation) => conversation.id === active.id ? active : conversation)
+      : [...conversations, active]
+  }
+
+  function restoreConversation(conversation: JourneyConversation) {
+    setMessages(conversation.messages)
+    setNarrativeEvents(conversation.narrativeEvents)
+    setConversationSummary(conversation.conversationSummary)
+    setStoryProgress(conversation.storyProgress)
+    setBranches(conversation.branches)
+    setSummaryMessageCount(conversation.messages.length)
   }
 
   function restoreTimeline(snapshot: JourneyTimeline) {
@@ -76,15 +112,18 @@ export function useJourney() {
       setMapViewport(restored.mapViewport ?? null)
       setDestinationHistory(restored.destinationHistory)
       setCurrentScene(restored.currentScene)
-      setMessages(restored.messages.length ? restored.messages : starterEntries())
-      setNarrativeEvents(restored.narrativeEvents)
       setKnownPeople(restored.knownPeople)
       setKnownEntities(restored.knownEntities)
       setUserFacts(restored.userFacts)
-      setConversationSummary(restored.conversationSummary ?? '')
-      setStoryProgress(restored.storyProgress ?? null)
-      setBranches(restored.branches ?? [])
-      setSummaryMessageCount(restored.messages.length)
+      const records = restored.conversations?.length ? restored.conversations : [{
+        id: crypto.randomUUID(), title: conversationTitle(restored.messages), createdAt: new Date().toISOString(),
+        messages: restored.messages.length ? restored.messages : starterEntries(), narrativeEvents: restored.narrativeEvents,
+        conversationSummary: restored.conversationSummary ?? '', storyProgress: restored.storyProgress ?? null, branches: restored.branches ?? [],
+      }]
+      const active = records.find((conversation) => conversation.id === restored.activeConversationId) ?? records[0]
+      setConversations(records)
+      setActiveConversationId(active.id)
+      restoreConversation(active)
       setJourneyReady(true)
     })
   }, [])
@@ -107,10 +146,12 @@ export function useJourney() {
         conversationSummary,
         storyProgress,
         branches,
+        conversations: conversationList(),
+        activeConversationId: activeConversationId || conversations[0]?.id,
       })
     }, 400)
     return () => window.clearTimeout(timer)
-  }, [branches, conversationSummary, currentScene, destinationHistory, journeyReady, knownEntities, knownPeople, mapViewport, messages, narrativeEvents, personaId, selectedPlace, storyProgress, userFacts])
+  }, [activeConversationId, branches, conversationSummary, conversations, currentScene, destinationHistory, journeyReady, knownEntities, knownPeople, mapViewport, messages, narrativeEvents, personaId, selectedPlace, storyProgress, userFacts])
 
   function applyJourney(journey: JourneyState) {
     setPersonaId(journey.personaId ?? DEFAULT_PERSONA_ID)
@@ -118,15 +159,18 @@ export function useJourney() {
     setMapViewport(journey.mapViewport ?? null)
     setDestinationHistory(journey.destinationHistory)
     setCurrentScene(journey.currentScene)
-    setMessages(journey.messages)
-    setNarrativeEvents(journey.narrativeEvents)
     setKnownPeople(journey.knownPeople)
     setKnownEntities(journey.knownEntities)
     setUserFacts(journey.userFacts)
-    setConversationSummary(journey.conversationSummary ?? '')
-    setStoryProgress(journey.storyProgress ?? null)
-    setBranches(journey.branches ?? [])
-    setSummaryMessageCount(journey.messages.length)
+    const records = journey.conversations?.length ? journey.conversations : [{
+      id: crypto.randomUUID(), title: conversationTitle(journey.messages), createdAt: new Date().toISOString(),
+      messages: journey.messages, narrativeEvents: journey.narrativeEvents, conversationSummary: journey.conversationSummary ?? '',
+      storyProgress: journey.storyProgress ?? null, branches: journey.branches ?? [],
+    }]
+    const active = records.find((conversation) => conversation.id === journey.activeConversationId) ?? records[0]
+    setConversations(records)
+    setActiveConversationId(active.id)
+    restoreConversation(active)
   }
 
   function resetJourney() {
@@ -136,19 +180,45 @@ export function useJourney() {
     setMapViewport(journey.mapViewport ?? null)
     setDestinationHistory(journey.destinationHistory)
     setCurrentScene(journey.currentScene)
-    setMessages(journey.messages)
-    setNarrativeEvents(journey.narrativeEvents)
     setKnownPeople(journey.knownPeople)
     setKnownEntities(journey.knownEntities)
     setUserFacts(journey.userFacts)
-    setConversationSummary('')
-    setStoryProgress(null)
-    setBranches([])
+    setConversations(journey.conversations ?? [])
+    setActiveConversationId(journey.activeConversationId ?? '')
+    restoreConversation(journey.conversations?.[0] ?? newConversation())
     setSummaryMessageCount(0)
   }
 
   function snapshot(): JourneyState {
-    return { id: 'active', ...timeline(), branches }
+    return { id: 'active', ...timeline(), branches, conversations: conversationList(), activeConversationId: activeConversationId || conversations[0]?.id }
+  }
+
+  function createConversation() {
+    const conversation = newConversation()
+    setConversations([...conversationList(), conversation])
+    setActiveConversationId(conversation.id)
+    restoreConversation(conversation)
+  }
+
+  function switchConversation(conversationId: string) {
+    if (conversationId === activeConversationId) return
+    const records = conversationList()
+    const conversation = records.find((item) => item.id === conversationId)
+    if (!conversation) return
+    setConversations(records)
+    setActiveConversationId(conversation.id)
+    restoreConversation(conversation)
+  }
+
+  function deleteConversation(conversationId: string) {
+    const records = conversationList()
+    if (records.length <= 1 || !records.some((item) => item.id === conversationId)) return
+    const remaining = records.filter((item) => item.id !== conversationId)
+    setConversations(remaining)
+    if (conversationId !== activeConversationId) return
+    const next = [...remaining].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
+    setActiveConversationId(next.id)
+    restoreConversation(next)
   }
 
   function forkAt(messagesOnBranch: ChatEntry[], checkpointAtBranch: StoryCheckpoint, progress: StoryProgress) {
@@ -206,6 +276,11 @@ export function useJourney() {
     storyProgress,
     setStoryProgress,
     branches,
+    conversations: conversationList(),
+    activeConversationId: activeConversationId || conversations[0]?.id,
+    createConversation,
+    switchConversation,
+    deleteConversation,
     checkpoint,
     forkAt,
     switchBranch,

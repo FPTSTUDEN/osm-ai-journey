@@ -383,6 +383,49 @@ test('opening screen makes no provider request until an explicit shortcut is sel
   await expect(page.getByRole('status')).toContainText('You arrive at Test Destination')
 })
 
+test('creates, switches, deletes, and restores separate conversations', async ({ page }) => {
+  let replyIndex = 0
+  await page.route('http://localhost:11434/v1/chat/completions', (route) => {
+    const reply = ['First reply stays here.', 'Second reply stays separate.'][replyIndex++]
+    return route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: `data: ${JSON.stringify({ choices: [{ delta: { content: reply } }] })}\n\ndata: [DONE]\n\n`,
+    })
+  })
+  await resetBrowser(page)
+  const composer = page.getByPlaceholder(/Speak freely/)
+  const send = page.getByRole('button', { name: 'Send message' })
+  await composer.fill('First conversation prompt')
+  await send.click()
+  await expect(page.locator('.conversation')).toContainText('First reply stays here.')
+
+  await page.getByRole('button', { name: /Conversations/ }).click()
+  await page.getByRole('button', { name: 'New conversation' }).click()
+  await composer.fill('Second conversation prompt')
+  await send.click()
+  await expect(page.locator('.conversation')).toContainText('Second reply stays separate.')
+
+  await page.getByRole('button', { name: /Conversations/ }).click()
+  const manager = page.getByRole('dialog', { name: 'Manage conversations' })
+  await expect(manager.getByRole('listitem')).toHaveCount(2)
+  await manager.locator('.conversation-manager-select').filter({ hasText: 'First conversation prompt' }).click()
+  await expect(page.locator('.conversation')).toContainText('First reply stays here.')
+  await expect(page.locator('.conversation')).not.toContainText('Second reply stays separate.')
+
+  await page.getByRole('button', { name: /Conversations/ }).click()
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.getByRole('dialog', { name: 'Manage conversations' }).getByRole('button', { name: 'Delete Second conversation prompt' }).click()
+  await expect(page.getByRole('dialog', { name: 'Manage conversations' }).getByRole('listitem')).toHaveCount(1)
+  await page.waitForTimeout(500)
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await page.getByRole('button', { name: /Conversations/ }).click()
+  const restoredManager = page.getByRole('dialog', { name: 'Manage conversations' })
+  await expect(restoredManager.getByRole('listitem')).toHaveCount(1)
+  await expect(restoredManager).toContainText('First conversation prompt')
+  await expect(restoredManager.getByRole('button', { name: 'Delete First conversation prompt' })).toBeDisabled()
+})
+
 test('renders structured story turns with subtle response effects', async ({ page }) => {
   const content = JSON.stringify({ blocks: [
     { type: 'narration', text: 'Rain begins to fall.' },

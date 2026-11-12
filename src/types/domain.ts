@@ -126,7 +126,20 @@ export type ChatEntry = {
   createdAt: string
 }
 
+export type JourneyConversation = {
+  id: string
+  title: string
+  createdAt: string
+  messages: ChatEntry[]
+  narrativeEvents: NarrativeEvent[]
+  conversationSummary: string
+  storyProgress: StoryProgress | null
+  branches: StoryBranch[]
+}
+
 export type JourneyState = JourneyTimeline & {
   id: 'active'
   branches?: StoryBranch[]
+  conversations?: JourneyConversation[]
+  activeConversationId?: string
 }

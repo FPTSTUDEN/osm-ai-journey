@@ -26,6 +26,7 @@ function App() {
     setNarrativeEvents, knownPeople, setKnownPeople, knownEntities, setKnownEntities, userFacts,
     setUserFacts, conversationSummary, setConversationSummary, summaryMessageCount,
     setSummaryMessageCount, journeyReady, storyProgress, setStoryProgress, branches,
+    conversations, activeConversationId, createConversation, switchConversation, deleteConversation,
     checkpoint, forkAt, switchBranch, applyJourney: applyJourneyState,
     resetJourney: resetJourneyState, snapshot: journeySnapshot, deleteJourney: deleteSavedJourney,
     appendArrival,
@@ -192,6 +193,26 @@ function App() {
     setSelectedPhoto(null)
   }
 
+  function startConversation() {
+    chat.reset()
+    setMessage('')
+    createConversation()
+  }
+
+  function selectConversation(conversationId: string) {
+    chat.reset()
+    setMessage('')
+    switchConversation(conversationId)
+  }
+
+  function removeConversation(conversationId: string) {
+    if (conversationId === activeConversationId) {
+      chat.reset()
+      setMessage('')
+    }
+    deleteConversation(conversationId)
+  }
+
   function forkStoryTimeline(messagesOnBranch: Parameters<typeof forkAt>[0], checkpointAtBranch: Parameters<typeof forkAt>[1], progress: Parameters<typeof forkAt>[2]) {
     forkAt(messagesOnBranch, checkpointAtBranch, progress)
     setRoute(null)
@@ -280,6 +301,11 @@ function App() {
           onStoryProgressChange={setStoryProgress}
           branches={branches}
           onSwitchBranch={switchStoryBranch}
+          conversations={conversations}
+          activeConversationId={activeConversationId ?? ''}
+          onCreateConversation={startConversation}
+          onSwitchConversation={selectConversation}
+          onDeleteConversation={removeConversation}
           animatedEntryId={animatedEntryId}
           companionImageUrl={personaImageUrl}
         />

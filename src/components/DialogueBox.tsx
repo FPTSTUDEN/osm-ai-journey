@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
-import type { ChatEntry, StoryBranch, StoryPresentationMode, StoryProgress } from '../types/domain'
+import type { ChatEntry, JourneyConversation, StoryBranch, StoryPresentationMode, StoryProgress } from '../types/domain'
 import { latestStoryStop, storyStopIndex, storyStops } from '../providers/storyFormat'
 import { revealedTextLength } from './typewriter'
 import { StoryMessageList } from './StoryMessageList'
@@ -24,6 +24,11 @@ type DialogueBoxProps = {
   onStoryProgressChange: (progress: StoryProgress | null) => void
   branches: StoryBranch[]
   onSwitchBranch: (branchId: string) => void
+  conversations: JourneyConversation[]
+  activeConversationId: string
+  onCreateConversation: () => void
+  onSwitchConversation: (conversationId: string) => void
+  onDeleteConversation: (conversationId: string) => void
   animatedEntryId: string | null
   companionImageUrl: string | null
 }
@@ -74,10 +79,16 @@ export function DialogueBox({
   onStoryProgressChange,
   branches,
   onSwitchBranch,
+  conversations,
+  activeConversationId,
+  onCreateConversation,
+  onSwitchConversation,
+  onDeleteConversation,
   animatedEntryId,
   companionImageUrl,
 }: DialogueBoxProps) {
   const [expanded, setExpanded] = useState(false)
+  const [showConversationManager, setShowConversationManager] = useState(false)
   const [skippedSummary, setSkippedSummary] = useState<SkippedContent[] | null>(null)
   const [revealCompleteId, setRevealCompleteId] = useState<string | null>(null)
   const [revealedLength, setRevealedLength] = useState(0)
@@ -130,6 +141,10 @@ export function DialogueBox({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && showConversationManager) {
+        setShowConversationManager(false)
+        return
+      }
       if (event.key === 'Escape' && skippedSummary) {
         setSkippedSummary(null)
         return
@@ -147,7 +162,7 @@ export function DialogueBox({
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [activeStopIndex, allStops, canMoveNext, canMovePrevious, onStoryProgressChange, presentationMode, skippedSummary])
+  }, [activeStopIndex, allStops, canMoveNext, canMovePrevious, onStoryProgressChange, presentationMode, showConversationManager, skippedSummary])
 
   function moveProgress(offset: number) {
     const nextIndex = activeStopIndex + offset
@@ -180,6 +195,7 @@ export function DialogueBox({
               ? <button type="button" className="skip-story-button" onClick={skipToEnd} disabled={!skipped.length}>Skip</button>
               : <span className="story-progress-hint">Send a message to start</span>}
           </div>}
+          <button type="button" className="log-toggle" aria-expanded={showConversationManager} onClick={() => setShowConversationManager(true)}>Conversations · {conversations.length}</button>
           <button type="button" className="log-toggle" aria-expanded={expanded} onClick={() => setExpanded((open) => !open)}>{expanded ? 'Close log' : 'Log'}</button>
         </div>
       </header>
@@ -208,6 +224,22 @@ export function DialogueBox({
           : <button className="send-button" type="submit" aria-label="Send message">↗</button>}
       </form>
       <div className="journey-footer"><span>{destinationName ? `At ${destinationName}` : 'No destination selected'}</span><span>{destinationCount} destination{destinationCount === 1 ? '' : 's'} · {routesEnabled ? 'Walking routes on' : 'Routes optional'}</span></div>
+      {showConversationManager && createPortal(<div className="skip-summary-backdrop conversation-manager-backdrop" onClick={(event) => { if (event.target === event.currentTarget) setShowConversationManager(false) }}>
+        <section className="skip-summary-panel conversation-manager-panel" role="dialog" aria-modal="true" aria-labelledby="conversation-manager-title">
+          <header><div><p className="eyebrow">Journey conversations</p><h2 id="conversation-manager-title">Manage conversations</h2></div><button type="button" onClick={() => setShowConversationManager(false)} aria-label="Close conversations">×</button></header>
+          <div className="conversation-manager-list" role="list" aria-label="Conversations">
+            {[...conversations].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((conversation) => <article className={`conversation-manager-item ${conversation.id === activeConversationId ? 'conversation-manager-item-active' : ''}`} role="listitem" key={conversation.id}>
+              <button type="button" className="conversation-manager-select" aria-pressed={conversation.id === activeConversationId} disabled={llmState === 'loading'} onClick={() => { onSwitchConversation(conversation.id); setShowConversationManager(false) }}>
+                <strong>{conversation.title}</strong><span>{conversation.messages.filter((entry) => entry.role === 'user').length} traveler message{conversation.messages.filter((entry) => entry.role === 'user').length === 1 ? '' : 's'}</span>
+              </button>
+              <button type="button" className="conversation-manager-delete" aria-label={`Delete ${conversation.title}`} disabled={conversations.length <= 1 || llmState === 'loading'} onClick={() => {
+                if (window.confirm(`Delete “${conversation.title}”? This cannot be undone.`)) onDeleteConversation(conversation.id)
+              }}>Delete</button>
+            </article>)}
+          </div>
+          <footer><span>{llmState === 'loading' ? 'Stop the current response before switching or creating conversations.' : 'Each conversation keeps its own messages and story branches.'}</span><button type="button" className="conversation-manager-create" disabled={llmState === 'loading'} onClick={() => { onCreateConversation(); setShowConversationManager(false) }}>New conversation</button></footer>
+        </section>
+      </div>, document.body)}
       {skippedSummary && createPortal(<div className="skip-summary-backdrop">
         <section className="skip-summary-panel" role="dialog" aria-modal="true" aria-labelledby="skip-summary-title">
           <header><div><p className="eyebrow">Skipped story</p><h2 id="skip-summary-title">Review what you skipped</h2></div><button type="button" onClick={() => setSkippedSummary(null)} aria-label="Close skipped story">×</button></header>
