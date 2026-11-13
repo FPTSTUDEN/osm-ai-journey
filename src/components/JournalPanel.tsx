@@ -2,12 +2,13 @@ import type { NarrativeEvent } from '../types/domain'
 
 type JournalPanelProps = {
   events: NarrativeEvent[]
+  isOpen: boolean
   onClose: () => void
 }
 
-export function JournalPanel({ events, onClose }: JournalPanelProps) {
+export function JournalPanel({ events, isOpen, onClose }: JournalPanelProps) {
   return (
-    <aside id="story-travelogue-panel" className="story-dock-panel travelogue-panel" role="complementary" aria-labelledby="journal-panel-label">
+    <aside id="story-travelogue-panel" aria-hidden={!isOpen} inert={!isOpen} className={`story-dock-panel travelogue-panel ${isOpen ? 'story-panel-open' : 'story-panel-closing'}`} role="complementary" aria-labelledby="journal-panel-label">
       <span id="journal-panel-label" className="sr-only">Journal panel</span>
       <div className="story-dock-header">
         <div><p className="eyebrow">Journey journal</p><h3 id="journal-panel-heading">Journal</h3></div>

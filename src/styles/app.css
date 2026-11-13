@@ -414,11 +414,10 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
 .opening-pins i { position: absolute; width: 9px; height: 9px; border: 2px solid #d5ef9a; border-radius: 50% 50% 50% 0; box-shadow: 0 0 16px #b9df91; transform: rotate(-45deg); }
 .opening-pins i:nth-child(1) { top: 17%; left: 13%; }.opening-pins i:nth-child(2) { top: 25%; right: 12%; }.opening-pins i:nth-child(3) { bottom: 17%; left: 20%; }.opening-pins i:nth-child(4) { right: 19%; bottom: 12%; }
 .story-mode .workspace { --left-inset: 24px; --right-inset: 24px; }
-.story-mode.story-map-and-destination .workspace { --left-inset: 474px; --right-inset: 390px; }
-.story-mode .workspace:has(.map-layout--compact) { --left-inset: 474px; }
-.story-mode .workspace:has(.destination-dock-panel) { --right-inset: 390px; }
+.story-mode.story-map-open .workspace { --left-inset: 474px; }
+.story-mode.story-destination-open .workspace { --right-inset: 390px; }
 .story-mode .journey-panel { left: calc((var(--left-inset) + 100vw - var(--right-inset)) / 2); width: min(900px, calc(100vw - var(--left-inset) - var(--right-inset) - 24px)); }
-.story-mode .dialogue-panel { position: fixed; z-index: 6; bottom: 20px; left: calc((var(--left-inset) + 100vw - var(--right-inset)) / 2); width: min(900px, calc(100vw - var(--left-inset) - var(--right-inset) - 24px)); transform: translateX(-50%); }
+.story-mode .dialogue-panel { position: fixed; z-index: 6; bottom: 20px; left: calc((var(--left-inset) + 100vw - var(--right-inset)) / 2); width: min(900px, calc(100vw - var(--left-inset) - var(--right-inset) - 24px)); transform: translateX(-50%); transition: left 220ms cubic-bezier(.2,.7,.2,1), width 220ms cubic-bezier(.2,.7,.2,1); }
 
 @media (max-width: 1100px) {
   .story-mode .journey-panel { left: 50%; width: calc(100vw - 28px); }
@@ -433,9 +432,8 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
   .opening-screen { transform: translate(-50%, -50%); }
 }
 @media (min-width: 1101px) and (max-width: 1280px) {
-  .story-mode.story-map-and-destination .workspace { --left-inset: 430px; --right-inset: 340px; }
-  .story-mode .workspace:has(.map-layout--compact) { --left-inset: 430px; }
-  .story-mode .workspace:has(.destination-dock-panel) { --right-inset: 340px; }
+  .story-mode.story-map-open .workspace { --left-inset: 430px; }
+  .story-mode.story-destination-open .workspace { --right-inset: 340px; }
   .map-layout--compact { width: min(320px, calc(100vw - 130px)); }
   .destination-dock-panel { width: min(300px, calc(100vw - 130px)); }
 }
@@ -517,4 +515,35 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
   .conversation-manager-panel { padding: 15px; }
   .conversation-manager-panel > footer { align-items: stretch; flex-direction: column; }
   .conversation-manager-create { align-self: flex-end; }
+}
+
+@media (min-width: 1101px) {
+  .story-mode.presentation-novel .dialogue-panel { width: min(780px, calc(100vw - var(--left-inset) - var(--right-inset) - 24px)); }
+  .story-mode.presentation-novel .dialogue-panel .conversation-latest { max-height: min(34vh, 320px); }
+
+  .story-mode.presentation-chat .dialogue-panel { width: min(920px, calc(100vw - var(--left-inset) - var(--right-inset) - 24px)); }
+  .story-mode.presentation-chat .dialogue-panel .conversation-latest { max-height: min(40vh, 390px); }
+
+  .story-mode.presentation-visual-novel .dialogue-panel { width: min(980px, calc(100vw - var(--left-inset) - var(--right-inset) - 24px)); max-height: min(68vh, 620px); }
+  .story-mode.presentation-visual-novel .dialogue-panel .conversation-latest.story-conversation-visual-novel { max-height: min(48vh, 440px); }
+  .story-mode.presentation-visual-novel .story-conversation-visual-novel .vn-character-stage .story-avatar { width: clamp(176px, 18vw, 250px); height: clamp(210px, 30vh, 260px); }
+}
+
+.story-mode .story-panel-open { animation: story-panel-enter 220ms cubic-bezier(.2,.7,.2,1) both; }
+.story-mode .map-layout--compact.story-panel-open { animation-name: story-map-enter; }
+.story-mode .story-panel-closing { pointer-events: none; animation: story-panel-exit 220ms cubic-bezier(.4,0,.8,.4) both; }
+.story-mode .map-layout--compact.story-panel-closing { animation-name: story-map-exit; }
+.story-block-arrive { animation: story-block-arrive 220ms cubic-bezier(.2,.7,.2,1) both; }
+.vn-dialogue.story-block-arrive.speaker-focus { animation: story-block-arrive 220ms cubic-bezier(.2,.7,.2,1) both, speaker-focus 650ms ease-out both; }
+
+@keyframes story-panel-enter { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes story-panel-exit { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(14px); } }
+@keyframes story-map-enter { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes story-map-exit { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(-14px); } }
+@keyframes story-block-arrive { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .story-mode .story-panel-open, .story-mode .story-panel-closing, .story-block-arrive,
+  .vn-dialogue.story-block-arrive.speaker-focus { animation: none !important; }
+  .story-mode .dialogue-panel { transition: none; }
 }

@@ -227,7 +227,7 @@ function App() {
   return (
     <>
       <StartupScreen state={journeyLoadState} stage={journeyLoadStage} error={journeyLoadError} onRetry={retryJourneyLoad} onContinue={continueWithoutSavedJourney} />
-      <main inert={journeyLoadState !== 'ready'} className={`app-shell presentation-${presentationMode} ${storyMode ? 'story-mode' : 'explore-mode'} ${storyMode && storyPanels.length === 0 && (Boolean(selectedPlace) || messages.some((entry) => entry.role === 'user')) ? 'story-no-side-panels' : ''} ${storyMode && storyPanels.includes('map') && storyPanels.includes('destination') ? 'story-map-and-destination' : ''} ${storyMode && storyPanels.includes('destination') && storyPanels.includes('travelogue') ? 'story-panels-stacked' : ''}`}>
+      <main inert={journeyLoadState !== 'ready'} className={`app-shell presentation-${presentationMode} ${storyMode ? 'story-mode' : 'explore-mode'} ${storyMode && storyPanels.length === 0 && (Boolean(selectedPlace) || messages.some((entry) => entry.role === 'user')) ? 'story-no-side-panels' : ''} ${storyMode && storyPanels.includes('map') ? 'story-map-open' : ''} ${storyMode && storyPanels.includes('destination') ? 'story-destination-open' : ''} ${storyMode && storyPanels.includes('map') && storyPanels.includes('destination') ? 'story-map-and-destination' : ''} ${storyMode && storyPanels.includes('destination') && storyPanels.includes('travelogue') ? 'story-panels-stacked' : ''}`}>
       <header className="topbar">
         <div className="brand-lockup">
           <div className="brand-mark" aria-hidden="true">✦</div>

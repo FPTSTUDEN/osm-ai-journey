@@ -29,7 +29,8 @@ function CharacterAvatar({ imageUrl, side }: { name: string; imageUrl?: string |
 
 function NovelEntry({ entry, props }: { entry: ChatEntry; props: Props }) {
   const roleClass = entry.role === 'event' ? 'narration event' : entry.role === 'user' ? 'user-action' : 'narration'
-  return <div className={`message ${roleClass} ${entry.role === 'user' ? 'story-entry-arrive' : ''}`} key={entry.id}><p>{visibleText(entry, props)}</p></div>
+  const shouldAnimate = entry.role === 'user' || entry.id === props.animatedEntryId
+  return <div className={`message ${roleClass} ${shouldAnimate ? 'story-entry-arrive' : ''}`} key={entry.id}><p>{visibleText(entry, props)}</p></div>
 }
 
 function ChatEntryView({ entry, props }: { entry: ChatEntry; props: Props }) {
@@ -40,7 +41,7 @@ function ChatEntryView({ entry, props }: { entry: ChatEntry; props: Props }) {
 
   const blocks = entry.storyTurn?.blocks ?? [{ id: `${entry.id}:1`, type: 'prose' as const, text: visibleText(entry, props) }]
   const finalDialogueId = [...blocks].reverse().find((block) => block.type === 'dialogue')?.id
-  return <div className="chat-assistant-turn" key={entry.id}>
+  return <div className={`chat-assistant-turn ${entry.id === props.animatedEntryId ? 'story-entry-arrive' : ''}`} key={entry.id}>
     {blocks.map((block) => {
       if (block.type === 'narration' || block.type === 'scene') return <div className={`chat-narration ${block.type === 'scene' ? `chat-narration-scene ${entry.id === props.animatedEntryId ? 'scene-transition' : ''}` : ''}`} key={block.id}>
         <span>{block.type === 'scene' ? 'Scene' : 'Narration'}</span><p>{block.text}</p>
@@ -61,16 +62,18 @@ function VisualNovelEntry({ entry, props }: { entry: ChatEntry; props: Props }) 
   const blocks = entry.storyTurn?.blocks ?? [{ id: `${entry.id}:1`, type: 'prose' as const, text: visibleText(entry, props) }]
   const finalDialogueId = [...blocks].reverse().find((block) => block.type === 'dialogue')?.id
   const currentBlock = props.storyProgress?.entryId === entry.id ? props.storyProgress.blockIndex : blocks.length - 1
+  const activeBlockId = props.expanded ? null : blocks[currentBlock]?.id
   const presentedBlocks = props.expanded ? blocks : [blocks[currentBlock] ?? blocks.at(-1)].filter((block): block is StoryBlock => Boolean(block))
   return <div className="vn-story-turn" key={entry.id} onClick={(event) => {
     if (event.target instanceof Element && event.target.closest('button,a,input,textarea,select,[contenteditable="true"]')) return
     props.onAdvance()
   }}>
     {presentedBlocks.map((block) => {
-      if (block.type === 'scene') return <div className={`vn-event ${entry.id === props.animatedEntryId ? 'scene-transition' : ''}`} key={block.id}><span>Scene</span><p>{block.text}</p></div>
-      if (block.type === 'narration') return <p className="vn-narration" key={block.id}>{block.text}</p>
+      const isActiveBlock = block.id === activeBlockId
+      if (block.type === 'scene') return <div className={`vn-event ${entry.id === props.animatedEntryId ? 'scene-transition' : ''} ${isActiveBlock ? 'story-block-arrive' : ''}`} key={block.id}><span>Scene</span><p>{block.text}</p></div>
+      if (block.type === 'narration') return <p className={`vn-narration ${isActiveBlock ? 'story-block-arrive' : ''}`} key={block.id}>{block.text}</p>
       const speaker = block.type === 'dialogue' ? block.speaker : props.personaName
-      return <div className={`vn-dialogue ${entry.id === props.animatedEntryId && block.id === finalDialogueId ? 'speaker-focus' : ''}`} key={block.id}>
+      return <div className={`vn-dialogue ${entry.id === props.animatedEntryId && block.id === finalDialogueId ? 'speaker-focus' : ''} ${isActiveBlock ? 'story-block-arrive' : ''}`} key={block.id}>
         <span className="vn-nameplate">{speaker}</span>
         <p>{block.text}</p>
       </div>

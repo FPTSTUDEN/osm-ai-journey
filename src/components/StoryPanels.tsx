@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { ArrivalCard } from './ArrivalCard'
 import { FieldNotes } from './FieldNotes'
 import { JournalPanel } from './JournalPanel'
@@ -12,6 +12,25 @@ import type { NarrativeEvent } from '../types/domain'
 import type { LocalPmtilesArchive } from '../providers/localPmtiles'
 
 const MapCanvas = lazy(() => import('./MapCanvas').then((module) => ({ default: module.MapCanvas })))
+const PANEL_EXIT_DURATION = 220
+
+function usePanelPresence(open: boolean) {
+  const [present, setPresent] = useState(open)
+
+  useEffect(() => {
+    if (open) {
+      setPresent(true)
+      return
+    }
+    if (!present) return
+
+    const delay = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : PANEL_EXIT_DURATION
+    const timeout = window.setTimeout(() => setPresent(false), delay)
+    return () => window.clearTimeout(timeout)
+  }, [open, present])
+
+  return present
+}
 
 type Props = {
   panels: ReturnType<typeof useStoryPanels>
@@ -77,6 +96,12 @@ export function StoryPanels({
   localArchive,
 }: Props) {
   const { storyMode, storyPanels, fieldNotesOpen, setFieldNotesOpen, toggleStoryPanel, closeStoryPanel, toggleMode, dockButtons } = panels
+  const mapOpen = storyPanels.includes('map')
+  const destinationOpen = storyMode && storyPanels.includes('destination')
+  const travelogueOpen = storyMode && storyPanels.includes('travelogue')
+  const mapPresent = usePanelPresence(mapOpen)
+  const destinationPresent = usePanelPresence(destinationOpen)
+  const traveloguePresent = usePanelPresence(travelogueOpen)
   const mapPlace = useMemo(
     () => (selectedPhoto && selectedPlace ? photoToPlace(selectedPhoto, selectedPlace) : selectedPlace),
     [selectedPhoto, selectedPlace],
@@ -84,8 +109,8 @@ export function StoryPanels({
 
   return (
     <>
-      <div id="story-map-panel" className={`map-layout ${storyPanels.includes('map') ? 'map-layout--compact' : ''}`}>
-        {storyPanels.includes('map') && <>
+      <div id="story-map-panel" aria-hidden={!mapOpen} inert={!mapOpen} className={`map-layout ${mapPresent ? `map-layout--compact ${mapOpen ? 'story-panel-open' : 'story-panel-closing'}` : ''}`}>
+        {mapPresent && <>
           <section className="map-panel panel map-panel--compact">
             <div className="map-toolbar">
               <div><p className="eyebrow">Explore a place</p><h2>{selectedPlace?.name ?? 'Explore map'}</h2></div>
@@ -143,7 +168,7 @@ export function StoryPanels({
         <button ref={(element) => { dockButtons.current.destination = element }} disabled={!selectedPlace} className={storyPanels.includes('destination') ? 'active' : ''} type="button" onClick={() => toggleStoryPanel('destination')} aria-pressed={storyPanels.includes('destination')} aria-controls="story-destination-panel" aria-expanded={storyPanels.includes('destination')}>✦ <span>Place</span></button>
         <button ref={(element) => { dockButtons.current.travelogue = element }} className={storyPanels.includes('travelogue') ? 'active' : ''} type="button" onClick={() => toggleStoryPanel('travelogue')} aria-pressed={storyPanels.includes('travelogue')} aria-controls="story-travelogue-panel" aria-expanded={storyPanels.includes('travelogue')}>◷ <span>Journal</span></button>
       </nav>}
-      {storyMode && storyPanels.includes('destination') && <aside id="story-destination-panel" className="story-dock-panel destination-dock-panel" role="complementary" aria-labelledby="destination-panel-label">
+      {storyMode && destinationPresent && <aside id="story-destination-panel" aria-hidden={!destinationOpen} inert={!destinationOpen} className={`story-dock-panel destination-dock-panel ${destinationOpen ? 'story-panel-open' : 'story-panel-closing'}`} role="complementary" aria-labelledby="destination-panel-label">
         <span id="destination-panel-label" className="sr-only">Destination panel</span>
         <div className="story-dock-header">
           <div><p className="eyebrow">Examine</p><h3 id="destination-panel-heading">{selectedPlace?.name ?? 'Destination'}</h3></div>
@@ -155,7 +180,7 @@ export function StoryPanels({
             : <PlaceDetails layout="compact" place={selectedPlace} geocoder={settings.onlineGeocoder} liveDataEnabled={settings.liveDataEnabled} {...placeData} onLoadWeather={(force) => void placeData.loadWeather(force)} onLoadNearbyData={(force) => void placeData.loadNearbyData(force)} scenePhoto={scenePhoto} onSelectPhoto={setSelectedPhoto} onOpenFieldNotes={() => setFieldNotesOpen(true)} />
           : <p className="dock-empty">Choose a place first, then return here to examine it.</p>}
       </aside>}
-      {storyMode && storyPanels.includes('travelogue') && <JournalPanel events={narrativeEvents} onClose={() => closeStoryPanel('travelogue')} />}
+      {storyMode && traveloguePresent && <JournalPanel events={narrativeEvents} isOpen={travelogueOpen} onClose={() => closeStoryPanel('travelogue')} />}
       {arrivalCard && <ArrivalCard placeName={arrivalCard} sceneNumber={currentScene} />}
       {fieldNotesOpen && selectedPlace && <FieldNotes place={selectedPlace} geocoder={settings.onlineGeocoder} liveDataEnabled={settings.liveDataEnabled} {...placeData} selectedPhoto={selectedPhoto} scenePhoto={scenePhoto} onLoadWeather={(force) => void placeData.loadWeather(force)} onLoadNearbyData={(force) => void placeData.loadNearbyData(force)} onSelectPhoto={setSelectedPhoto} onClose={() => setFieldNotesOpen(false)} />}
     </>

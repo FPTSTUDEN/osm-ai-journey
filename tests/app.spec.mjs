@@ -72,6 +72,14 @@ async function readActiveMapViewport(page) {
   }))
 }
 
+async function waitForDialogueLayout(page) {
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())))
+  await page.waitForFunction(() => {
+    const dialogue = document.querySelector('.dialogue-panel')
+    return dialogue && dialogue.getAnimations().every((animation) => animation.playState !== 'running')
+  })
+}
+
 test('upgrades a v3 journey database without losing its stores or records', async ({ page }) => {
   await page.route('**/database-migration-fixture', (route) => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body></body></html>' }))
   await page.goto('/database-migration-fixture')
@@ -569,7 +577,9 @@ test('switches between novel, visual novel, and chat renderers with the same str
   await mode.selectOption('visual-novel')
   await expect(page.locator('.vn-character-right')).toHaveCount(0)
   await expect(page.locator('.vn-character-left')).toContainText('The Wayfinder')
+  await expect(page.locator('.vn-narration')).toHaveClass(/story-block-arrive/)
   await page.setViewportSize({ width: 1084, height: 748 })
+  await waitForDialogueLayout(page)
   const stage = await page.locator('.vn-character-stage').boundingBox()
   const character = await page.locator('.vn-character-left').boundingBox()
   expect(character.x).toBeLessThan(stage.x + stage.width * 0.25)
@@ -579,13 +589,16 @@ test('switches between novel, visual novel, and chat renderers with the same str
   const conversationMetrics = await page.locator('.story-conversation').evaluate((element) => ({ clientHeight: element.clientHeight, scrollHeight: element.scrollHeight }))
   expect(conversationMetrics.scrollHeight).toBeLessThanOrEqual(conversationMetrics.clientHeight + 1)
   await page.setViewportSize({ width: 390, height: 844 })
+  await waitForDialogueLayout(page)
   const mobileMetrics = await page.locator('.story-conversation').evaluate((element) => ({ clientHeight: element.clientHeight, scrollHeight: element.scrollHeight, width: element.scrollWidth }))
   expect(mobileMetrics.scrollHeight).toBeLessThanOrEqual(mobileMetrics.clientHeight + 1)
   expect(mobileMetrics.width).toBeLessThanOrEqual(390)
   await page.setViewportSize({ width: 1084, height: 748 })
+  await waitForDialogueLayout(page)
   await expect(page.locator('.vn-narration')).toContainText('Rain begins to fall.')
   await page.getByRole('button', { name: 'Next story block' }).click()
   await expect(page.locator('.vn-dialogue')).toContainText('Let’s find shelter.')
+  await expect(page.locator('.vn-dialogue')).toHaveClass(/story-block-arrive/)
   await page.getByRole('button', { name: 'Next story block' }).click()
   await expect(page.locator('.vn-event')).toContainText('The station lights flicker.')
 
@@ -593,6 +606,35 @@ test('switches between novel, visual novel, and chat renderers with the same str
   await expect(page.locator('.story-conversation-novel .message')).toContainText('Rain begins to fall.')
   await page.reload()
   await expect(mode).toHaveValue('novel')
+})
+
+test('desktop story layouts adapt by presentation and side panels animate out accessibly', async ({ page }) => {
+  await resetBrowser(page)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const mode = page.getByRole('combobox', { name: 'Story presentation' })
+  const widths = {}
+  for (const presentation of ['novel', 'chat', 'visual-novel']) {
+    await mode.selectOption(presentation)
+    await waitForDialogueLayout(page)
+    widths[presentation] = (await page.locator('.dialogue-panel').boundingBox()).width
+  }
+  expect(widths.chat).toBeGreaterThan(widths.novel)
+  expect(widths['visual-novel']).toBeGreaterThan(widths.chat)
+
+  const mapToggle = page.locator('.story-dock button').nth(0)
+  await mapToggle.click()
+  const mapRegion = page.locator('#story-map-panel')
+  await expect(mapRegion).toHaveClass(/story-panel-open/)
+  await expect.poll(() => mapRegion.evaluate((element) => getComputedStyle(element).animationName)).toBe('story-map-enter')
+  await mapRegion.evaluate((element) => {
+    element.addEventListener('animationstart', (event) => {
+      if (event.animationName === 'story-map-exit') element.dataset.exitAnimation = event.animationName
+    })
+  })
+  await mapToggle.click()
+  await expect(mapRegion).toHaveAttribute('aria-hidden', 'true')
+  await expect(mapRegion).toHaveAttribute('data-exit-animation', 'story-map-exit')
+  await expect(page.locator('.map-panel')).toHaveCount(0)
 })
 
 test('Visual novel progression can skip blocks, review the skipped content, and return to the scene', async ({ page }) => {
@@ -852,6 +894,7 @@ test('visual novel portrait and dialogue box fit beside open panels at desktop, 
 
   for (const viewport of [{ width: 1440, height: 900 }, { width: 1100, height: 800 }, { width: 390, height: 844 }]) {
     await page.setViewportSize(viewport)
+    await waitForDialogueLayout(page)
     const dialogue = await page.locator('.dialogue-panel').boundingBox()
     const panels = [
       await page.locator('.map-panel').boundingBox(),
