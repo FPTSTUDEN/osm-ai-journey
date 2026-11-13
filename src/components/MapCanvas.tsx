@@ -15,6 +15,7 @@ const pmtilesProtocol = new Protocol()
 maplibregl.addProtocol('pmtiles', pmtilesProtocol.tile)
 
 type MapCanvasProps = {
+  motionEnabled: boolean
   onPlaceSelected: (place: Place) => void
   onPlacesLoaded: (places: Place[]) => void
   onMapStatusChange: (status: 'loading' | 'ready' | 'unavailable') => void
@@ -73,7 +74,7 @@ function localArchiveStyle(archive: LocalPmtilesArchive): StyleSpecification {
   return { version: 8, sources, layers }
 }
 
-export const MapCanvas = memo(function MapCanvas({ onPlaceSelected, onPlacesLoaded, onMapStatusChange, selectedPlace, initialViewport, onViewportChange, route, localArchive }: MapCanvasProps) {
+export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelected, onPlacesLoaded, onMapStatusChange, selectedPlace, initialViewport, onViewportChange, route, localArchive }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
   const markerRef = useRef<Marker | null>(null)
@@ -82,11 +83,13 @@ export const MapCanvas = memo(function MapCanvas({ onPlaceSelected, onPlacesLoad
   const onPlacesLoadedRef = useRef(onPlacesLoaded)
   const onMapStatusChangeRef = useRef(onMapStatusChange)
   const onViewportChangeRef = useRef(onViewportChange)
+  const motionEnabledRef = useRef(motionEnabled)
 
   onPlaceSelectedRef.current = onPlaceSelected
   onPlacesLoadedRef.current = onPlacesLoaded
   onMapStatusChangeRef.current = onMapStatusChange
   onViewportChangeRef.current = onViewportChange
+  motionEnabledRef.current = motionEnabled
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -174,8 +177,7 @@ export const MapCanvas = memo(function MapCanvas({ onPlaceSelected, onPlacesLoad
       .setLngLat(selectedPlace.coordinates)
       .addTo(map)
 
-    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    map.flyTo({ center: selectedPlace.coordinates, zoom: Math.max(map.getZoom(), 14), duration: reducedMotion ? 0 : 1000 })
+    map.flyTo({ center: selectedPlace.coordinates, zoom: Math.max(map.getZoom(), 14), duration: motionEnabledRef.current ? 1000 : 0 })
   }, [selectedPlace])
 
   useEffect(() => {
@@ -212,7 +214,7 @@ export const MapCanvas = memo(function MapCanvas({ onPlaceSelected, onPlacesLoad
       map.addLayer({ id: layerId, type: 'line', source: sourceId, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#d5ef9a', 'line-width': 4, 'line-opacity': 0.9 } })
       if (route.coordinates.length > 1) {
         const bounds = route.coordinates.reduce((result, coordinate) => result.extend(coordinate), new maplibregl.LngLatBounds(route.coordinates[0], route.coordinates[0]))
-        map.fitBounds(bounds, { padding: 48, maxZoom: 14, duration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 1000 })
+        map.fitBounds(bounds, { padding: 48, maxZoom: 14, duration: motionEnabledRef.current ? 1000 : 0 })
       }
     }
     if (map.isStyleLoaded()) drawRoute()

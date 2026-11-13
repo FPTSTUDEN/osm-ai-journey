@@ -31,6 +31,7 @@ type DialogueBoxProps = {
   onDeleteConversation: (conversationId: string) => void
   animatedEntryId: string | null
   companionImageUrl: string | null
+  motionEnabled: boolean
 }
 
 const suggestions = ['Look around', 'Ask a local', 'Walk somewhere else']
@@ -86,6 +87,7 @@ export function DialogueBox({
   onDeleteConversation,
   animatedEntryId,
   companionImageUrl,
+  motionEnabled,
 }: DialogueBoxProps) {
   const [expanded, setExpanded] = useState(false)
   const [showConversationManager, setShowConversationManager] = useState(false)
@@ -106,7 +108,7 @@ export function DialogueBox({
   const canMovePrevious = activeStopIndex > 0
   const canMoveNext = activeStopIndex >= 0 && activeStopIndex < allStops.length - 1
   const skipped = skippedContent(entries, progress)
-  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  const reduceMotion = !motionEnabled
   const isTyping = llmState === 'loading' && !entries.some((entry) => entry.id === animatedEntryId && entry.text)
 
   useEffect(() => {

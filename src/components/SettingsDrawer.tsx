@@ -135,6 +135,16 @@ export function SettingsDrawer({
       <label>Walking route server<input value={settings.routingBaseUrl} onChange={(event) => onSettingsChange({ routingBaseUrl: event.target.value })} /></label>
       <label>Weather provider URL<input value={settings.weatherBaseUrl} onChange={(event) => onSettingsChange({ weatherBaseUrl: event.target.value })} /></label>
       <label>Overpass API URL<input value={settings.overpassApiUrl} onChange={(event) => onSettingsChange({ overpassApiUrl: event.target.value })} /></label>
+      <fieldset className="motion-preference-control">
+        <legend>Animations &amp; effects</legend>
+        <div className="motion-preference-options" role="radiogroup" aria-label="Animations and effects">
+          {(['on', 'auto', 'off'] as const).map((preference) => <label key={preference} className={(settings.motionPreference ?? 'auto') === preference ? 'selected' : ''}>
+            <input type="radio" name="motionPreference" value={preference} checked={(settings.motionPreference ?? 'auto') === preference} onChange={() => onSettingsChange({ motionPreference: preference })} />
+            <span>{preference[0].toUpperCase() + preference.slice(1)}</span>
+          </label>)}
+        </div>
+        <p className="settings-note">Auto follows your device’s reduced-motion setting.</p>
+      </fieldset>
       <label className="toggle-row"><span>Calculate walking routes by default</span><input type="checkbox" checked={settings.calculateWalkingRoutes} onChange={(event) => onSettingsChange({ calculateWalkingRoutes: event.target.checked })} /></label>
       <label className="toggle-row"><span>Enable optional live data</span><input type="checkbox" checked={settings.liveDataEnabled} onChange={(event) => onSettingsChange({ liveDataEnabled: event.target.checked })} /></label>
       <div className="offline-cache"><p className="memory-label">Offline cache</p><p className="settings-note">{offlineStatus ? `${offlineStatus.entries} cached resources across ${offlineStatus.cacheNames.length} cache${offlineStatus.cacheNames.length === 1 ? '' : 's'}.` : 'Checking cached resources…'}</p>{offlineError && <p className="connection-error" role="alert">{offlineError}</p>}<div className="settings-actions"><button type="button" onClick={onRefreshOfflineStatus}>Refresh status</button><button type="button" onClick={onClearOfflineData}>Clear cache</button></div></div>

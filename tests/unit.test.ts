@@ -12,7 +12,7 @@ import { revealedTextLength } from '../src/components/typewriter'
 import { shouldSummarize } from '../src/hooks/chat'
 import { journeyJson, parseJourneyJson } from '../src/storage/journeyTransfer'
 import { normalizeMessages } from '../src/storage/messages'
-import { normalizePersonaProfiles, normalizeStoryPresentationMode } from '../src/storage/settings'
+import { normalizeMotionPreference, normalizePersonaProfiles, normalizeStoryPresentationMode } from '../src/storage/settings'
 import { DEFAULT_PERSONA, DEFAULT_PERSONA_ID } from '../src/providers/config'
 import { parsePersonaSpriteFilename } from '../src/providers/personaSprites'
 import type { ChatEntry, Place } from '../src/types/domain'
@@ -342,6 +342,13 @@ test('story presentation settings accept supported modes and default invalid val
   assert.equal(normalizeStoryPresentationMode('visual-novel'), 'visual-novel')
   assert.equal(normalizeStoryPresentationMode('chat'), 'chat')
   assert.equal(normalizeStoryPresentationMode('unknown'), 'novel')
+})
+
+test('motion preference accepts on, auto, and off and defaults invalid values to auto', () => {
+  assert.equal(normalizeMotionPreference('on'), 'on')
+  assert.equal(normalizeMotionPreference('auto'), 'auto')
+  assert.equal(normalizeMotionPreference('off'), 'off')
+  assert.equal(normalizeMotionPreference(undefined), 'auto')
 })
 
 test('conversation summaries respect minimum history and growth thresholds', () => {

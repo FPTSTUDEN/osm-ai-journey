@@ -14,7 +14,7 @@ import type { LocalPmtilesArchive } from '../providers/localPmtiles'
 const MapCanvas = lazy(() => import('./MapCanvas').then((module) => ({ default: module.MapCanvas })))
 const PANEL_EXIT_DURATION = 220
 
-function usePanelPresence(open: boolean) {
+function usePanelPresence(open: boolean, motionEnabled: boolean) {
   const [present, setPresent] = useState(open)
 
   useEffect(() => {
@@ -24,10 +24,10 @@ function usePanelPresence(open: boolean) {
     }
     if (!present) return
 
-    const delay = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : PANEL_EXIT_DURATION
+    const delay = motionEnabled ? PANEL_EXIT_DURATION : 0
     const timeout = window.setTimeout(() => setPresent(false), delay)
     return () => window.clearTimeout(timeout)
-  }, [open, present])
+  }, [motionEnabled, open, present])
 
   return present
 }
@@ -37,6 +37,7 @@ type Props = {
   search: ReturnType<typeof useMapSearch>
   placeData: ReturnType<typeof usePlaceData>
   settings: UserSettings
+  motionEnabled: boolean
   selectedPlace: Place | null
   setSelectedPlace: (place: Place | null) => void
   selectedPhoto: PlacePhoto | null
@@ -74,6 +75,7 @@ export function StoryPanels({
   search,
   placeData,
   settings,
+  motionEnabled,
   selectedPlace,
   setSelectedPlace,
   selectedPhoto,
@@ -99,9 +101,9 @@ export function StoryPanels({
   const mapOpen = storyPanels.includes('map')
   const destinationOpen = storyMode && storyPanels.includes('destination')
   const travelogueOpen = storyMode && storyPanels.includes('travelogue')
-  const mapPresent = usePanelPresence(mapOpen)
-  const destinationPresent = usePanelPresence(destinationOpen)
-  const traveloguePresent = usePanelPresence(travelogueOpen)
+  const mapPresent = usePanelPresence(mapOpen, motionEnabled)
+  const destinationPresent = usePanelPresence(destinationOpen, motionEnabled)
+  const traveloguePresent = usePanelPresence(travelogueOpen, motionEnabled)
   const mapPlace = useMemo(
     () => (selectedPhoto && selectedPlace ? photoToPlace(selectedPhoto, selectedPlace) : selectedPlace),
     [selectedPhoto, selectedPlace],
@@ -134,7 +136,7 @@ export function StoryPanels({
             {search.query && search.onlineQuery === search.query.trim() && search.onlineState === 'ready' && search.onlineResults.length === 0 && <div className="online-search">No online places matched. <button onClick={() => void search.searchOnline()}>Try another search</button></div>}
             {search.query && search.mapStatus === 'unavailable' && <div className="search-state">Loaded map data is unavailable. <button onClick={() => void search.searchOnline()}>Search online</button></div>}
             {journeyReady
-              ? <Suspense fallback={<div className="map-loading">Loading map…</div>}><MapCanvas selectedPlace={mapPlace} initialViewport={mapViewport} onViewportChange={setMapViewport} route={route} localArchive={localArchive} onPlaceSelected={onChoosePlace} onPlacesLoaded={search.setPlaces} onMapStatusChange={search.setMapStatus} /></Suspense>
+              ? <Suspense fallback={<div className="map-loading">Loading map…</div>}><MapCanvas motionEnabled={motionEnabled} selectedPlace={mapPlace} initialViewport={mapViewport} onViewportChange={setMapViewport} route={route} localArchive={localArchive} onPlaceSelected={onChoosePlace} onPlacesLoaded={search.setPlaces} onMapStatusChange={search.setMapStatus} /></Suspense>
               : <div className="map-loading">Restoring journey…</div>}
             {pendingDestination && <div className="route-choice"><p className="eyebrow">Begin transition</p><strong>Walk from {selectedPlace?.name} to {pendingDestination.name}?</strong><p>Calculate an optional walking route before arriving.</p><div><button onClick={() => onCompleteTransition(pendingDestination, true)}>Walk there</button><button onClick={() => onCompleteTransition(pendingDestination, false)}>Arrive without route</button></div></div>}
             {routeState === 'loading' && <div className="route-status">Calculating walking route…</div>}

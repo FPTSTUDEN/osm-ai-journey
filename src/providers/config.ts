@@ -13,6 +13,7 @@ export const DEFAULT_PERSONA: PersonaProfile = {
 
 export const DEFAULT_SETTINGS: UserSettings = {
   storyPresentationMode: 'novel',
+  motionPreference: 'auto',
   personaProfiles: [DEFAULT_PERSONA],
   llmProvider: 'ollama',
   llmBaseUrl: 'http://localhost:11434/v1',

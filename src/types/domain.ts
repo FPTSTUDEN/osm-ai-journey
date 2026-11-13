@@ -45,6 +45,7 @@ export type PlacePhoto = {
 }
 
 export type StoryPresentationMode = 'novel' | 'visual-novel' | 'chat'
+export type MotionPreference = 'on' | 'auto' | 'off'
 
 export type PersonaSpriteId = string
 
@@ -57,6 +58,7 @@ export type PersonaProfile = {
 
 export type UserSettings = {
   storyPresentationMode?: StoryPresentationMode
+  motionPreference?: MotionPreference
   personaProfiles?: PersonaProfile[]
   llmProvider: 'ollama' | 'openai' | 'lmstudio' | 'vllm' | 'custom'
   llmBaseUrl: string

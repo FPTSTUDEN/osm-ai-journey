@@ -316,6 +316,34 @@ test('supports keyboard journey memory and accessible controls', async ({ page }
   await expect(page.getByRole('button', { name: 'Toggle settings' })).toBeFocused()
 })
 
+test('motion preference overrides or follows system reduced motion and persists', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await resetBrowser(page)
+  await page.getByRole('button', { name: 'Toggle settings' }).click()
+  const motionOptions = page.getByRole('radiogroup', { name: 'Animations and effects' })
+  await expect(motionOptions.getByRole('radio', { name: 'Auto' })).toBeChecked()
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.motionPreference)).toBe('auto')
+  await motionOptions.getByRole('radio', { name: 'On' }).check()
+  await page.getByRole('button', { name: 'Close settings' }).click()
+  await page.locator('.story-dock button').nth(0).click()
+  await expect.poll(() => page.locator('.map-layout').evaluate((element) => getComputedStyle(element).animationName)).toBe('story-map-enter')
+
+  await page.getByRole('button', { name: 'Toggle settings' }).click()
+  await motionOptions.getByRole('radio', { name: 'Off' }).check()
+  await page.getByRole('button', { name: 'Close settings' }).click()
+  await expect(page.locator('.map-layout')).toHaveCSS('animation-name', 'none')
+
+  await page.getByRole('button', { name: 'Toggle settings' }).click()
+  await motionOptions.getByRole('radio', { name: 'Auto' }).check()
+  await page.getByRole('button', { name: 'Close settings' }).click()
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.motionPreference)).toBe('auto')
+  await expect(page.locator('.map-layout')).toHaveCSS('animation-name', 'none')
+
+  await page.reload()
+  await page.getByRole('button', { name: 'Toggle settings' }).click()
+  await expect(page.getByRole('radiogroup', { name: 'Animations and effects' }).getByRole('radio', { name: 'Auto' })).toBeChecked()
+})
+
 test('does not overflow a narrow mobile viewport', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await resetBrowser(page)

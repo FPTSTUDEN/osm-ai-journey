@@ -7,6 +7,10 @@ export function normalizeStoryPresentationMode(value: unknown): NonNullable<User
   return value === 'visual-novel' || value === 'chat' ? value : 'novel'
 }
 
+export function normalizeMotionPreference(value: unknown): NonNullable<UserSettings['motionPreference']> {
+  return value === 'on' || value === 'off' ? value : 'auto'
+}
+
 export function normalizePersonaProfiles(value: unknown, legacy?: Partial<Pick<UserSettings, 'personaName' | 'personaInstructions'>>, availableSpriteIds: readonly string[] = [DEFAULT_PERSONA.spriteId]): PersonaProfile[] {
   if (!Array.isArray(value)) {
     if (legacy?.personaName || legacy?.personaInstructions) return [{
@@ -36,6 +40,7 @@ export function loadSettings(availableSpriteIds: readonly string[] = [DEFAULT_PE
       ...DEFAULT_SETTINGS,
       ...saved,
       storyPresentationMode: normalizeStoryPresentationMode(saved.storyPresentationMode),
+      motionPreference: normalizeMotionPreference(saved.motionPreference),
       personaProfiles: normalizePersonaProfiles(saved.personaProfiles, saved, availableSpriteIds),
     }
   } catch {

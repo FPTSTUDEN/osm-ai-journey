@@ -18,6 +18,7 @@ import type { PersonaProfile, Place, PlacePhoto, WalkingRoute } from './types/do
 import './styles/app.css'
 
 function App() {
+  const [systemReducedMotion, setSystemReducedMotion] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches)
   const storyPanelState = useStoryPanels()
   const { storyMode, storyPanels, settingsOpen: showSettings, setSettingsOpen: setShowSettings, toggleStoryPanel, closeAllPanels, toggleMode, settingsButton } = storyPanelState
   const companionArtInputRef = useRef<HTMLInputElement>(null)
@@ -35,6 +36,8 @@ function App() {
   } = useJourney()
   const appSettings = useAppSettings(showSettings, companionArtInputRef, personaId)
   const { settings, setSettings, connectionState, connectionMessage, offlineStatus, offlineError, refreshOfflineStatus, clearOfflineData, checkLlmConnection, changeProvider, companionImageUrl, companionArtError, uploadCompanionArt, removeCompanionArt } = appSettings
+  const motionPreference = settings.motionPreference ?? 'auto'
+  const motionEnabled = motionPreference === 'on' || (motionPreference === 'auto' && !systemReducedMotion)
   const personaProfiles = settings.personaProfiles ?? [DEFAULT_PERSONA]
   const activePersona = personaProfiles.find((profile) => profile.id === personaId) ?? personaProfiles[0] ?? DEFAULT_PERSONA
   const activePersonaId = personaProfiles.some((profile) => profile.id === personaId) ? personaId : DEFAULT_PERSONA_ID
@@ -77,6 +80,17 @@ function App() {
   const [arrivalCard, setArrivalCard] = useState<string | null>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
   const arrivalTimer = useRef<number | undefined>(undefined)
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const update = () => setSystemReducedMotion(mediaQuery.matches)
+    mediaQuery.addEventListener('change', update)
+    return () => mediaQuery.removeEventListener('change', update)
+  }, [])
+
+  useEffect(() => {
+    document.documentElement.dataset.motionPreference = motionPreference
+  }, [motionPreference])
 
   const mapSearch = useMapSearch({
     geocoder: settings.onlineGeocoder,
@@ -265,6 +279,7 @@ function App() {
           search={mapSearch}
           placeData={placeData}
           settings={settings}
+          motionEnabled={motionEnabled}
           selectedPlace={selectedPlace}
           setSelectedPlace={setSelectedPlace}
           selectedPhoto={selectedPhoto}
@@ -312,6 +327,7 @@ function App() {
           onDeleteConversation={removeConversation}
           animatedEntryId={animatedEntryId}
           companionImageUrl={personaImageUrl}
+          motionEnabled={motionEnabled}
         />
       </section>
 
