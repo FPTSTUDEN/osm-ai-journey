@@ -3,6 +3,7 @@ import test from 'node:test'
 import { DEFAULT_MAP_VIEWPORT, getInitialMapViewport } from '../src/components/mapViewport'
 import { deduplicatePlaces, placeFromFeature, searchLocalPlaces } from '../src/providers/localPlaceIndex'
 import { buildJourneyContext } from '../src/providers/context'
+import { parseStoryResponse, storyStopIndex, storyStops, storyTurnToText, trimHistoryAtStoryStop } from '../src/providers/storyFormat'
 import { weatherLabel } from '../src/providers/weather'
 import { createOverpassQuery, parseOverpassResponse } from '../src/providers/overpass'
 import { enrichPlace } from '../src/providers/enrichment'
@@ -11,6 +12,9 @@ import { revealedTextLength } from '../src/components/typewriter'
 import { shouldSummarize } from '../src/hooks/chat'
 import { journeyJson, parseJourneyJson } from '../src/storage/journeyTransfer'
 import { normalizeMessages } from '../src/storage/messages'
+import { normalizePersonaProfiles, normalizeStoryPresentationMode } from '../src/storage/settings'
+import { DEFAULT_PERSONA, DEFAULT_PERSONA_ID } from '../src/providers/config'
+import { parsePersonaSpriteFilename } from '../src/providers/personaSprites'
 import type { ChatEntry, Place } from '../src/types/domain'
 
 const place = (id: string, name: string, category?: string): Place => ({ id, name, category, coordinates: [2.35, 48.85], source: 'map' })
@@ -107,6 +111,7 @@ test('photo metadata is included as untrusted text context without image content
 test('journey export round-trips and rejects malformed data', () => {
   const journey = {
     id: 'active' as const,
+    personaId: 'wayfinder',
     currentDestination: place('current', 'Current'),
     mapViewport: null,
     destinationHistory: [place('current', 'Current')],
@@ -117,26 +122,134 @@ test('journey export round-trips and rejects malformed data', () => {
     userFacts: ['A fact'],
     narrativeEvents: [],
     conversationSummary: '',
+    storyProgress: null,
+    branches: [{
+      id: 'branch-1', label: 'Earlier future', createdAt: '2026-01-02T00:00:00.000Z',
+      snapshot: {
+        personaId: 'wayfinder', currentDestination: place('current', 'Current'), mapViewport: null, destinationHistory: [place('current', 'Current')], currentScene: 2,
+        messages: [{ id: 'm1', role: 'user' as const, text: 'hello', createdAt: '2026-01-01T00:00:00.000Z' }],
+        knownPeople: ['Ada'], knownEntities: [], userFacts: ['A fact'], narrativeEvents: [], conversationSummary: '', storyProgress: null,
+      },
+    }],
   }
   assert.deepEqual(parseJourneyJson(JSON.parse(journeyJson(journey))), JSON.parse(JSON.stringify(journey)))
+  const legacyJourney = { ...journey }
+  delete (legacyJourney as Partial<typeof journey>).personaId
+  assert.equal(parseJourneyJson(legacyJourney).personaId, 'wayfinder')
   assert.throws(() => parseJourneyJson({ id: 'wrong' }), /invalid id/)
+})
+
+test('journey export preserves conversation history and validates the active conversation', () => {
+  const conversationJourney = {
+    id: 'active' as const,
+    currentDestination: null,
+    mapViewport: null,
+    destinationHistory: [],
+    currentScene: 1,
+    messages: [entry('user', 'A saved chat')],
+    knownPeople: [],
+    knownEntities: [],
+    userFacts: [],
+    narrativeEvents: [],
+    conversationSummary: '',
+    storyProgress: null,
+    branches: [],
+    activeConversationId: 'thread-1',
+    conversations: [{
+      id: 'thread-1', title: 'Old title', createdAt: '2026-01-01T00:00:00.000Z',
+      messages: [entry('user', 'A saved chat')], narrativeEvents: [], conversationSummary: '', storyProgress: null, branches: [],
+    }],
+  }
+  const restored = parseJourneyJson(JSON.parse(journeyJson(conversationJourney)))
+  assert.equal(restored.activeConversationId, 'thread-1')
+  assert.equal(restored.conversations?.[0].title, 'A saved chat')
+  assert.equal(restored.conversations?.[0].messages[0].text, 'A saved chat')
+  assert.throws(() => parseJourneyJson({ ...conversationJourney, activeConversationId: 'missing' }), /invalid active conversation/)
 })
 
 const entry = (role: ChatEntry['role'], text: string): ChatEntry => ({ id: text, role, text, createdAt: '2026-01-01T00:00:00.000Z' })
 const settings = { llmProvider: 'ollama' as const, llmBaseUrl: '', llmModel: 't', llmApiKey: '', personaName: 'P', personaInstructions: '', onlineGeocoder: 'nominatim' as const, calculateWalkingRoutes: false, routingBaseUrl: '', liveDataEnabled: false, weatherBaseUrl: '', overpassApiUrl: 'https://overpass-api.de/api/interpreter' }
 const journey = { destinationHistory: [], currentScene: 1, knownPeople: [], knownEntities: [], userFacts: [], conversationSummary: '' }
 
+test('journey prompt keeps concise roleplay boundaries', () => {
+  const system = buildJourneyContext({ settings, selectedPlace: null, journey, userMessage: 'hello', messages: [] })[0].content
+  assert.match(system, /Stay in character and treat the user as the traveler/)
+  assert.match(system, /Never invent the traveler’s words, thoughts, choices, or actions/)
+  assert.match(system, /leave the next action open/)
+})
+
 test('legacy string messages migrate with the old role alternation and arrival lines become events', () => {
   const entries = normalizeMessages(['Start', 'hi', 'hello there', 'You arrive at Louvre. Continuing without a walking route.', 'again', 'sure'])!
   assert.deepEqual(entries.map((item) => item.role), ['assistant', 'user', 'assistant', 'event', 'user', 'assistant'])
+  assert.equal(entries[2].storyTurn?.format, 'plain-text')
+  assert.equal(entries[2].storyTurn?.blocks[0]?.type, 'prose')
   assert.equal(normalizeMessages([{ nope: true }]), null)
   assert.equal(normalizeMessages('x'), null)
+})
+
+test('persisted structured assistant entries are normalized and invalid turns fall back to their text', () => {
+  const structured = normalizeMessages([{
+    id: 'stored-turn', role: 'assistant', text: 'old flattened text', createdAt: '2026-01-01T00:00:00.000Z',
+    storyTurn: { format: 'structured', blocks: [{ id: 'stored-block', type: 'dialogue', speaker: 'Mira', text: 'Hello.' }] },
+  }])![0]
+  const invalid = normalizeMessages([{
+    id: 'invalid-turn', role: 'assistant', text: 'keep this text', createdAt: '2026-01-01T00:00:00.000Z',
+    storyTurn: { format: 'structured', blocks: [{ type: 'dialogue', text: 'missing speaker' }] },
+  }])![0]
+
+  assert.equal(structured.text, 'Mira: Hello.')
+  assert.equal(structured.storyTurn?.format, 'structured')
+  assert.equal(invalid.text, 'keep this text')
+  assert.equal(invalid.storyTurn?.format, 'plain-text')
 })
 
 test('history roles come from entries, so a failed reply cannot flip later roles', () => {
   const out = buildJourneyContext({ settings, selectedPlace: null, journey, userMessage: 'next', messages: [entry('assistant', 'Choose a place on the map, or tell me what kind of journey you want to begin.'), entry('user', 'a'), entry('user', 'b'), entry('event', 'You arrive at X.'), entry('assistant', 'c')] })
   assert.deepEqual(out.slice(1).map((item) => item.role), ['user', 'user', 'assistant', 'assistant', 'user'])
+  assert.match(out[0].content, /one JSON object with a "blocks" array/)
   assert.match(out[3].content, /^\[Narration\]/)
+})
+
+test('structured story responses preserve block order and produce readable legacy text', () => {
+  const turn = parseStoryResponse(JSON.stringify({ blocks: [
+    { type: 'narration', text: 'The station grows quiet.' },
+    { type: 'dialogue', speaker: 'Mira', text: 'Ready to go?' },
+    { type: 'scene', text: 'The train pulls away.' },
+  ] }), 'turn-1')
+
+  assert.equal(turn.format, 'structured')
+  assert.deepEqual(turn.blocks.map((block) => block.type), ['narration', 'dialogue', 'scene'])
+  assert.deepEqual(turn.blocks.map((block) => block.id), ['turn-1:1', 'turn-1:2', 'turn-1:3'])
+  assert.equal(storyTurnToText(turn), 'The station grows quiet.\n\nMira: Ready to go?\n\n[Scene] The train pulls away.')
+})
+
+test('story history can rewind to a block and trim the active transcript there', () => {
+  const first = { ...entry('assistant', 'First: one\\n\\nSecond'), storyTurn: parseStoryResponse(JSON.stringify({ blocks: [
+    { type: 'dialogue', speaker: 'First', text: 'one' },
+    { type: 'dialogue', speaker: 'Second', text: 'two' },
+  ] }), 'turn') }
+  const history = [entry('user', 'start'), first, entry('user', 'later'), entry('assistant', 'future')]
+  const stops = storyStops(history)
+
+  assert.equal(stops.length, 3)
+  assert.equal(storyStopIndex(history, { entryId: first.id, blockIndex: 0 }), 0)
+  const trimmed = trimHistoryAtStoryStop(history, stops[0])
+  assert.deepEqual(trimmed.map((item) => item.id), ['start', first.id])
+  assert.equal(trimmed.at(-1)?.text, 'First: one')
+  assert.equal(trimmed.at(-1)?.storyTurn?.blocks.length, 1)
+})
+
+test('plain-text and malformed structured responses fall back without losing content', () => {
+  const prose = 'A quiet street stretches ahead.'
+  const plainTurn = parseStoryResponse(prose, 'plain-1')
+  const malformed = '{"blocks":[{"type":"dialogue","speaker":"Mira"}]}'
+  const malformedTurn = parseStoryResponse(malformed, 'fallback-1')
+
+  assert.equal(plainTurn.format, 'plain-text')
+  assert.equal(plainTurn.blocks[0].type, 'prose')
+  assert.equal(storyTurnToText(plainTurn), prose)
+  assert.equal(malformedTurn.format, 'plain-text')
+  assert.equal(storyTurnToText(malformedTurn), malformed)
 })
 
 test('with a summary only recent entries are sent', () => {
@@ -197,6 +310,38 @@ test('typewriter reveal advances with elapsed time and never exceeds the message
   assert.equal(revealedTextLength('abcdefghij', 100, 20), 2)
   assert.equal(revealedTextLength('abc', 10000), 3)
   assert.equal(revealedTextLength('abc', -10), 0)
+})
+
+test('persona sprite filenames derive stable IDs, labels, and descriptions', () => {
+  assert.deepEqual(parsePersonaSpriteFilename('aurelio-sprite-classic.png'), {
+    id: 'aurelio', personaName: 'Aurelio', styleName: 'Classic', label: 'Aurelio · Classic', description: 'Classic style portrait for Aurelio.',
+  })
+  assert.deepEqual(parsePersonaSpriteFilename('sprites/historian-sprite-painterly.webp'), {
+    id: 'historian-painterly', personaName: 'Historian', styleName: 'Painterly', label: 'Historian · Painterly', description: 'Painterly style portrait for Historian.',
+  })
+  assert.equal(parsePersonaSpriteFilename('not-a-sprite.png'), null)
+})
+
+test('persona profiles migrate legacy settings and normalize built-in sprite choices', () => {
+  const migrated = normalizePersonaProfiles(undefined, { personaName: 'My Guide', personaInstructions: 'Speak gently.' })
+  assert.deepEqual(migrated, [{ ...DEFAULT_PERSONA, name: 'My Guide', instructions: 'Speak gently.' }])
+  assert.equal(migrated[0].id, DEFAULT_PERSONA_ID)
+
+  const normalized = normalizePersonaProfiles([
+    { id: 'wayfinder', name: 'Wayfinder', instructions: 'Default', spriteId: 'aurelio' },
+    { id: 'historian', name: 'Historian', instructions: 'Research carefully.', spriteId: 'historian-painterly' },
+    { id: 'custom', name: 'Custom', instructions: 'Custom prompt', spriteId: 'not-a-sprite' },
+  ], undefined, ['aurelio', 'historian-painterly'])
+  assert.equal(normalized[1].spriteId, 'historian-painterly')
+  assert.equal(normalized[2].spriteId, DEFAULT_PERSONA.spriteId)
+  assert.equal(normalizePersonaProfiles([]).length, 1)
+})
+
+test('story presentation settings accept supported modes and default invalid values to novel', () => {
+  assert.equal(normalizeStoryPresentationMode('novel'), 'novel')
+  assert.equal(normalizeStoryPresentationMode('visual-novel'), 'visual-novel')
+  assert.equal(normalizeStoryPresentationMode('chat'), 'chat')
+  assert.equal(normalizeStoryPresentationMode('unknown'), 'novel')
 })
 
 test('conversation summaries respect minimum history and growth thresholds', () => {

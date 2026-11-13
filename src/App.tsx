@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { DialogueBox } from './components/DialogueBox'
 import { OpeningScreen } from './components/OpeningScreen'
+import { StartupScreen } from './components/StartupScreen'
 import { StoryPanels } from './components/StoryPanels'
 import { JourneySettingsPanel } from './components/JourneySettingsPanel'
 import { useAppSettings } from './hooks/useAppSettings'
@@ -11,24 +12,37 @@ import { useLocalPmtiles } from './hooks/useLocalPmtiles'
 import { useJourneyManagement } from './hooks/useJourneyManagement'
 import { useJourney, newJourneyEvent } from './hooks/useJourney'
 import { useChat } from './hooks/useChat'
-import type { Place, PlacePhoto, WalkingRoute } from './types/domain'
+import { DEFAULT_PERSONA, DEFAULT_PERSONA_ID } from './providers/config'
+import { PERSONA_SPRITES } from './providers/bundledPersonaSprites'
+import type { PersonaProfile, Place, PlacePhoto, WalkingRoute } from './types/domain'
 import './styles/app.css'
 
 function App() {
   const storyPanelState = useStoryPanels()
   const { storyMode, storyPanels, settingsOpen: showSettings, setSettingsOpen: setShowSettings, toggleStoryPanel, closeAllPanels, toggleMode, settingsButton } = storyPanelState
   const companionArtInputRef = useRef<HTMLInputElement>(null)
-  const appSettings = useAppSettings(showSettings, companionArtInputRef)
-  const { settings, setSettings, connectionState, connectionMessage, offlineStatus, offlineError, refreshOfflineStatus, clearOfflineData, checkLlmConnection, changeProvider, companionImageUrl, companionArtError, uploadCompanionArt, removeCompanionArt } = appSettings
   const {
-    selectedPlace, setSelectedPlace, mapViewport, setMapViewport, messages, setMessages,
+    selectedPlace, setSelectedPlace, personaId, setPersonaId, mapViewport, setMapViewport, messages, setMessages,
     destinationHistory, setDestinationHistory, currentScene, setCurrentScene, narrativeEvents,
     setNarrativeEvents, knownPeople, setKnownPeople, knownEntities, setKnownEntities, userFacts,
     setUserFacts, conversationSummary, setConversationSummary, summaryMessageCount,
-    setSummaryMessageCount, journeyReady, applyJourney: applyJourneyState,
+    setSummaryMessageCount, journeyReady, journeyLoadState, journeyLoadStage, journeyLoadError,
+    retryJourneyLoad, continueWithoutSavedJourney, storyProgress, setStoryProgress, branches,
+    conversations, activeConversationId, createConversation, switchConversation, deleteConversation,
+    checkpoint, forkAt, switchBranch, applyJourney: applyJourneyState,
     resetJourney: resetJourneyState, snapshot: journeySnapshot, deleteJourney: deleteSavedJourney,
     appendArrival,
   } = useJourney()
+  const appSettings = useAppSettings(showSettings, companionArtInputRef, personaId)
+  const { settings, setSettings, connectionState, connectionMessage, offlineStatus, offlineError, refreshOfflineStatus, clearOfflineData, checkLlmConnection, changeProvider, companionImageUrl, companionArtError, uploadCompanionArt, removeCompanionArt } = appSettings
+  const personaProfiles = settings.personaProfiles ?? [DEFAULT_PERSONA]
+  const activePersona = personaProfiles.find((profile) => profile.id === personaId) ?? personaProfiles[0] ?? DEFAULT_PERSONA
+  const activePersonaId = personaProfiles.some((profile) => profile.id === personaId) ? personaId : DEFAULT_PERSONA_ID
+  const personaImageUrl = companionImageUrl ?? PERSONA_SPRITES[activePersona.spriteId]?.src ?? PERSONA_SPRITES[DEFAULT_PERSONA.spriteId].src
+  const chatSettings = useMemo(() => ({ ...settings, personaName: activePersona.name, personaInstructions: activePersona.instructions }), [activePersona.instructions, activePersona.name, settings])
+  useEffect(() => {
+    if (personaId !== activePersonaId) setPersonaId(activePersonaId)
+  }, [activePersonaId, personaId, setPersonaId])
   const [message, setMessage] = useState('')
   const placeData = usePlaceData(selectedPlace, settings)
   const { context: placeContext, contextState, contextCached, photos: destinationPhotos, photosState, photosCached, weather, weatherState, weatherError, loadWeather } = placeData
@@ -39,15 +53,18 @@ function App() {
   const chat = useChat({
     entries: messages,
     setEntries: setMessages,
-    journey: { destinationHistory, currentScene, knownPeople, knownEntities, userFacts, conversationSummary },
+    journey: { personaId, destinationHistory, currentScene, knownPeople, knownEntities, userFacts, conversationSummary },
     place: selectedPlace,
     placeData,
     selectedPhoto,
-    settings,
+    settings: chatSettings,
     journeyReady,
     summaryMessageCount,
     setSummaryMessageCount,
     setConversationSummary,
+    checkpoint: checkpoint(),
+    onForkTimeline: forkStoryTimeline,
+    onStoryProgressChange: setStoryProgress,
     onUserMessage: (text) => setNarrativeEvents((current) => [...current, newJourneyEvent('message', text)]),
   })
   const { llmState, llmError, animatedEntryId, summaryState } = chat
@@ -55,7 +72,7 @@ function App() {
   const [pendingDestination, setPendingDestination] = useState<Place | null>(null)
   const [routeState, setRouteState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [routeMessage, setRouteMessage] = useState('')
-  const [showCompanion, setShowCompanion] = useState(false)
+  const presentationMode = settings.storyPresentationMode ?? 'novel'
   const localPmtiles = useLocalPmtiles()
   const [arrivalCard, setArrivalCard] = useState<string | null>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
@@ -135,16 +152,82 @@ function App() {
     void completeTransition(place, false)
   }
 
-  function sendMessage(event: React.FormEvent) {
+  function updateActivePersona(updates: Partial<PersonaProfile>) {
+    setSettings((current) => ({
+      ...current,
+      personaProfiles: (current.personaProfiles ?? [DEFAULT_PERSONA]).map((profile) => profile.id === activePersona.id ? { ...profile, ...updates } : profile),
+    }))
+  }
+
+  function createPersona() {
+    const profile: PersonaProfile = {
+      id: crypto.randomUUID(),
+      name: `Persona ${personaProfiles.length}`,
+      instructions: DEFAULT_PERSONA.instructions,
+      spriteId: DEFAULT_PERSONA.spriteId,
+    }
+    setSettings((current) => ({ ...current, personaProfiles: [...(current.personaProfiles ?? [DEFAULT_PERSONA]), profile] }))
+    setPersonaId(profile.id)
+  }
+
+  function deleteActivePersona() {
+    if (activePersona.id === DEFAULT_PERSONA_ID) return
+    const nextProfiles = personaProfiles.filter((profile) => profile.id !== activePersona.id)
+    setSettings((current) => ({ ...current, personaProfiles: nextProfiles.length ? nextProfiles : [DEFAULT_PERSONA] }))
+    void removeCompanionArt(activePersona.id)
+    setPersonaId(DEFAULT_PERSONA_ID)
+  }
+
+  function sendMessage(event: React.FormEvent, rewindTo?: typeof storyProgress) {
     event.preventDefault()
     const trimmed = message.trim()
     if (!trimmed) return
     setMessage('')
-    chat.send(trimmed)
+    chat.send(trimmed, false, presentationMode === 'visual-novel' ? rewindTo : null)
+  }
+
+  function switchStoryBranch(branchId: string) {
+    switchBranch(branchId)
+    setRoute(null)
+    setPendingDestination(null)
+    setRouteState('idle')
+    setRouteMessage('')
+    setSelectedPhoto(null)
+  }
+
+  function startConversation() {
+    chat.reset()
+    setMessage('')
+    createConversation()
+  }
+
+  function selectConversation(conversationId: string) {
+    chat.reset()
+    setMessage('')
+    switchConversation(conversationId)
+  }
+
+  function removeConversation(conversationId: string) {
+    if (conversationId === activeConversationId) {
+      chat.reset()
+      setMessage('')
+    }
+    deleteConversation(conversationId)
+  }
+
+  function forkStoryTimeline(messagesOnBranch: Parameters<typeof forkAt>[0], checkpointAtBranch: Parameters<typeof forkAt>[1], progress: Parameters<typeof forkAt>[2]) {
+    forkAt(messagesOnBranch, checkpointAtBranch, progress)
+    setRoute(null)
+    setPendingDestination(null)
+    setRouteState('idle')
+    setRouteMessage('')
+    setSelectedPhoto(null)
   }
 
   return (
-    <main className={`app-shell ${storyMode ? 'story-mode' : 'explore-mode'} ${storyMode && storyPanels.includes('map') && storyPanels.includes('destination') ? 'story-map-and-destination' : ''} ${storyMode && storyPanels.includes('destination') && storyPanels.includes('travelogue') ? 'story-panels-stacked' : ''}`}>
+    <>
+      <StartupScreen state={journeyLoadState} stage={journeyLoadStage} error={journeyLoadError} onRetry={retryJourneyLoad} onContinue={continueWithoutSavedJourney} />
+      <main inert={journeyLoadState !== 'ready'} className={`app-shell presentation-${presentationMode} ${storyMode ? 'story-mode' : 'explore-mode'} ${storyMode && storyPanels.length === 0 && (Boolean(selectedPlace) || messages.some((entry) => entry.role === 'user')) ? 'story-no-side-panels' : ''} ${storyMode && storyPanels.includes('map') && storyPanels.includes('destination') ? 'story-map-and-destination' : ''} ${storyMode && storyPanels.includes('destination') && storyPanels.includes('travelogue') ? 'story-panels-stacked' : ''}`}>
       <header className="topbar">
         <div className="brand-lockup">
           <div className="brand-mark" aria-hidden="true">✦</div>
@@ -158,9 +241,14 @@ function App() {
           <button className="mode-toggle" type="button" onClick={toggleMode} aria-pressed={storyMode}>
             {storyMode ? 'Story' : 'Explore'}
           </button>
-          <button className={`companion-top-toggle ${showCompanion ? 'active' : ''}`} type="button" onClick={() => setShowCompanion((visible) => !visible)} aria-pressed={showCompanion} aria-label={showCompanion ? 'Hide companion' : 'Show companion'}>
-            <span aria-hidden="true">✦</span><span>{showCompanion ? 'Hide companion' : 'Show companion'}</span>
-          </button>
+          <label className="story-presentation-control">
+            <span className="sr-only">Story presentation</span>
+            <select aria-label="Story presentation" value={presentationMode} onChange={(event) => setSettings((current) => ({ ...current, storyPresentationMode: event.target.value as NonNullable<typeof current.storyPresentationMode> }))}>
+              <option value="novel">Novel</option>
+              <option value="visual-novel">Visual novel</option>
+              <option value="chat">Chat</option>
+            </select>
+          </label>
           <button ref={settingsButton} className="icon-button" onClick={() => setShowSettings((visible) => !visible)} aria-label="Toggle settings">⚙</button>
         </div>
       </header>
@@ -200,7 +288,7 @@ function App() {
         />
         <DialogueBox
           entries={messages}
-          personaName={settings.personaName}
+          personaName={activePersona.name}
           message={message}
           onMessageChange={setMessage}
           onSubmit={sendMessage}
@@ -212,9 +300,18 @@ function App() {
           destinationName={selectedPlace?.name ?? null}
           destinationCount={destinationHistory.length}
           routesEnabled={settings.calculateWalkingRoutes}
-          companionVisible={showCompanion}
+          presentationMode={presentationMode}
+          storyProgress={storyProgress}
+          onStoryProgressChange={setStoryProgress}
+          branches={branches}
+          onSwitchBranch={switchStoryBranch}
+          conversations={conversations}
+          activeConversationId={activeConversationId ?? ''}
+          onCreateConversation={startConversation}
+          onSwitchConversation={selectConversation}
+          onDeleteConversation={removeConversation}
           animatedEntryId={animatedEntryId}
-          companionImageUrl={companionImageUrl}
+          companionImageUrl={personaImageUrl}
         />
       </section>
 
@@ -225,6 +322,15 @@ function App() {
         journeyActions={journeyActions}
         importInputRef={importInputRef}
         companionArtInputRef={companionArtInputRef}
+        personaProfiles={personaProfiles}
+        activePersona={activePersona}
+        activePersonaId={activePersonaId}
+        hasCustomPersonaArt={Boolean(companionImageUrl)}
+        personaArtUrl={personaImageUrl}
+        onPersonaSelect={setPersonaId}
+        onPersonaUpdate={updateActivePersona}
+        onPersonaCreate={createPersona}
+        onPersonaDelete={deleteActivePersona}
         localPmtiles={localPmtiles}
         conversationSummary={conversationSummary}
         summaryState={summaryState}
@@ -232,7 +338,8 @@ function App() {
         eventCount={narrativeEvents.length}
         memory={{ people: knownPeople, entities: knownEntities, facts: userFacts }}
       />
-    </main>
+      </main>
+    </>
   )
 }
 

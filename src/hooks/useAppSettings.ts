@@ -1,12 +1,13 @@
 import { useEffect, useState, type RefObject } from 'react'
 import { LLM_PROVIDER_PRESETS } from '../providers/config'
+import { PERSONA_SPRITES } from '../providers/bundledPersonaSprites'
 import { clearOfflineCache, getOfflineCacheStatus, type OfflineCacheStatus } from '../storage/offlineCache'
 import { deleteCompanionArt, loadCompanionArt, saveCompanionArt } from '../storage/companionArt'
 import { loadSettings, saveSettings } from '../storage/settings'
 import type { UserSettings } from '../types/domain'
 
-export function useAppSettings(settingsOpen: boolean, companionArtInputRef: RefObject<HTMLInputElement | null>) {
-  const [settings, setSettings] = useState<UserSettings>(loadSettings)
+export function useAppSettings(settingsOpen: boolean, companionArtInputRef: RefObject<HTMLInputElement | null>, activePersonaId: string) {
+  const [settings, setSettings] = useState<UserSettings>(() => loadSettings(Object.keys(PERSONA_SPRITES)))
   const [connectionState, setConnectionState] = useState<'idle' | 'testing' | 'ready' | 'error'>('idle')
   const [connectionMessage, setConnectionMessage] = useState('')
   const [offlineStatus, setOfflineStatus] = useState<OfflineCacheStatus | null>(null)
@@ -26,15 +27,16 @@ export function useAppSettings(settingsOpen: boolean, companionArtInputRef: RefO
 
   useEffect(() => {
     let active = true
-    void loadCompanionArt().then((image) => {
+    setCompanionImageUrl(null)
+    void loadCompanionArt(activePersonaId).then((image) => {
       if (!active || !image) return
       setCompanionImageUrl(URL.createObjectURL(image))
-      setSettings((current) => ({ ...current, companionImage: true }))
+      setCompanionArtError('')
     }).catch((error) => {
-      if (active) setCompanionArtError(error instanceof Error ? error.message : 'Unable to load companion illustration')
+      if (active) setCompanionArtError(error instanceof Error ? error.message : 'Unable to load persona illustration')
     })
     return () => { active = false }
-  }, [])
+  }, [activePersonaId])
 
   useEffect(() => {
     if (!companionImageUrl) return
@@ -87,15 +89,15 @@ export function useAppSettings(settingsOpen: boolean, companionArtInputRef: RefO
     setSettings((current) => ({ ...current, llmProvider: provider, llmBaseUrl: preset.baseUrl, llmModel: preset.model }))
   }
 
-  async function uploadCompanionArt(file: File | undefined) {
+  async function uploadCompanionArt(file: File | undefined, personaId = activePersonaId) {
     if (!file) return
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
       setCompanionArtError('Choose a JPEG, PNG, or WebP image.')
       return
     }
     try {
-      await saveCompanionArt(file)
-      setCompanionImageUrl(URL.createObjectURL(file))
+      await saveCompanionArt(file, personaId)
+      if (personaId === activePersonaId) setCompanionImageUrl(URL.createObjectURL(file))
       setSettings((current) => ({ ...current, companionImage: true }))
       setCompanionArtError('')
     } catch (error) {
@@ -105,10 +107,10 @@ export function useAppSettings(settingsOpen: boolean, companionArtInputRef: RefO
     }
   }
 
-  async function removeCompanionArt() {
+  async function removeCompanionArt(personaId = activePersonaId) {
     try {
-      await deleteCompanionArt()
-      setCompanionImageUrl(null)
+      await deleteCompanionArt(personaId)
+      if (personaId === activePersonaId) setCompanionImageUrl(null)
       setSettings((current) => ({ ...current, companionImage: false }))
       setCompanionArtError('')
     } catch (error) {

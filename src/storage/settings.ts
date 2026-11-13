@@ -1,12 +1,43 @@
-import { DEFAULT_SETTINGS } from '../providers/config'
-import type { UserSettings } from '../types/domain'
+import { DEFAULT_PERSONA, DEFAULT_PERSONA_ID, DEFAULT_SETTINGS } from '../providers/config'
+import type { PersonaProfile, UserSettings } from '../types/domain'
 
 const SETTINGS_KEY = 'osm-ai-journey.settings.v1'
 
-export function loadSettings(): UserSettings {
+export function normalizeStoryPresentationMode(value: unknown): NonNullable<UserSettings['storyPresentationMode']> {
+  return value === 'visual-novel' || value === 'chat' ? value : 'novel'
+}
+
+export function normalizePersonaProfiles(value: unknown, legacy?: Partial<Pick<UserSettings, 'personaName' | 'personaInstructions'>>, availableSpriteIds: readonly string[] = [DEFAULT_PERSONA.spriteId]): PersonaProfile[] {
+  if (!Array.isArray(value)) {
+    if (legacy?.personaName || legacy?.personaInstructions) return [{
+      ...DEFAULT_PERSONA,
+      name: legacy.personaName || DEFAULT_PERSONA.name,
+      instructions: legacy.personaInstructions || DEFAULT_PERSONA.instructions,
+    }]
+    return [DEFAULT_PERSONA]
+  }
+  const profiles = value.flatMap((item): PersonaProfile[] => {
+    if (!item || typeof item !== 'object') return []
+    const profile = item as Partial<PersonaProfile>
+    if (typeof profile.id !== 'string' || !profile.id || typeof profile.name !== 'string' || typeof profile.instructions !== 'string') return []
+    const spriteId = typeof profile.spriteId === 'string' && availableSpriteIds.includes(profile.spriteId) ? profile.spriteId : DEFAULT_PERSONA.spriteId
+    return [{ id: profile.id, name: profile.name, instructions: profile.instructions, spriteId }]
+  })
+  if (!profiles.length) return [DEFAULT_PERSONA]
+  return profiles.some((profile) => profile.id === DEFAULT_PERSONA_ID) ? profiles : [DEFAULT_PERSONA, ...profiles]
+}
+
+export function loadSettings(availableSpriteIds: readonly string[] = [DEFAULT_PERSONA.spriteId]): UserSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY)
-    return raw ? { ...DEFAULT_SETTINGS, ...JSON.parse(raw) } : DEFAULT_SETTINGS
+    if (!raw) return DEFAULT_SETTINGS
+    const saved = JSON.parse(raw) as Partial<UserSettings>
+    return {
+      ...DEFAULT_SETTINGS,
+      ...saved,
+      storyPresentationMode: normalizeStoryPresentationMode(saved.storyPresentationMode),
+      personaProfiles: normalizePersonaProfiles(saved.personaProfiles, saved, availableSpriteIds),
+    }
   } catch {
     return DEFAULT_SETTINGS
   }

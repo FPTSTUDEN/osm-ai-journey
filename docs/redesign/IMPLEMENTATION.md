@@ -29,8 +29,7 @@ photos are illustrative, never presented as a live view; every fact shows its da
 - **≤900px:** matches the shipped breakpoint.
 - **≤520px:** the dock becomes a bottom bar; panels become top sheets (two open panels split the height);
   the log shrinks to ~14vh; suggestions scroll sideways.
-- **Top chrome:** Explore / Story switch, one **Show/Hide companion** toggle (default **off**; icon-only on
-  phones, with an `aria-label`), settings.
+- **Top chrome:** Explore / Story switch, a persisted Novel / Visual novel / Chat presentation selector, and settings. Uploaded companion art appears automatically in Visual novel mode rather than through a separate visibility toggle.
 
 ## 3. Decisions
 

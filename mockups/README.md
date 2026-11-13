@@ -12,7 +12,7 @@ responsive rules. For the spec and the mockup-to-build mapping, see
 | `01-opening.html` | Before any destination | Not built |
 | `02-arrival.html` | Right after a transition | Arrival card exists; chapter-card styling not built |
 | `03-ongoing-narration.html` | Mid-story, companion off, Journal open, log expanded | Journal panel built; dialogue box and Log not built |
-| `04-visual-novel.html` | Mid-story, companion on, Field notes open | Toggle and placeholder built (toggle in the wrong place); nameplate not built |
+| `04-visual-novel.html` | Mid-story, Visual novel mode, Field notes open | Presentation selector and left-side sprite stage match current controls; illustration remains a mock placeholder |
 | `05-two-characters.html` | Speaker swap | Phase 2 preview, needs a speaker model |
 | `06-map-and-destination-panels.html` | Map and Place panels open together | Panels built; dialogue box offsets not built |
 

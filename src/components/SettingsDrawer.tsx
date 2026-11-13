@@ -1,6 +1,8 @@
 import type { RefObject } from 'react'
 import type { OfflineCacheStatus } from '../storage/offlineCache'
-import type { UserSettings } from '../types/domain'
+import type { PersonaProfile, UserSettings } from '../types/domain'
+import { DEFAULT_PERSONA_ID } from '../providers/config'
+import { PERSONA_SPRITES } from '../providers/bundledPersonaSprites'
 
 type MemoryKind = 'people' | 'entities' | 'facts'
 type JourneyItem = Record<MemoryKind, string>
@@ -11,6 +13,15 @@ type SettingsDrawerProps = {
   onProviderChange: (provider: UserSettings['llmProvider']) => void
   onClose: () => void
   companionArtInputRef: RefObject<HTMLInputElement | null>
+  personaProfiles: PersonaProfile[]
+  activePersona: PersonaProfile
+  activePersonaId: string
+  hasCustomPersonaArt: boolean
+  personaArtUrl: string
+  onPersonaSelect: (personaId: string) => void
+  onPersonaUpdate: (updates: Partial<PersonaProfile>) => void
+  onPersonaCreate: () => void
+  onPersonaDelete: () => void
   onUploadCompanionArt: (file: File | undefined) => void
   onRemoveCompanionArt: () => void
   companionArtError: string
@@ -57,6 +68,15 @@ export function SettingsDrawer({
   onProviderChange,
   onClose,
   companionArtInputRef,
+  personaProfiles,
+  activePersona,
+  activePersonaId,
+  hasCustomPersonaArt,
+  personaArtUrl,
+  onPersonaSelect,
+  onPersonaUpdate,
+  onPersonaCreate,
+  onPersonaDelete,
   onUploadCompanionArt,
   onRemoveCompanionArt,
   companionArtError,
@@ -90,6 +110,7 @@ export function SettingsDrawer({
   onSelectLocalPmtiles,
   onClearLocalPmtiles,
 }: SettingsDrawerProps) {
+  const activeSprite = PERSONA_SPRITES[activePersona.spriteId]
   return (
     <aside className="settings panel" role="dialog" aria-modal="false" aria-labelledby="settings-title">
       <div className="settings-header"><div><p className="eyebrow">Local configuration</p><h2 id="settings-title">Journey settings</h2></div><button className="close-button" type="button" onClick={onClose} aria-label="Close settings">×</button></div>
@@ -98,9 +119,17 @@ export function SettingsDrawer({
       <label>Model<input value={settings.llmModel} onChange={(event) => onSettingsChange({ llmModel: event.target.value })} /></label>
       <label>API key<input type="password" value={settings.llmApiKey} onChange={(event) => onSettingsChange({ llmApiKey: event.target.value })} placeholder="Optional for local models" /></label>
       {settingsError && <p className="connection-error" role="alert">Settings may not persist: {settingsError}</p>}
-      <label>Companion name<input value={settings.personaName} onChange={(event) => onSettingsChange({ personaName: event.target.value })} /></label>
-      <label>Companion instructions<textarea className="persona-input" value={settings.personaInstructions} onChange={(event) => onSettingsChange({ personaInstructions: event.target.value })} rows={3} /></label>
-      <div className="companion-art-setting"><label>Companion illustration<input ref={companionArtInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => onUploadCompanionArt(event.target.files?.[0])} /></label>{settings.companionImage && <button type="button" onClick={onRemoveCompanionArt}>Remove illustration</button>}{companionArtError && <p className="connection-error" role="alert">{companionArtError}</p>}</div>
+      <section className="persona-profile-settings" aria-labelledby="persona-profiles-title">
+        <div className="persona-profile-heading"><div><p className="memory-label">Story character</p><h3 id="persona-profiles-title">Personas</h3></div><button type="button" onClick={onPersonaCreate}>New persona</button></div>
+        <label>Active for this journey<select aria-label="Active persona" value={activePersonaId} onChange={(event) => onPersonaSelect(event.target.value)}>{personaProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name || 'Unnamed persona'}</option>)}</select></label>
+        <div className="persona-profile-actions"><span>{activePersona.id === DEFAULT_PERSONA_ID ? 'Default persona' : 'Custom persona'}</span>{activePersona.id !== DEFAULT_PERSONA_ID && <button type="button" onClick={onPersonaDelete}>Delete persona</button>}</div>
+        <label>Persona name<input value={activePersona.name} onChange={(event) => onPersonaUpdate({ name: event.target.value })} /></label>
+        <label>Persona instructions<textarea className="persona-input" value={activePersona.instructions} onChange={(event) => onPersonaUpdate({ instructions: event.target.value })} rows={3} /></label>
+        <label>Built-in sprite<select value={activePersona.spriteId} onChange={(event) => onPersonaUpdate({ spriteId: event.target.value as PersonaProfile['spriteId'] })}>{Object.entries(PERSONA_SPRITES).map(([id, sprite]) => <option key={id} value={id} title={sprite.description}>{sprite.label}</option>)}</select></label>
+                <div className="persona-art-preview"><img src={personaArtUrl} alt={`${activePersona.name || 'Persona'} portrait`} /><p>{hasCustomPersonaArt ? 'Custom portrait' : `${activeSprite?.description ?? 'Built-in portrait'} · used in Visual novel and Chat modes`}</p></div>
+        <div className="companion-art-setting"><label>Use a custom portrait<input ref={companionArtInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { onUploadCompanionArt(event.target.files?.[0]); event.currentTarget.value = '' }} /></label>{hasCustomPersonaArt && <button type="button" onClick={onRemoveCompanionArt}>Restore built-in sprite</button>}{companionArtError && <p className="connection-error" role="alert">{companionArtError}</p>}</div>
+        <p className="settings-note">Persona instructions are natural-language roleplay guidance. The selected persona is saved with this journey.</p>
+      </section>
       <div className="connection-test"><button type="button" onClick={onTestConnection} disabled={connectionState === 'testing'}>{connectionState === 'testing' ? 'Testing…' : 'Test connection'}</button>{connectionMessage && <span className={connectionState === 'error' ? 'connection-error' : 'connection-ready'}>{connectionMessage}</span>}</div>
       <label>Online geocoder<select value={settings.onlineGeocoder} onChange={(event) => onSettingsChange({ onlineGeocoder: event.target.value as UserSettings['onlineGeocoder'] })}><option value="nominatim">Nominatim</option><option value="photon">Photon</option></select></label>
       <label>Walking route server<input value={settings.routingBaseUrl} onChange={(event) => onSettingsChange({ routingBaseUrl: event.target.value })} /></label>
