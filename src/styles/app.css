@@ -542,6 +542,53 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
   .story-mode.presentation-visual-novel .story-conversation-visual-novel .vn-character-stage .story-avatar { width: clamp(176px, 18vw, 250px); height: clamp(210px, 30vh, 260px); }
 }
 
+@media (min-width: 521px) {
+  .story-mode.story-opening.presentation-visual-novel .vn-character-stage { display: none; }
+  .story-mode.presentation-visual-novel .story-conversation-visual-novel {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .story-mode.presentation-visual-novel .vn-character-stage {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    min-height: 0;
+    padding: 0 6%;
+    pointer-events: none;
+  }
+  .story-mode.presentation-visual-novel .vn-character .story-avatar { position: relative; }
+  .story-mode.presentation-visual-novel .vn-character .story-avatar img {
+    position: absolute;
+    inset: auto auto -16px 50%;
+    width: auto;
+    height: min(54vh, 460px);
+    max-width: none;
+    transform: translateX(-50%);
+    object-fit: contain;
+    object-position: center bottom;
+  }
+  .story-mode.presentation-visual-novel .dialogue-panel .conversation-latest.story-conversation-visual-novel {
+    min-height: min(54vh, 460px);
+    max-height: min(66vh, 520px);
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+  .story-mode.presentation-visual-novel .story-entry-list { position: relative; z-index: 1; flex: 1 1 auto; min-height: 0; justify-content: flex-end; }
+}
+
+@media (min-width: 1101px) {
+  .story-mode.presentation-visual-novel .dialogue-panel { max-height: min(82vh, 740px); }
+}
+
+@media (min-width: 521px) and (max-width: 1100px) {
+  .story-mode.presentation-visual-novel .dialogue-panel { max-height: min(84vh, 740px); }
+  .story-mode.presentation-visual-novel .vn-character-stage .vn-character .story-avatar {
+    width: clamp(150px, 20vw, 220px);
+    height: clamp(190px, 30vh, 260px);
+  }
+}
+
 .story-mode .story-panel-open { animation: story-panel-enter 220ms cubic-bezier(.2,.7,.2,1) both; }
 .story-mode .map-layout--compact.story-panel-open { animation-name: story-map-enter; }
 .story-mode .story-panel-closing { pointer-events: none; animation: story-panel-exit 220ms cubic-bezier(.4,0,.8,.4) both; }

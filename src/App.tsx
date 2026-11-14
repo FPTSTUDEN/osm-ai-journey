@@ -76,6 +76,7 @@ function App() {
   const [routeState, setRouteState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [routeMessage, setRouteMessage] = useState('')
   const presentationMode = settings.storyPresentationMode ?? 'novel'
+  const storyOpening = storyMode && !selectedPlace && !messages.some((entry) => entry.role === 'user')
   const localPmtiles = useLocalPmtiles()
   const [arrivalCard, setArrivalCard] = useState<string | null>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
@@ -241,7 +242,7 @@ function App() {
   return (
     <>
       <StartupScreen state={journeyLoadState} stage={journeyLoadStage} error={journeyLoadError} onRetry={retryJourneyLoad} onContinue={continueWithoutSavedJourney} />
-      <main inert={journeyLoadState !== 'ready'} className={`app-shell presentation-${presentationMode} ${storyMode ? 'story-mode' : 'explore-mode'} ${storyMode && storyPanels.length === 0 && (Boolean(selectedPlace) || messages.some((entry) => entry.role === 'user')) ? 'story-no-side-panels' : ''} ${storyMode && storyPanels.includes('map') ? 'story-map-open' : ''} ${storyMode && storyPanels.includes('destination') ? 'story-destination-open' : ''} ${storyMode && storyPanels.includes('map') && storyPanels.includes('destination') ? 'story-map-and-destination' : ''} ${storyMode && storyPanels.includes('destination') && storyPanels.includes('travelogue') ? 'story-panels-stacked' : ''}`}>
+      <main inert={journeyLoadState !== 'ready'} className={`app-shell presentation-${presentationMode} ${storyMode ? 'story-mode' : 'explore-mode'} ${storyOpening ? 'story-opening' : ''} ${storyMode && storyPanels.length === 0 && (Boolean(selectedPlace) || messages.some((entry) => entry.role === 'user')) ? 'story-no-side-panels' : ''} ${storyMode && storyPanels.includes('map') ? 'story-map-open' : ''} ${storyMode && storyPanels.includes('destination') ? 'story-destination-open' : ''} ${storyMode && storyPanels.includes('map') && storyPanels.includes('destination') ? 'story-map-and-destination' : ''} ${storyMode && storyPanels.includes('destination') && storyPanels.includes('travelogue') ? 'story-panels-stacked' : ''}`}>
       <header className="topbar">
         <div className="brand-lockup">
           <div className="brand-mark" aria-hidden="true">✦</div>
@@ -268,7 +269,7 @@ function App() {
       </header>
 
       <section className="workspace">
-        {storyMode && !selectedPlace && !messages.some((entry) => entry.role === 'user') && <OpeningScreen query={mapSearch.query} onQueryChange={mapSearch.updateQuery} onSearchLoadedPlaces={mapSearch.openMapForSearch} onOnlineShortcut={mapSearch.searchOnlineShortcut} />}
+        {storyOpening && <OpeningScreen query={mapSearch.query} onQueryChange={mapSearch.updateQuery} onSearchLoadedPlaces={mapSearch.openMapForSearch} onOnlineShortcut={mapSearch.searchOnlineShortcut} />}
         {scenePhoto && <div className="scene-art" aria-label="Illustrative destination scene art">
           <img src={scenePhoto.sceneUrl ?? scenePhoto.imageUrl} alt="" />
           <div className="scene-art-shade" />

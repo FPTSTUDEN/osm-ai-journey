@@ -665,6 +665,66 @@ test('desktop story layouts adapt by presentation and side panels animate out ac
   await expect(page.locator('.map-panel')).toHaveCount(0)
 })
 
+test('story modes fit common laptop and tablet viewports with oversized VN portraits visible', async ({ page }) => {
+  await page.route('http://localhost:11434/v1/chat/completions', (route) => route.fulfill({
+    status: 200,
+    contentType: 'text/event-stream',
+    body: `data: ${JSON.stringify({ choices: [{ delta: { content: 'The lanterns come alive.' } }] })}\n\ndata: [DONE]\n\n`,
+  }))
+  await resetBrowser(page)
+  await page.setViewportSize({ width: 1024, height: 768 })
+  await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('visual-novel')
+  await expect(page.locator('.vn-character-stage')).toBeHidden()
+  await page.getByPlaceholder(/Speak freely/).fill('Begin a story')
+  await page.getByRole('button', { name: 'Send message' }).click()
+  await expect(page.locator('.story-conversation')).toContainText('The lanterns come alive.')
+  const mode = page.getByRole('combobox', { name: 'Story presentation' })
+  const viewports = [[1440, 900], [1366, 768], [1280, 800], [1024, 768], [834, 1112], [768, 1024]]
+
+  for (const [width, height] of viewports) {
+    await page.setViewportSize({ width, height })
+    for (const presentation of ['novel', 'chat', 'visual-novel']) {
+      await mode.selectOption(presentation)
+      await waitForDialogueLayout(page)
+      const metrics = await page.evaluate(() => {
+        const panel = document.querySelector('.dialogue-panel').getBoundingClientRect()
+        const conversation = document.querySelector('.story-conversation').getBoundingClientRect()
+        const composer = document.querySelector('.dialogue-panel .composer').getBoundingClientRect()
+        const avatar = document.querySelector('.vn-character-left .story-avatar')?.getBoundingClientRect()
+        const image = document.querySelector('.vn-character-left img')?.getBoundingClientRect()
+        const dialogue = document.querySelector('.vn-dialogue')?.getBoundingClientRect()
+        return {
+          documentWidth: document.documentElement.scrollWidth,
+          panel: { left: panel.left, right: panel.right, top: panel.top, bottom: panel.bottom },
+          conversation: { top: conversation.top, bottom: conversation.bottom },
+          composer: { top: composer.top, bottom: composer.bottom },
+          avatar: avatar && { top: avatar.top, height: avatar.height },
+          image: image && { top: image.top, bottom: image.bottom, height: image.height },
+          dialogue: dialogue && { top: dialogue.top, bottom: dialogue.bottom },
+        }
+      })
+
+      expect(metrics.documentWidth, `${presentation} at ${width}x${height}`).toBeLessThanOrEqual(width)
+      expect(metrics.panel.left, `${presentation} left edge at ${width}x${height}`).toBeGreaterThanOrEqual(0)
+      expect(metrics.panel.right, `${presentation} right edge at ${width}x${height}`).toBeLessThanOrEqual(width)
+      expect(metrics.panel.top, `${presentation} top edge at ${width}x${height}`).toBeGreaterThanOrEqual(0)
+      expect(metrics.panel.bottom, `${presentation} bottom edge at ${width}x${height}`).toBeLessThanOrEqual(height)
+      expect(metrics.conversation.top, `${presentation} story top at ${width}x${height}`).toBeGreaterThanOrEqual(metrics.panel.top)
+      expect(metrics.conversation.bottom, `${presentation} story bottom at ${width}x${height}`).toBeLessThanOrEqual(metrics.composer.top)
+      await expect(page.locator('.story-conversation')).toContainText('The lanterns come alive.')
+
+      if (presentation === 'visual-novel') {
+        expect(metrics.image).not.toBeNull()
+        expect(metrics.image.height, `portrait should exceed its frame at ${width}x${height}`).toBeGreaterThan(metrics.avatar.height)
+        expect(metrics.image.top, `portrait top should remain visible at ${width}x${height}`).toBeGreaterThanOrEqual(metrics.conversation.top)
+        expect(metrics.image.bottom, `portrait should not be clipped at ${width}x${height}`).toBeLessThanOrEqual(metrics.conversation.bottom)
+        expect(metrics.dialogue.top, `VN dialogue should remain visible at ${width}x${height}`).toBeGreaterThanOrEqual(metrics.conversation.top)
+        expect(metrics.dialogue.bottom, `VN dialogue should remain visible at ${width}x${height}`).toBeLessThanOrEqual(metrics.conversation.bottom)
+      }
+    }
+  }
+})
+
 test('Visual novel progression can skip blocks, review the skipped content, and return to the scene', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
   const reply = JSON.stringify({ blocks: [

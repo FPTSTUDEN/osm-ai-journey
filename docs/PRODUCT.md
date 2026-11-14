@@ -20,6 +20,7 @@ Osm AI Journey turns map exploration into an open-ended narrative journey. A use
 
 - Novel is the text-first default and preserves the current dialogue/log experience.
 - Visual novel separates narration, dialogue, and scene changes on a character stage; it shows the uploaded persona illustration when available and keeps a placeholder for the traveler.
+- Visual novel portraits preserve their full aspect ratio and can extend beyond the small avatar frame, layered behind the dialogue card on laptop and tablet layouts. The opening search screen stays uncluttered until a journey begins.
 - Chat uses speaker avatars and bubbles, with narration and scene events presented separately.
 - The selected presentation is an app-wide browser preference and survives reloads; changing it does not change journey state or conversation history.
 - Novel, Visual novel, and Chat use mode-specific reading widths and story areas on desktop and laptop screens. Side panels slide in and out while the dialogue area eases into its available space; the active Visual novel block also transitions when the reader moves through a story.
