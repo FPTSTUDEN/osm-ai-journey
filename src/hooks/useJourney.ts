@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { deleteActiveJourney, loadActiveJourney, saveActiveJourney } from '../storage/journey'
 import { newEntry, starterEntries, STARTER_MESSAGE } from '../storage/messages'
-import type { ChatEntry, JourneyConversation, JourneyState, JourneyTimeline, MapViewport, NarrativeEvent, Place, StoryBranch, StoryCheckpoint, StoryProgress } from '../types/domain'
+import type { ChatEntry, JourneyConversation, JourneyLeg, JourneyState, JourneyTimeline, MapViewport, NarrativeEvent, Place, StoryBranch, StoryCheckpoint, StoryProgress } from '../types/domain'
 import { latestStoryStop } from '../providers/storyFormat'
 import { DEFAULT_PERSONA_ID } from '../providers/config'
 
@@ -17,7 +17,7 @@ function newConversation(messages = starterEntries()): JourneyConversation {
 
 function emptyJourney(): JourneyState {
   const conversation = newConversation()
-  return { id: 'active', personaId: DEFAULT_PERSONA_ID, currentDestination: null, mapViewport: null, destinationHistory: [], currentScene: 1, messages: conversation.messages, knownPeople: [], knownEntities: [], userFacts: [], narrativeEvents: [], conversationSummary: '', storyProgress: null, branches: [], conversations: [conversation], activeConversationId: conversation.id }
+  return { id: 'active', personaId: DEFAULT_PERSONA_ID, currentDestination: null, mapViewport: null, destinationHistory: [], currentScene: 1, messages: conversation.messages, knownPeople: [], knownEntities: [], userFacts: [], narrativeEvents: [], conversationSummary: '', storyProgress: null, legs: [], branches: [], conversations: [conversation], activeConversationId: conversation.id }
 }
 
 export function newJourneyEvent(type: NarrativeEvent['type'], text: string, placeId?: string): NarrativeEvent {
@@ -37,6 +37,7 @@ export function useJourney() {
   const [userFacts, setUserFacts] = useState<string[]>([])
   const [conversationSummary, setConversationSummary] = useState('')
   const [storyProgress, setStoryProgress] = useState<StoryProgress | null>(null)
+  const [legs, setLegs] = useState<JourneyLeg[]>([])
   const [branches, setBranches] = useState<StoryBranch[]>([])
   const [initialConversation] = useState(() => newConversation())
   const [conversations, setConversations] = useState<JourneyConversation[]>([initialConversation])
@@ -49,7 +50,7 @@ export function useJourney() {
   const [journeyLoadAttempt, setJourneyLoadAttempt] = useState(0)
 
   function timeline(): JourneyTimeline {
-    return { personaId, currentDestination: selectedPlace, mapViewport, destinationHistory, currentScene, messages, knownPeople, knownEntities, userFacts, narrativeEvents, conversationSummary, storyProgress }
+    return { personaId, currentDestination: selectedPlace, mapViewport, destinationHistory, currentScene, messages, knownPeople, knownEntities, userFacts, narrativeEvents, conversationSummary, storyProgress, legs }
   }
 
   function checkpoint(): StoryCheckpoint {
@@ -92,6 +93,7 @@ export function useJourney() {
     setUserFacts(snapshot.userFacts)
     setConversationSummary(snapshot.conversationSummary ?? '')
     setStoryProgress(snapshot.storyProgress ?? null)
+    setLegs(snapshot.legs ?? [])
     setSummaryMessageCount(snapshot.messages.length)
   }
 
@@ -106,6 +108,7 @@ export function useJourney() {
     setKnownEntities(snapshot.knownEntities)
     setUserFacts(snapshot.userFacts)
     setConversationSummary(snapshot.conversationSummary ?? '')
+    setLegs(snapshot.legs ?? [])
   }
 
   useEffect(() => {
@@ -126,6 +129,7 @@ export function useJourney() {
       setKnownPeople(restored.knownPeople)
       setKnownEntities(restored.knownEntities)
       setUserFacts(restored.userFacts)
+      setLegs(restored.legs ?? [])
       const records = restored.conversations?.length ? restored.conversations : [{
         id: crypto.randomUUID(), title: conversationTitle(restored.messages), createdAt: new Date().toISOString(),
         messages: restored.messages.length ? restored.messages : starterEntries(), narrativeEvents: restored.narrativeEvents,
@@ -162,13 +166,14 @@ export function useJourney() {
         narrativeEvents,
         conversationSummary,
         storyProgress,
+        legs,
         branches,
         conversations: conversationList(),
         activeConversationId: activeConversationId || conversations[0]?.id,
       })
     }, 400)
     return () => window.clearTimeout(timer)
-  }, [activeConversationId, branches, conversationSummary, conversations, currentScene, destinationHistory, journeyReady, knownEntities, knownPeople, mapViewport, messages, narrativeEvents, personaId, selectedPlace, storyProgress, userFacts])
+  }, [activeConversationId, branches, conversationSummary, conversations, currentScene, destinationHistory, journeyReady, knownEntities, knownPeople, legs, mapViewport, messages, narrativeEvents, personaId, selectedPlace, storyProgress, userFacts])
 
   function applyJourney(journey: JourneyState) {
     setPersonaId(journey.personaId ?? DEFAULT_PERSONA_ID)
@@ -179,6 +184,7 @@ export function useJourney() {
     setKnownPeople(journey.knownPeople)
     setKnownEntities(journey.knownEntities)
     setUserFacts(journey.userFacts)
+    setLegs(journey.legs ?? [])
     const records = journey.conversations?.length ? journey.conversations : [{
       id: crypto.randomUUID(), title: conversationTitle(journey.messages), createdAt: new Date().toISOString(),
       messages: journey.messages, narrativeEvents: journey.narrativeEvents, conversationSummary: journey.conversationSummary ?? '',
@@ -200,6 +206,7 @@ export function useJourney() {
     setKnownPeople(journey.knownPeople)
     setKnownEntities(journey.knownEntities)
     setUserFacts(journey.userFacts)
+    setLegs(journey.legs ?? [])
     setConversations(journey.conversations ?? [])
     setActiveConversationId(journey.activeConversationId ?? '')
     restoreConversation(journey.conversations?.[0] ?? newConversation())
@@ -286,6 +293,10 @@ export function useJourney() {
     setStoryProgress(null)
   }
 
+  function appendLeg(leg: JourneyLeg) {
+    setLegs((current) => [...current, leg])
+  }
+
   return {
     selectedPlace, setSelectedPlace,
     personaId, setPersonaId,
@@ -307,6 +318,7 @@ export function useJourney() {
     continueWithoutSavedJourney,
     storyProgress,
     setStoryProgress,
+    legs,
     branches,
     conversations: conversationList(),
     activeConversationId: activeConversationId || conversations[0]?.id,
@@ -321,5 +333,6 @@ export function useJourney() {
     snapshot,
     deleteJourney,
     appendArrival,
+    appendLeg,
   }
 }

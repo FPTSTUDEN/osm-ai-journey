@@ -14,7 +14,7 @@ import { useJourney, newJourneyEvent } from './hooks/useJourney'
 import { useChat } from './hooks/useChat'
 import { DEFAULT_PERSONA, DEFAULT_PERSONA_ID } from './providers/config'
 import { PERSONA_SPRITES } from './providers/bundledPersonaSprites'
-import type { PersonaProfile, Place, PlacePhoto, WalkingRoute } from './types/domain'
+import type { JourneyLeg, PersonaProfile, Place, PlacePhoto, WalkingRoute } from './types/domain'
 import './styles/app.css'
 
 function App() {
@@ -32,7 +32,7 @@ function App() {
     conversations, activeConversationId, createConversation, switchConversation, deleteConversation,
     checkpoint, forkAt, switchBranch, applyJourney: applyJourneyState,
     resetJourney: resetJourneyState, snapshot: journeySnapshot, deleteJourney: deleteSavedJourney,
-    appendArrival,
+    appendArrival, appendLeg, legs,
   } = useJourney()
   const appSettings = useAppSettings(showSettings, companionArtInputRef, personaId)
   const { settings, setSettings, connectionState, connectionMessage, offlineStatus, offlineError, refreshOfflineStatus, clearOfflineData, checkLlmConnection, changeProvider, companionImageUrl, companionArtError, uploadCompanionArt, removeCompanionArt } = appSettings
@@ -155,6 +155,16 @@ function App() {
     const eventType = walkingRoute ? 'routed-transition' : 'unrouted-transition'
     const eventText = walkingRoute ? `${arrival} Walking route calculated.` : `${arrival} Continuing without a walking route.`
     appendArrival(eventText, eventType, place.id)
+    appendLeg({
+      id: crypto.randomUUID(),
+      from: origin,
+      to: place,
+      routed: Boolean(walkingRoute),
+      geometry: walkingRoute?.coordinates,
+      distanceMeters: walkingRoute?.distanceMeters,
+      durationSeconds: walkingRoute?.durationSeconds,
+      createdAt: new Date().toISOString(),
+    } satisfies JourneyLeg)
   }
 
   function choosePlace(place: Place) {
@@ -298,6 +308,7 @@ function App() {
           routeMessage={routeMessage}
           destinationHistory={destinationHistory}
           narrativeEvents={narrativeEvents}
+          legs={legs}
           arrivalCard={arrivalCard}
           currentScene={currentScene}
           localArchive={localPmtiles.archive}

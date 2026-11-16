@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { searchLocalPlaces } from '../providers/localPlaceIndex'
+import type { OfflineZone } from '../storage/offlineZones'
 import type { Place, UserSettings } from '../types/domain'
 import type { StoryPanel } from './useStoryPanels'
 
@@ -20,10 +21,37 @@ export function useMapSearch({ geocoder, mapOpen, toggleStoryPanel, onChoosePlac
   const [onlineState, setOnlineState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [onlineCached, setOnlineCached] = useState(false)
   const [onlineError, setOnlineError] = useState('')
+  const [offlineZone, setOfflineZoneState] = useState<OfflineZone | null>(null)
+  const [offlineResults, setOfflineResults] = useState<Place[]>([])
+  const [offlineIndexState, setOfflineIndexState] = useState<'idle' | 'loading' | 'ready' | 'empty'>('idle')
 
   useEffect(() => {
     if (!mapOpen) setMapStatus('loading')
   }, [mapOpen])
+
+  useEffect(() => {
+    let active = true
+    void import('../storage/offlineZones').then(({ loadZone }) => loadZone()).then((zone) => {
+      if (active) setOfflineZoneState(zone)
+    })
+    return () => { active = false }
+  }, [])
+
+  useEffect(() => {
+    if (!query.trim() || !offlineZone) {
+      setOfflineResults([])
+      setOfflineIndexState('idle')
+      return
+    }
+    let active = true
+    setOfflineIndexState('loading')
+    void import('../providers/offlineIndex').then(({ searchOfflineIndex }) => searchOfflineIndex(offlineZone, query)).then((result) => {
+      if (!active) return
+      setOfflineResults(result.places)
+      setOfflineIndexState(result.source === 'empty' ? 'empty' : 'ready')
+    })
+    return () => { active = false }
+  }, [offlineZone, query])
 
   const localResults = useMemo(() => searchLocalPlaces(places, query), [places, query])
 
@@ -79,6 +107,9 @@ export function useMapSearch({ geocoder, mapOpen, toggleStoryPanel, onChoosePlac
     mapStatus,
     setMapStatus,
     localResults,
+    offlineResults,
+    offlineIndexState,
+    offlineZone,
     onlineResults,
     onlineQuery,
     onlineState,

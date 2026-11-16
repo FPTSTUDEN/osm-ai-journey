@@ -7,7 +7,7 @@ import { SelectedPhotoDetails } from './SelectedPhotoDetails'
 import { useMapSearch } from '../hooks/useMapSearch'
 import { usePlaceData } from '../hooks/usePlaceData'
 import { useStoryPanels } from '../hooks/useStoryPanels'
-import type { MapViewport, Place, PlacePhoto, UserSettings, WalkingRoute } from '../types/domain'
+import type { JourneyLeg, MapViewport, Place, PlacePhoto, UserSettings, WalkingRoute } from '../types/domain'
 import type { NarrativeEvent } from '../types/domain'
 import type { LocalPmtilesArchive } from '../providers/localPmtiles'
 
@@ -55,6 +55,7 @@ type Props = {
   routeMessage: string
   destinationHistory: Place[]
   narrativeEvents: NarrativeEvent[]
+  legs: JourneyLeg[]
   arrivalCard: string | null
   currentScene: number
   localArchive: LocalPmtilesArchive | null
@@ -93,6 +94,7 @@ export function StoryPanels({
   routeMessage,
   destinationHistory,
   narrativeEvents,
+  legs,
   arrivalCard,
   currentScene,
   localArchive,
@@ -126,9 +128,14 @@ export function StoryPanels({
               <p className="result-label">From loaded map data</p>
               {search.localResults.map((place) => <button key={place.id} onClick={() => onChoosePlace(place)}>{place.name}<span>{place.category ?? 'Place'}</span></button>)}
             </div>}
-            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.onlineState === 'idle' && <div className="online-search">No loaded places match. <button onClick={() => void search.searchOnline()}>Search online</button></div>}
-            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.onlineState === 'loading' && <div className="search-state">Searching {settings.onlineGeocoder === 'nominatim' ? 'Nominatim' : 'Photon'} for “{search.onlineQuery}”…</div>}
-            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.onlineState === 'error' && <div className="online-search">{search.onlineError} <button onClick={() => void search.searchOnline()}>Try again</button></div>}
+            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.offlineResults.length > 0 && <div className="search-results">
+              <p className="result-label">From offline index{search.offlineIndexState === 'ready' ? '' : ' · preparing'}</p>
+              {search.offlineResults.map((place) => <button key={place.id} onClick={() => onChoosePlace(place)}>{place.name}<span>{place.category ?? 'Place'}</span></button>)}
+            </div>}
+            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.offlineResults.length === 0 && search.offlineIndexState === 'empty' && search.onlineState === 'idle' && <div className="online-search">No places in the offline zone. <button onClick={() => void search.searchOnline()}>Search online</button></div>}
+            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.offlineResults.length === 0 && search.offlineIndexState === 'idle' && search.onlineState === 'idle' && <div className="online-search">No loaded places match. <button onClick={() => void search.searchOnline()}>Search online</button></div>}
+            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.offlineResults.length === 0 && search.offlineIndexState !== 'empty' && search.onlineState === 'loading' && <div className="search-state">Searching {settings.onlineGeocoder === 'nominatim' ? 'Nominatim' : 'Photon'} for “{search.onlineQuery}”…</div>}
+            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.offlineResults.length === 0 && search.offlineIndexState !== 'empty' && search.onlineState === 'error' && <div className="online-search">{search.onlineError} <button onClick={() => void search.searchOnline()}>Try again</button></div>}
             {search.query && search.onlineQuery === search.query.trim() && search.onlineState === 'ready' && search.onlineResults.length > 0 && <div className="search-results">
               <p className="result-label">Online results{search.onlineCached ? ' · cached' : ' · live'}</p>
               {search.onlineResults.map((place) => <button key={place.id} onClick={() => onChoosePlace(place)}>{place.name}<span>{place.category ?? place.description ?? 'Place'}</span></button>)}
@@ -182,7 +189,7 @@ export function StoryPanels({
             : <PlaceDetails layout="compact" place={selectedPlace} geocoder={settings.onlineGeocoder} liveDataEnabled={settings.liveDataEnabled} {...placeData} onLoadWeather={(force) => void placeData.loadWeather(force)} onLoadNearbyData={(force) => void placeData.loadNearbyData(force)} scenePhoto={scenePhoto} onSelectPhoto={setSelectedPhoto} onOpenFieldNotes={() => setFieldNotesOpen(true)} />
           : <p className="dock-empty">Choose a place first, then return here to examine it.</p>}
       </aside>}
-      {storyMode && traveloguePresent && <JournalPanel events={narrativeEvents} isOpen={travelogueOpen} onClose={() => closeStoryPanel('travelogue')} />}
+      {storyMode && traveloguePresent && <JournalPanel events={narrativeEvents} legs={legs} isOpen={travelogueOpen} onClose={() => closeStoryPanel('travelogue')} />}
       {arrivalCard && <ArrivalCard placeName={arrivalCard} sceneNumber={currentScene} />}
       {fieldNotesOpen && selectedPlace && <FieldNotes place={selectedPlace} geocoder={settings.onlineGeocoder} liveDataEnabled={settings.liveDataEnabled} {...placeData} selectedPhoto={selectedPhoto} scenePhoto={scenePhoto} onLoadWeather={(force) => void placeData.loadWeather(force)} onLoadNearbyData={(force) => void placeData.loadNearbyData(force)} onSelectPhoto={setSelectedPhoto} onClose={() => setFieldNotesOpen(false)} />}
     </>

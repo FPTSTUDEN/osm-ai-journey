@@ -15,7 +15,9 @@ import { normalizeMessages } from '../src/storage/messages'
 import { normalizeMotionPreference, normalizePersonaProfiles, normalizeStoryPresentationMode } from '../src/storage/settings'
 import { DEFAULT_PERSONA, DEFAULT_PERSONA_ID } from '../src/providers/config'
 import { parsePersonaSpriteFilename } from '../src/providers/personaSprites'
-import type { ChatEntry, Place } from '../src/types/domain'
+import { defaultZoneFromViewport, isInZone, newZoneFromViewport } from '../src/storage/offlineZones'
+import { searchOfflineIndex } from '../src/providers/offlineIndex'
+import type { ChatEntry, JourneyLeg, Place } from '../src/types/domain'
 
 const place = (id: string, name: string, category?: string): Place => ({ id, name, category, coordinates: [2.35, 48.85], source: 'map' })
 
@@ -108,7 +110,17 @@ test('photo metadata is included as untrusted text context without image content
   assert.doesNotMatch(messages[0].content, /full\.jpg/)
 })
 
-test('journey export round-trips and rejects malformed data', () => {
+test('journey export round-trips journey legs and rejects malformed data', () => {
+  const leg: JourneyLeg = {
+    id: 'leg-1',
+    from: null,
+    to: place('current', 'Current'),
+    routed: true,
+    geometry: [[2.34, 48.84], [2.35, 48.85]],
+    distanceMeters: 1500,
+    durationSeconds: 1200,
+    createdAt: '2026-01-01T00:05:00.000Z',
+  }
   const journey = {
     id: 'active' as const,
     personaId: 'wayfinder',
@@ -123,20 +135,35 @@ test('journey export round-trips and rejects malformed data', () => {
     narrativeEvents: [],
     conversationSummary: '',
     storyProgress: null,
+    legs: [leg],
     branches: [{
       id: 'branch-1', label: 'Earlier future', createdAt: '2026-01-02T00:00:00.000Z',
       snapshot: {
         personaId: 'wayfinder', currentDestination: place('current', 'Current'), mapViewport: null, destinationHistory: [place('current', 'Current')], currentScene: 2,
         messages: [{ id: 'm1', role: 'user' as const, text: 'hello', createdAt: '2026-01-01T00:00:00.000Z' }],
-        knownPeople: ['Ada'], knownEntities: [], userFacts: ['A fact'], narrativeEvents: [], conversationSummary: '', storyProgress: null,
+        knownPeople: ['Ada'], knownEntities: [], userFacts: ['A fact'], narrativeEvents: [], conversationSummary: '', storyProgress: null, legs: [leg],
       },
     }],
   }
-  assert.deepEqual(parseJourneyJson(JSON.parse(journeyJson(journey))), JSON.parse(JSON.stringify(journey)))
+  const restored = parseJourneyJson(JSON.parse(journeyJson(journey)))
+  assert.deepEqual(restored, JSON.parse(JSON.stringify(journey)))
+  assert.equal(restored.legs?.length, 1)
+  assert.equal(restored.legs?.[0].routed, true)
+  assert.equal(restored.legs?.[0].geometry?.length, 2)
+  assert.equal(restored.branches?.[0].snapshot.legs?.length, 1)
+
   const legacyJourney = { ...journey }
   delete (legacyJourney as Partial<typeof journey>).personaId
   assert.equal(parseJourneyJson(legacyJourney).personaId, 'wayfinder')
+
+  const withoutLegs = { ...journey }
+  delete (withoutLegs as Partial<typeof journey>).legs
+  assert.deepEqual(parseJourneyJson(withoutLegs).legs, [])
+  const branchWithoutLegs = { ...journey, branches: journey.branches.map((branch) => ({ ...branch, snapshot: { ...branch.snapshot, legs: undefined } })) }
+  assert.deepEqual(parseJourneyJson(branchWithoutLegs).branches?.[0].snapshot.legs, [])
+
   assert.throws(() => parseJourneyJson({ id: 'wrong' }), /invalid id/)
+  assert.throws(() => parseJourneyJson({ ...journey, legs: 'not-an-array' }), /invalid legs/)
 })
 
 test('journey export preserves conversation history and validates the active conversation', () => {
@@ -153,6 +180,7 @@ test('journey export preserves conversation history and validates the active con
     narrativeEvents: [],
     conversationSummary: '',
     storyProgress: null,
+    legs: [],
     branches: [],
     activeConversationId: 'thread-1',
     conversations: [{
@@ -375,4 +403,31 @@ test('Wikimedia photo parsing filters unsupported MIME types and sorts by distan
   assert.equal(photos[0].licenseUrl, 'https://creativecommons.org/licenses/by-sa/4.0/')
   assert.equal(photos[0].attributionRequired, true)
   assert.match(photos[0].thumbnailUrl, /640px-Near\.jpg/)
+})
+
+test('offline zone defaults from viewport and contains points inside its bounds', () => {
+  const base = defaultZoneFromViewport([2.35, 48.85], 11, 15)
+  assert.equal(base.maxZoom, 15)
+  assert.equal(base.bounds[0] < 2.35 && base.bounds[2] > 2.35, true)
+  assert.equal(base.bounds[1] < 48.85 && base.bounds[3] > 48.85, true)
+
+  const zone = newZoneFromViewport([2.35, 48.85], 11, 15)
+  assert.equal(typeof zone.id, 'string')
+  assert.equal(zone.status, 'idle')
+  assert.equal(zone.cachedBytes, 0)
+  assert.equal(isInZone(zone, [2.35, 48.85]), true)
+  assert.equal(isInZone(zone, [2.35 + base.bounds[2] - base.bounds[0], 48.85]), false)
+})
+
+test('offline index search reports empty when no zone is provided or storage is unavailable', async () => {
+  const noZone = await searchOfflineIndex(null, 'anything')
+  assert.equal(noZone.source, 'empty')
+  assert.deepEqual(noZone.places, [])
+
+  // In the Node test runner there is no IndexedDB, so readOfflineIndex returns null.
+  // This pins the storage-unavailable degradation path; the round-trip is covered by the browser suite.
+  const zone = newZoneFromViewport([2.35, 48.85], 11, 15)
+  const withZone = await searchOfflineIndex(zone, 'anything')
+  assert.equal(withZone.source, 'empty')
+  assert.deepEqual(withZone.places, [])
 })
