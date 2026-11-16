@@ -5,9 +5,10 @@ type JournalPanelProps = {
   legs: JourneyLeg[]
   isOpen: boolean
   onClose: () => void
+  onFitJourney?: () => void
 }
 
-export function JournalPanel({ events, legs, isOpen, onClose }: JournalPanelProps) {
+export function JournalPanel({ events, legs, isOpen, onClose, onFitJourney }: JournalPanelProps) {
   return (
     <aside id="story-travelogue-panel" aria-hidden={!isOpen} inert={!isOpen} className={`story-dock-panel travelogue-panel ${isOpen ? 'story-panel-open' : 'story-panel-closing'}`} role="complementary" aria-labelledby="journal-panel-label">
       <span id="journal-panel-label" className="sr-only">Journal panel</span>
@@ -16,7 +17,10 @@ export function JournalPanel({ events, legs, isOpen, onClose }: JournalPanelProp
         <button className="close-button" type="button" onClick={onClose} aria-label="Close journal panel">×</button>
       </div>
       {legs.length > 0 && <section className="journey-legs" aria-label="Journey legs">
-        <p className="eyebrow">Journey so far</p>
+        <div className="journey-legs-heading">
+          <p className="eyebrow">Journey so far</p>
+          {onFitJourney && <button type="button" className="journey-fit-button" onClick={onFitJourney}>Fit map</button>}
+        </div>
         <ol className="journey-legs-list">
           {legs.map((leg, index) => <li key={leg.id} className={index === legs.length - 1 ? 'journey-leg journey-leg-current' : 'journey-leg'}>
             <span className="journey-leg-marker" aria-hidden="true">{index + 1}</span>

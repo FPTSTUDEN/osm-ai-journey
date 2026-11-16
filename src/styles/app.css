@@ -583,9 +583,25 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
 
 @media (min-width: 521px) and (max-width: 1100px) {
   .story-mode.presentation-visual-novel .dialogue-panel { max-height: min(84vh, 740px); }
+  .story-mode.presentation-visual-novel.story-map-open .dialogue-panel,
+  .story-mode.presentation-visual-novel.story-destination-open .dialogue-panel { max-height: 32vh; }
+  .story-mode.presentation-visual-novel.story-map-open .dialogue-panel .conversation-latest.story-conversation-visual-novel,
+  .story-mode.presentation-visual-novel.story-destination-open .dialogue-panel .conversation-latest.story-conversation-visual-novel {
+    min-height: 0;
+    max-height: 14vh;
+  }
   .story-mode.presentation-visual-novel .vn-character-stage .vn-character .story-avatar {
     width: clamp(150px, 20vw, 220px);
     height: clamp(190px, 30vh, 260px);
+  }
+  .story-mode.presentation-visual-novel.story-map-open .vn-character-stage .vn-character .story-avatar,
+  .story-mode.presentation-visual-novel.story-destination-open .vn-character-stage .vn-character .story-avatar {
+    width: 72px;
+    height: 88px;
+  }
+  .story-mode.presentation-visual-novel.story-map-open .vn-character .story-avatar img,
+  .story-mode.presentation-visual-novel.story-destination-open .vn-character .story-avatar img {
+    height: min(24vh, 190px);
   }
 }
 

@@ -7,7 +7,7 @@ import { OPENFREEMAP_STYLE } from '../providers/config'
 import type { LocalPmtilesArchive } from '../providers/localPmtiles'
 import { deduplicatePlaces, placeFromFeature } from '../providers/localPlaceIndex'
 import { getInitialMapViewport } from './mapViewport'
-import type { MapViewport, Place, WalkingRoute } from '../types/domain'
+import type { JourneyLeg, MapViewport, Place, WalkingRoute } from '../types/domain'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
 maplibregl.setWorkerUrl(maplibreWorkerUrl)
@@ -18,12 +18,16 @@ type MapCanvasProps = {
   motionEnabled: boolean
   onPlaceSelected: (place: Place) => void
   onPlacesLoaded: (places: Place[]) => void
+  onPlacesLoadedForZone?: (places: Place[]) => void
   onMapStatusChange: (status: 'loading' | 'ready' | 'unavailable') => void
   selectedPlace: Place | null
   initialViewport: MapViewport | null
   onViewportChange: (viewport: MapViewport) => void
   route: WalkingRoute | null
   localArchive: LocalPmtilesArchive | null
+  legs?: JourneyLeg[]
+  /** Increment to trigger a fit-to-journey animation. */
+  flyToLegsSignal?: number
 }
 
 function localArchiveStyle(archive: LocalPmtilesArchive): StyleSpecification {
@@ -74,19 +78,38 @@ function localArchiveStyle(archive: LocalPmtilesArchive): StyleSpecification {
   return { version: 8, sources, layers }
 }
 
-export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelected, onPlacesLoaded, onMapStatusChange, selectedPlace, initialViewport, onViewportChange, route, localArchive }: MapCanvasProps) {
+/**
+ * Draw every journey leg. Routed legs are solid; the active leg is highlighted;
+ * earlier legs are muted. Unrouted transitions get a dashed faint line so they
+ * are visibly not a walking route.
+ */
+function legFeatureCollection(legs: JourneyLeg[]) {
+  const features = legs.flatMap((leg, index) => {
+    const active = index === legs.length - 1
+    if (leg.routed) {
+      if (!leg.geometry || leg.geometry.length < 2) return []
+      return [{ type: 'Feature' as const, properties: { kind: 'routed', active }, geometry: { type: 'LineString' as const, coordinates: leg.geometry } }]
+    }
+    return [{ type: 'Feature' as const, properties: { kind: 'unrouted', active }, geometry: { type: 'LineString' as const, coordinates: [leg.from?.coordinates ?? leg.to.coordinates, leg.to.coordinates] } }]
+  })
+  return { type: 'FeatureCollection' as const, features }
+}
+
+export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelected, onPlacesLoaded, onPlacesLoadedForZone, onMapStatusChange, selectedPlace, initialViewport, onViewportChange, route, localArchive, legs, flyToLegsSignal }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
   const markerRef = useRef<Marker | null>(null)
   const activeArchiveKeyRef = useRef<string | null>(null)
   const onPlaceSelectedRef = useRef(onPlaceSelected)
   const onPlacesLoadedRef = useRef(onPlacesLoaded)
+  const onPlacesLoadedForZoneRef = useRef(onPlacesLoadedForZone)
   const onMapStatusChangeRef = useRef(onMapStatusChange)
   const onViewportChangeRef = useRef(onViewportChange)
   const motionEnabledRef = useRef(motionEnabled)
 
   onPlaceSelectedRef.current = onPlaceSelected
   onPlacesLoadedRef.current = onPlacesLoaded
+  onPlacesLoadedForZoneRef.current = onPlacesLoadedForZone
   onMapStatusChangeRef.current = onMapStatusChange
   onViewportChangeRef.current = onViewportChange
   motionEnabledRef.current = motionEnabled
@@ -121,7 +144,7 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
 
       for (const sourceId of sources) {
         try {
-            map.querySourceFeatures(sourceId).forEach((feature: GeoJSONFeature) => {
+          map.querySourceFeatures(sourceId).forEach((feature: GeoJSONFeature) => {
             const place = placeFromFeature(feature)
             if (place) places.push(place)
           })
@@ -130,7 +153,9 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
         }
       }
 
-      onPlacesLoadedRef.current(deduplicatePlaces(places))
+      const deduped = deduplicatePlaces(places)
+      onPlacesLoadedRef.current(deduped)
+      onPlacesLoadedForZoneRef.current?.(deduped)
     }
 
     const handleClick = (event: MapMouseEvent) => {
@@ -224,6 +249,41 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
       removeRoute()
     }
   }, [route, localArchive])
+
+  // Journey legs overlay: one source, three layers (solid muted, solid active, dashed unrouted).
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    const sourceId = 'journey-legs'
+    const apply = () => {
+      const data = legFeatureCollection(legs ?? [])
+      const existing = map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined
+      if (existing) existing.setData(data)
+      else map.addSource(sourceId, { type: 'geojson', data })
+      const layers: Array<Parameters<MapLibreMap['addLayer']>[0] & { id: string }> = [
+        { id: 'journey-legs-muted', type: 'line', source: sourceId, filter: ['all', ['==', ['get', 'kind'], 'routed'], ['==', ['get', 'active'], false]], paint: { 'line-color': '#88a37b', 'line-width': 2.5, 'line-opacity': 0.55 } },
+        { id: 'journey-legs-active', type: 'line', source: sourceId, filter: ['all', ['==', ['get', 'kind'], 'routed'], ['==', ['get', 'active'], true]], paint: { 'line-color': '#d5ef9a', 'line-width': 4.5, 'line-opacity': 0.95 } },
+        { id: 'journey-legs-unrouted', type: 'line', source: sourceId, filter: ['==', ['get', 'kind'], 'unrouted'], paint: { 'line-color': '#a5b6aa', 'line-width': 2, 'line-opacity': 0.6, 'line-dasharray': [1, 2] } },
+      ] as const
+      for (const layer of layers) if (!map.getLayer(layer.id)) map.addLayer(layer)
+    }
+    if (map.isStyleLoaded()) apply()
+    else map.once('load', apply)
+    return () => {
+      for (const id of ['journey-legs-muted', 'journey-legs-active', 'journey-legs-unrouted']) if (map.getLayer(id)) map.removeLayer(id)
+      if (map.getSource(sourceId)) map.removeSource(sourceId)
+    }
+  }, [legs, localArchive])
+
+  // Fit-to-journey: recompute bounds from the routed geometry when the signal changes.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !flyToLegsSignal || !legs || legs.length === 0) return
+    const coordinates = legs.flatMap((leg) => leg.geometry ?? [leg.from?.coordinates ?? leg.to.coordinates, leg.to.coordinates])
+    if (coordinates.length < 2) return
+    const bounds = coordinates.reduce((result, coordinate) => result.extend(coordinate), new maplibregl.LngLatBounds(coordinates[0], coordinates[0]))
+    map.fitBounds(bounds, { padding: 64, duration: motionEnabledRef.current ? 900 : 0 })
+  }, [flyToLegsSignal, legs])
 
   return <div className="map-canvas" ref={containerRef} aria-label="Interactive map" role="application" />
 })

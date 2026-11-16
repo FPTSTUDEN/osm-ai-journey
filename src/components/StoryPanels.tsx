@@ -7,6 +7,9 @@ import { SelectedPhotoDetails } from './SelectedPhotoDetails'
 import { useMapSearch } from '../hooks/useMapSearch'
 import { usePlaceData } from '../hooks/usePlaceData'
 import { useStoryPanels } from '../hooks/useStoryPanels'
+import { useOfflineZone } from '../hooks/useOfflineZone'
+import { ZoneControls } from './ZoneControls'
+import { enumerateZoneTiles } from '../providers/offlineCache'
 import type { JourneyLeg, MapViewport, Place, PlacePhoto, UserSettings, WalkingRoute } from '../types/domain'
 import type { NarrativeEvent } from '../types/domain'
 import type { LocalPmtilesArchive } from '../providers/localPmtiles'
@@ -110,6 +113,25 @@ export function StoryPanels({
     () => (selectedPhoto && selectedPlace ? photoToPlace(selectedPhoto, selectedPlace) : selectedPlace),
     [selectedPhoto, selectedPlace],
   )
+  const offlineZone = useOfflineZone(mapViewport?.center ?? null, mapViewport?.zoom ?? null)
+  const [flyToLegsSignal, setFlyToLegsSignal] = useState(0)
+
+  async function cacheZone() {
+    const zone = offlineZone.zone
+    if (!zone) return
+    const tiles = enumerateZoneTiles(zone)
+    // Production fetch is intentionally minimal here: it warms the service-worker cache.
+    // The response body is discarded; only the Cache Storage entry matters.
+    await offlineZone.cacheZone(async (job, signal) => {
+      const url = `https://tiles.openfreemap.org/planet/${job.z}/${job.x}/${job.y}.pbf`
+      const response = await fetch(url, { signal, mode: 'cors' })
+      if (!response.ok) throw new Error(`Tile ${url} → HTTP ${response.status}`)
+      // Touch the body so the SW caches it, then drop it.
+      await response.arrayBuffer()
+    })
+    // eslint-disable-next-line no-console
+    if (tiles.length === 0) console.warn('Offline zone has no tiles to cache')
+  }
 
   return (
     <>
@@ -143,8 +165,9 @@ export function StoryPanels({
             {search.query && search.onlineQuery === search.query.trim() && search.onlineState === 'ready' && search.onlineResults.length === 0 && <div className="online-search">No online places matched. <button onClick={() => void search.searchOnline()}>Try another search</button></div>}
             {search.query && search.mapStatus === 'unavailable' && <div className="search-state">Loaded map data is unavailable. <button onClick={() => void search.searchOnline()}>Search online</button></div>}
             {journeyReady
-              ? <Suspense fallback={<div className="map-loading">Loading map…</div>}><MapCanvas motionEnabled={motionEnabled} selectedPlace={mapPlace} initialViewport={mapViewport} onViewportChange={setMapViewport} route={route} localArchive={localArchive} onPlaceSelected={onChoosePlace} onPlacesLoaded={search.setPlaces} onMapStatusChange={search.setMapStatus} /></Suspense>
+              ? <Suspense fallback={<div className="map-loading">Loading map…</div>}><MapCanvas motionEnabled={motionEnabled} selectedPlace={mapPlace} initialViewport={mapViewport} onViewportChange={setMapViewport} route={route} localArchive={localArchive} legs={legs} flyToLegsSignal={flyToLegsSignal} onPlaceSelected={onChoosePlace} onPlacesLoaded={search.setPlaces} onMapStatusChange={search.setMapStatus} onPlacesLoadedForZone={(places) => { const zone = offlineZone.zone; if (zone && places.length) void import('../providers/offlineIndex').then(({ extendOfflineIndex }) => extendOfflineIndex(zone, places)) }} /></Suspense>
               : <div className="map-loading">Restoring journey…</div>}
+            <ZoneControls zone={offlineZone.zone} progress={offlineZone.progress} onCache={() => void cacheZone()} onCancel={offlineZone.cancelCache} />
             {pendingDestination && <div className="route-choice"><p className="eyebrow">Begin transition</p><strong>Walk from {selectedPlace?.name} to {pendingDestination.name}?</strong><p>Calculate an optional walking route before arriving.</p><div><button onClick={() => onCompleteTransition(pendingDestination, true)}>Walk there</button><button onClick={() => onCompleteTransition(pendingDestination, false)}>Arrive without route</button></div></div>}
             {routeState === 'loading' && <div className="route-status">Calculating walking route…</div>}
             {routeState === 'ready' && route && <div className="route-status">Walking route · {(route.distanceMeters / 1000).toFixed(1)} km · {Math.round(route.durationSeconds / 60)} min</div>}
@@ -189,7 +212,7 @@ export function StoryPanels({
             : <PlaceDetails layout="compact" place={selectedPlace} geocoder={settings.onlineGeocoder} liveDataEnabled={settings.liveDataEnabled} {...placeData} onLoadWeather={(force) => void placeData.loadWeather(force)} onLoadNearbyData={(force) => void placeData.loadNearbyData(force)} scenePhoto={scenePhoto} onSelectPhoto={setSelectedPhoto} onOpenFieldNotes={() => setFieldNotesOpen(true)} />
           : <p className="dock-empty">Choose a place first, then return here to examine it.</p>}
       </aside>}
-      {storyMode && traveloguePresent && <JournalPanel events={narrativeEvents} legs={legs} isOpen={travelogueOpen} onClose={() => closeStoryPanel('travelogue')} />}
+      {storyMode && traveloguePresent && <JournalPanel events={narrativeEvents} legs={legs} isOpen={travelogueOpen} onClose={() => closeStoryPanel('travelogue')} onFitJourney={legs.length > 0 ? () => setFlyToLegsSignal((value) => value + 1) : undefined} />}
       {arrivalCard && <ArrivalCard placeName={arrivalCard} sceneNumber={currentScene} />}
       {fieldNotesOpen && selectedPlace && <FieldNotes place={selectedPlace} geocoder={settings.onlineGeocoder} liveDataEnabled={settings.liveDataEnabled} {...placeData} selectedPhoto={selectedPhoto} scenePhoto={scenePhoto} onLoadWeather={(force) => void placeData.loadWeather(force)} onLoadNearbyData={(force) => void placeData.loadNearbyData(force)} onSelectPhoto={setSelectedPhoto} onClose={() => setFieldNotesOpen(false)} />}
     </>

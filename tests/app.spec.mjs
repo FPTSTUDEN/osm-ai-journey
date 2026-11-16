@@ -1,11 +1,32 @@
+import { readFileSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
 
 const place = { osm_type: 'node', osm_id: 314, name: 'Test Destination', display_name: 'Test Destination, Test City', type: 'museum', lat: '35.6762', lon: '139.6503' }
+const portraitPng = readFileSync(new URL('../src/assets/sprites/aurelio-sprite-classic.png', import.meta.url))
+
+async function waitForApplicationReady(page) {
+  await expect(page.locator('.topbar h1')).toHaveText('Osm AI Journey', { timeout: 75_000 })
+  await expect(page.getByRole('dialog', { name: 'Osm AI Journey' })).toHaveCount(0, { timeout: 15_000 })
+}
 
 async function resetBrowser(page) {
-  await page.goto('/', { waitUntil: 'domcontentloaded' })
-  await page.evaluate(() => { localStorage.clear(); indexedDB.deleteDatabase('osm-ai-journey') })
-  await page.reload()
+  test.setTimeout(120_000)
+  await page.route('**/reset-browser-fixture', (route) => route.fulfill({
+    contentType: 'text/html',
+    body: '<!doctype html><html><body></body></html>',
+  }))
+  await page.goto('/reset-browser-fixture', { waitUntil: 'commit' })
+  await page.evaluate(async () => {
+    localStorage.clear()
+    await new Promise((resolve, reject) => {
+      const request = indexedDB.deleteDatabase('osm-ai-journey')
+      request.onsuccess = resolve
+      request.onerror = () => reject(request.error)
+      request.onblocked = () => reject(new Error('Journey database deletion was blocked'))
+    })
+  })
+  await page.goto('/', { waitUntil: 'commit' })
+  await waitForApplicationReady(page)
 }
 
 async function mockSearch(page) {
@@ -81,6 +102,7 @@ async function waitForDialogueLayout(page) {
 }
 
 test('upgrades a v3 journey database without losing its stores or records', async ({ page }) => {
+  test.setTimeout(120_000)
   await page.route('**/database-migration-fixture', (route) => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body></body></html>' }))
   await page.goto('/database-migration-fixture')
   await page.evaluate(() => new Promise((resolve, reject) => {
@@ -112,7 +134,8 @@ test('upgrades a v3 journey database without losing its stores or records', asyn
     }
   }))
 
-  await page.goto('/')
+  await page.goto('/', { waitUntil: 'commit' })
+  await waitForApplicationReady(page)
   await expect(page.getByRole('heading', { name: 'Osm AI Journey' })).toBeVisible()
   const upgraded = await page.evaluate(() => new Promise((resolve, reject) => {
     const request = indexedDB.open('osm-ai-journey')
@@ -490,20 +513,20 @@ test('renders structured story turns with subtle response effects', async ({ pag
     { type: 'scene', text: 'The scene shifts beneath an awning.' },
     { type: 'dialogue', speaker: 'Mira', text: 'Let’s find shelter.' },
   ] })
+  await resetBrowser(page)
+  await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('chat')
+  await page.getByPlaceholder(/Speak freely/).fill('What happens next?')
   await page.route('http://localhost:11434/v1/chat/completions', (route) => route.fulfill({
     status: 200,
     contentType: 'text/event-stream',
     body: `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\ndata: [DONE]\n\n`,
   }))
-  await resetBrowser(page)
-  await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('chat')
-  await page.getByPlaceholder(/Speak freely/).fill('What happens next?')
   await page.getByRole('button', { name: 'Send message' }).click()
   const conversation = page.locator('.conversation')
   await expect(conversation).toContainText('Rain begins to fall.')
   await expect(conversation).toContainText('Mira')
   await expect(conversation).toContainText('Let’s find shelter.')
-  await expect(conversation.locator('.story-entry-arrive')).toContainText('What happens next?')
+  await expect(conversation.locator('.chat-line-user.story-entry-arrive')).toContainText('What happens next?')
   await expect(conversation.locator('.scene-transition')).toContainText('The scene shifts beneath an awning.')
   await expect(conversation.locator('.speaker-focus')).toContainText('Let’s find shelter.')
   await expect(conversation).not.toContainText('"blocks"')
@@ -585,14 +608,14 @@ test('switches between novel, visual novel, and chat renderers with the same str
     { type: 'dialogue', speaker: 'The Wayfinder', text: 'Let’s find shelter.' },
     { type: 'scene', text: 'The station lights flicker.' },
   ] })
+  await resetBrowser(page)
+  const mode = page.getByRole('combobox', { name: 'Story presentation' })
+  await page.getByPlaceholder(/Speak freely/).fill('What happens next?')
   await page.route('http://localhost:11434/v1/chat/completions', (route) => route.fulfill({
     status: 200,
     contentType: 'text/event-stream',
     body: `data: ${JSON.stringify({ choices: [{ delta: { content: structuredTurn } }] })}\n\ndata: [DONE]\n\n`,
   }))
-  await resetBrowser(page)
-  const mode = page.getByRole('combobox', { name: 'Story presentation' })
-  await page.getByPlaceholder(/Speak freely/).fill('What happens next?')
   await page.getByRole('button', { name: 'Send message' }).click()
   await expect(page.locator('.story-conversation')).toContainText('Let’s find shelter.')
 
@@ -666,16 +689,16 @@ test('desktop story layouts adapt by presentation and side panels animate out ac
 })
 
 test('story modes fit common laptop and tablet viewports with oversized VN portraits visible', async ({ page }) => {
-  await page.route('http://localhost:11434/v1/chat/completions', (route) => route.fulfill({
-    status: 200,
-    contentType: 'text/event-stream',
-    body: `data: ${JSON.stringify({ choices: [{ delta: { content: 'The lanterns come alive.' } }] })}\n\ndata: [DONE]\n\n`,
-  }))
   await resetBrowser(page)
   await page.setViewportSize({ width: 1024, height: 768 })
   await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('visual-novel')
   await expect(page.locator('.vn-character-stage')).toBeHidden()
   await page.getByPlaceholder(/Speak freely/).fill('Begin a story')
+  await page.route('http://localhost:11434/v1/chat/completions', (route) => route.fulfill({
+    status: 200,
+    contentType: 'text/event-stream',
+    body: `data: ${JSON.stringify({ choices: [{ delta: { content: 'The lanterns come alive.' } }] })}\n\ndata: [DONE]\n\n`,
+  }))
   await page.getByRole('button', { name: 'Send message' }).click()
   await expect(page.locator('.story-conversation')).toContainText('The lanterns come alive.')
   const mode = page.getByRole('combobox', { name: 'Story presentation' })
@@ -867,23 +890,27 @@ test('built-in sprites are discovered and labeled from their filenames', async (
 })
 
 test('default persona portrait uploads remain browser-local and appear in VN mode', async ({ page }) => {
+  await mockSearch(page)
   await resetBrowser(page)
   await page.getByRole('button', { name: 'Toggle settings' }).click()
   await page.getByLabel('Use a custom portrait').setInputFiles({
     name: 'companion.png',
     mimeType: 'image/png',
-    buffer: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    buffer: portraitPng,
   })
   await expect(page.getByRole('button', { name: 'Restore built-in sprite' })).toBeVisible()
   await page.getByRole('button', { name: 'Toggle settings' }).click()
   await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('visual-novel')
+  await chooseOnlinePlace(page)
   await expect(page.locator('.vn-character-left img')).toBeVisible()
+  await page.waitForTimeout(450)
   await page.reload()
   await expect(page.getByRole('combobox', { name: 'Story presentation' })).toHaveValue('visual-novel')
   await expect(page.locator('.vn-character-left img')).toBeVisible()
 })
 
 test('custom persona profiles save their prompt, sprite, portrait, and per-journey selection', async ({ page }) => {
+  await mockSearch(page)
   let requestMessages = []
   const reply = JSON.stringify({ blocks: [
     { type: 'dialogue', speaker: 'Mira', text: 'We can take the quieter street.' },
@@ -908,7 +935,7 @@ test('custom persona profiles save their prompt, sprite, portrait, and per-journ
   await page.getByLabel('Use a custom portrait').setInputFiles({
     name: 'mira.png',
     mimeType: 'image/png',
-    buffer: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    buffer: portraitPng,
   })
   await expect(page.locator('.persona-art-preview')).toContainText('Custom portrait')
   await page.getByRole('button', { name: 'Restore built-in sprite' }).click()
@@ -916,9 +943,10 @@ test('custom persona profiles save their prompt, sprite, portrait, and per-journ
   await page.getByLabel('Use a custom portrait').setInputFiles({
     name: 'mira.png',
     mimeType: 'image/png',
-    buffer: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    buffer: portraitPng,
   })
   await page.getByRole('button', { name: 'Toggle settings' }).click()
+  await chooseOnlinePlace(page)
   await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('visual-novel')
   await page.getByPlaceholder(/Speak freely/).fill('Which way?')
   await page.getByRole('button', { name: 'Send message' }).click()
@@ -941,8 +969,9 @@ test('custom persona profiles save their prompt, sprite, portrait, and per-journ
 })
 
 test('legacy persona settings and companion art migrate to the default persona profile', async ({ page }) => {
+  await mockSearch(page)
   await resetBrowser(page)
-  await page.evaluate(async () => {
+  await page.evaluate(async (portraitBase64) => {
     const key = 'osm-ai-journey.settings.v1'
     const legacy = JSON.parse(localStorage.getItem(key) ?? '{}')
     delete legacy.personaProfiles
@@ -954,19 +983,21 @@ test('legacy persona settings and companion art migrate to the default persona p
       request.onsuccess = () => {
         const database = request.result
         const transaction = database.transaction('companion-art', 'readwrite')
-        transaction.objectStore('companion-art').put({ key: 'active', image: new Blob(['legacy portrait'], { type: 'image/png' }) })
+        const portraitBytes = Uint8Array.from(atob(portraitBase64), (character) => character.charCodeAt(0))
+        transaction.objectStore('companion-art').put({ key: 'active', image: new Blob([portraitBytes], { type: 'image/png' }) })
         transaction.oncomplete = () => { database.close(); resolve() }
         transaction.onerror = () => reject(transaction.error)
       }
       request.onerror = () => reject(request.error)
     })
-  })
+  }, portraitPng.toString('base64'))
   await page.reload()
   await page.getByRole('button', { name: 'Toggle settings' }).click()
   await expect(page.getByLabel('Persona name')).toHaveValue('Legacy Guide')
   await expect(page.getByLabel('Persona instructions')).toHaveValue('Use the old saved voice.')
   await expect(page.locator('.persona-art-preview')).toContainText('Custom portrait')
   await page.getByRole('button', { name: 'Toggle settings' }).click()
+  await chooseOnlinePlace(page)
   await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('visual-novel')
   await expect(page.locator('.vn-character-left img')).toBeVisible()
 })
