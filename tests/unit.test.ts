@@ -15,9 +15,10 @@ import { normalizeMessages } from '../src/storage/messages'
 import { normalizeMotionPreference, normalizePersonaProfiles, normalizeStoryPresentationMode } from '../src/storage/settings'
 import { DEFAULT_PERSONA, DEFAULT_PERSONA_ID } from '../src/providers/config'
 import { parsePersonaSpriteFilename } from '../src/providers/personaSprites'
-import { defaultZoneFromViewport, isInZone, newZoneFromViewport } from '../src/storage/offlineZones'
+import { defaultZoneFromViewport, isInZone, newZoneFromViewport, replaceOfflineZoneBounds } from '../src/storage/offlineZones'
 import { offlineIndexKey, searchOfflineIndex, writeOfflineIndex } from '../src/providers/offlineIndex'
 import { enumerateZoneTiles, runCache, type TileJob } from '../src/providers/offlineCache'
+import { MAX_OFFLINE_TILES, selectTileEvictions } from '../src/providers/offlineTileCache'
 import { placesFromVectorTile } from '../src/providers/vectorTilePlaces'
 import { PbfWriter } from 'pbf'
 import type { ChatEntry, JourneyLeg, Place } from '../src/types/domain'
@@ -544,4 +545,31 @@ test('offline index keys distinguish exact zone bounds and zoom levels', () => {
 test('offline index persistence failures are surfaced to the cache workflow', async () => {
   const zone = newZoneFromViewport([2.35, 48.85], 11, 15)
   await assert.rejects(writeOfflineIndex(zone, []), /IndexedDB is unavailable/)
+})
+
+test('tile eviction removes only the oldest unpinned tiles and preserves shared zone references', () => {
+  const cached = ['tile-1', 'tile-2', 'tile-3', 'tile-4']
+  const pinned = new Set(['tile-2', 'tile-4'])
+  assert.deepEqual(selectTileEvictions(cached, pinned, 2), ['tile-1', 'tile-3'])
+  assert.throws(() => selectTileEvictions(cached, new Set(cached), 2), /pinned by saved zones/)
+  assert.equal(MAX_OFFLINE_TILES > 0, true)
+})
+
+test('editing offline zone bounds invalidates its cache and rejects invalid coordinates', () => {
+  const zone = {
+    ...newZoneFromViewport([2.35, 48.85], 11, 15),
+    status: 'ready' as const,
+    cachedBytes: 300,
+    cachedTileCount: 6,
+    cachedTileUrls: ['https://tiles.test/old'],
+    cacheGeneration: 'old-generation',
+    indexedFeatureCount: 12,
+  }
+  const updated = replaceOfflineZoneBounds(zone, [2.3, 48.8, 2.4, 48.9])
+  assert.equal(updated?.status, 'idle')
+  assert.equal(updated?.cacheGeneration, undefined)
+  assert.equal(updated?.cachedTileUrls, undefined)
+  assert.equal(updated?.indexedFeatureCount, undefined)
+  assert.deepEqual(updated?.bounds, [2.3, 48.8, 2.4, 48.9])
+  assert.equal(replaceOfflineZoneBounds(zone, [2.4, 48.8, 2.3, 48.9]), null)
 })

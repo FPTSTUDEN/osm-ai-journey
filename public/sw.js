@@ -1,6 +1,7 @@
 const CACHE_PREFIX = 'osm-ai-journey-'
 const CACHE_NAME = `${CACHE_PREFIX}shell-v3`
 const MAP_CACHE_NAME = `${CACHE_PREFIX}map-v1`
+const OFFLINE_TILE_CACHE_NAME = `${CACHE_PREFIX}offline-tiles-v1`
 const MAX_MAP_ENTRIES = 400
 const SHELL_URLS = ['./', './index.html', './sw.js']
 
@@ -12,7 +13,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim())
   event.waitUntil((async () => {
     const keys = await caches.keys()
-    const oldCaches = keys.filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME && key !== MAP_CACHE_NAME)
+    const oldCaches = keys.filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME && key !== MAP_CACHE_NAME && key !== OFFLINE_TILE_CACHE_NAME)
     const mapCache = await caches.open(MAP_CACHE_NAME)
     for (const name of oldCaches) {
       const oldCache = await caches.open(name)
@@ -50,6 +51,10 @@ function isHashedAsset(url) {
 
 function isMapRequest(url) {
   return url.hostname.includes('openfreemap') || url.hostname.includes('openstreetmap') || url.pathname.includes('/styles/')
+}
+
+function isVectorTile(url) {
+  return /\/planet\/\d+\/\d+\/\d+\.pbf$/.test(url.pathname)
 }
 
 self.addEventListener('fetch', (event) => {
@@ -90,7 +95,10 @@ self.addEventListener('fetch', (event) => {
   }
 
   const cachePromise = caches.open(MAP_CACHE_NAME)
-  const cachedPromise = cachePromise.then((cache) => cache.match(request))
+  const offlineTilePromise = isVectorTile(url)
+    ? caches.open(OFFLINE_TILE_CACHE_NAME).then((cache) => cache.match(request))
+    : Promise.resolve(undefined)
+  const cachedPromise = offlineTilePromise.then((offlineTile) => offlineTile ?? cachePromise.then((cache) => cache.match(request)))
   const updatePromise = cachePromise.then((cache) => fetch(request).then(async (response) => {
     await cacheSuccessfulResponse(cache, request, response, MAX_MAP_ENTRIES)
     return response

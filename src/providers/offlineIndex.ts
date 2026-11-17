@@ -8,18 +8,21 @@ const INDEX_VERSION = 2
 
 type CachedIndex = { key: string; value: Place[]; expiresAt: number }
 
-export function offlineIndexKey(zone: OfflineZone) {
-  return `offline-index:v${INDEX_VERSION}:openfreemap:${JSON.stringify(zone.bounds)}:${zone.maxZoom}`
+export function offlineIndexKey(zone: OfflineZone, generation = zone.cacheGeneration ?? 'legacy') {
+  return `offline-index:v${INDEX_VERSION}:openfreemap:${JSON.stringify(zone.bounds)}:${zone.maxZoom}:${generation}`
 }
 
 export async function readOfflineIndex(zone: OfflineZone): Promise<Place[] | null> {
-  const record = await get<CachedIndex>(INDEX_STORE, offlineIndexKey(zone))
+  let record = await get<CachedIndex>(INDEX_STORE, offlineIndexKey(zone))
+  if (!record && !zone.cacheGeneration) {
+    record = await get<CachedIndex>(INDEX_STORE, `offline-index:v${INDEX_VERSION}:openfreemap:${JSON.stringify(zone.bounds)}:${zone.maxZoom}`)
+  }
   if (!record || record.expiresAt <= Date.now()) return null
   return record.value
 }
 
-export async function writeOfflineIndex(zone: OfflineZone, places: Place[]): Promise<void> {
-  const key = offlineIndexKey(zone)
+export async function writeOfflineIndex(zone: OfflineZone, places: Place[], generation = zone.cacheGeneration ?? 'legacy'): Promise<void> {
+  const key = offlineIndexKey(zone, generation)
   await put(INDEX_STORE, { key, value: places, expiresAt: Number.MAX_SAFE_INTEGER })
 }
 

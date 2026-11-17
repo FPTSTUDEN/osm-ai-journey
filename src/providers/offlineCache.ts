@@ -9,7 +9,9 @@ export type CacheProgress = {
   failed: number
   featuresFound: number
   indexedFeatures: number
+  tileUrls?: string[]
   status: 'idle' | 'caching' | 'ready' | 'partial' | 'failed' | 'cancelled'
+  cacheGeneration?: string
   error?: string
 }
 
@@ -19,11 +21,15 @@ export type CacheOptions = {
   /** Fetch and extract searchable places from one vector tile. */
   fetchTile: (job: TileJob, signal: AbortSignal) => Promise<Place[]>
   /** Persists the complete index. Cache status is not ready until this succeeds. */
-  persistIndex: (places: Place[]) => Promise<void>
+  persistIndex: (places: Place[], generation: string) => Promise<void>
   onProgress?: (progress: CacheProgress) => void
   /** Injected concurrency; default 4 is a reasonable browser-tab ceiling. */
   concurrency?: number
   signal?: AbortSignal
+}
+
+export function tileUrl(job: TileJob) {
+  return `https://tiles.openfreemap.org/planet/${job.z}/${job.x}/${job.y}.pbf`
 }
 
 const TILE_SIZE = 256
@@ -99,6 +105,7 @@ export async function runCache(zone: OfflineZone, options: CacheOptions): Promis
   }
 
   const signal = options.signal ?? new AbortController().signal
+  const cacheGeneration = crypto.randomUUID()
   const concurrency = Math.max(1, options.concurrency ?? 4)
   const placesById = new Map<string, Place>()
   let cursor = 0
@@ -126,8 +133,9 @@ export async function runCache(zone: OfflineZone, options: CacheOptions): Promis
     progress.status = 'cancelled'
   } else if (progress.failed === 0) {
     try {
-      await options.persistIndex([...placesById.values()])
+      await options.persistIndex([...placesById.values()], cacheGeneration)
       progress.indexedFeatures = placesById.size
+      progress.cacheGeneration = cacheGeneration
       progress.status = 'ready'
     } catch (error) {
       progress.status = 'failed'
@@ -140,6 +148,7 @@ export async function runCache(zone: OfflineZone, options: CacheOptions): Promis
     progress.status = 'failed'
     progress.error = `All ${total} map tiles failed to download or index. ${firstTileError ?? ''}`.trim()
   }
+  if (progress.status === 'ready') progress.tileUrls = jobs.map(tileUrl)
   options.onProgress?.(progress)
   return progress
 }

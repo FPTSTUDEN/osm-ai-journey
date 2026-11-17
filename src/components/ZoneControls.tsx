@@ -1,20 +1,65 @@
+import { useEffect, useState } from 'react'
 import type { CacheProgress } from '../providers/offlineCache'
 import type { OfflineZone } from '../storage/offlineZones'
 
 type Props = {
   zone: OfflineZone | null
   progress: CacheProgress | null
+  editing: boolean
   onCache: () => void
   onCancel: () => void
+  onToggleEditing: (editing: boolean) => void
+  onMaxZoomChange: (maxZoom: number) => void
+  onBoundsChange: (bounds: OfflineZone['bounds']) => void
 }
 
-export function ZoneControls({ zone, progress, onCache, onCancel }: Props) {
+type BoundsDraft = [string, string, string, string]
+
+function formatBounds(bounds: OfflineZone['bounds']): BoundsDraft {
+  return [String(bounds[0]), String(bounds[1]), String(bounds[2]), String(bounds[3])]
+}
+
+export function ZoneControls({ zone, progress, editing, onCache, onCancel, onToggleEditing, onMaxZoomChange, onBoundsChange }: Props) {
+  const [boundsDraft, setBoundsDraft] = useState<BoundsDraft>(() => zone ? formatBounds(zone.bounds) : ['0', '0', '0', '0'])
+  const [boundsError, setBoundsError] = useState('')
+  useEffect(() => {
+    if (zone) setBoundsDraft(formatBounds(zone.bounds))
+  }, [zone?.bounds.join(',')])
+
   if (!zone) return null
   const busy = zone.status === 'caching'
   const percent = progress && progress.total > 0 ? Math.round((progress.done + progress.failed) / progress.total * 100) : 0
+  const commitBound = (index: number) => {
+    const draft = boundsDraft[index].trim()
+    const value = draft ? Number(draft) : Number.NaN
+    const bounds = [...zone.bounds] as OfflineZone['bounds']
+    bounds[index] = value
+    const [west, south, east, north] = bounds
+    if (!Number.isFinite(value) || west < -180 || east > 180 || south < -85.05112878 || north > 85.05112878 || west >= east || south >= north) {
+      setBoundsDraft(formatBounds(zone.bounds))
+      setBoundsError('Bounds must be valid longitude and latitude coordinates.')
+      return
+    }
+    setBoundsError('')
+    onBoundsChange(bounds)
+  }
+
+  const boundLabels = ['West longitude', 'South latitude', 'East longitude', 'North latitude']
   return (
     <div className="zone-controls">
-      <span className="zone-label">Offline zone · zoom 0–{zone.maxZoom}</span>
+      <div className="zone-toolbar-row"><strong className="zone-label">Offline zone</strong>
+        {!busy && <button type="button" className="zone-button" aria-pressed={editing} onClick={() => onToggleEditing(!editing)}>{editing ? 'Done editing' : 'Edit zone'}</button>}
+      </div>
+      {!busy && <label className="zone-zoom-control">Maximum zoom · {zone.maxZoom}
+        <input aria-label="Maximum offline map zoom" type="range" min="0" max="16" step="1" value={zone.maxZoom} disabled={editing} onChange={(event) => onMaxZoomChange(Number(event.target.value))} />
+      </label>}
+      {editing && <>
+        <div className="zone-bounds-grid">{boundLabels.map((label, index) => <label key={label}>{label}
+          <input aria-label={label} type="text" inputMode="decimal" value={boundsDraft[index]} onChange={(event) => setBoundsDraft((current) => { const next = [...current] as BoundsDraft; next[index] = event.target.value; return next })} onBlur={() => commitBound(index)} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur() }} />
+        </label>)}</div>
+        <span className="zone-help">Drag the center or enter coordinates; drag a corner to resize.</span>
+        {boundsError && <span className="zone-progress-label" role="status">{boundsError}</span>}
+      </>}
       {busy
         ? <><span className="zone-progress-label">{progress ? `${percent}% · ${progress.done}/${progress.total} tiles · ${progress.featuresFound} features found` : 'Starting…'}</span><button type="button" className="zone-button zone-cancel" onClick={onCancel}>Cancel</button></>
         : <>

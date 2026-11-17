@@ -6,6 +6,7 @@ import { Protocol, TileType } from 'pmtiles'
 import { OPENFREEMAP_STYLE } from '../providers/config'
 import type { LocalPmtilesArchive } from '../providers/localPmtiles'
 import { deduplicatePlaces, placeFromFeature } from '../providers/localPlaceIndex'
+import type { OfflineZone } from '../storage/offlineZones'
 import { getInitialMapViewport } from './mapViewport'
 import type { JourneyLeg, MapViewport, Place, WalkingRoute } from '../types/domain'
 import 'maplibre-gl/dist/maplibre-gl.css'
@@ -24,6 +25,9 @@ type MapCanvasProps = {
   onViewportChange: (viewport: MapViewport) => void
   route: WalkingRoute | null
   localArchive: LocalPmtilesArchive | null
+  offlineZone: OfflineZone | null
+  zoneEditing: boolean
+  onZoneBoundsChange: (bounds: OfflineZone['bounds']) => void
   legs?: JourneyLeg[]
   /** Increment to trigger a fit-to-journey animation. */
   flyToLegsSignal?: number
@@ -94,21 +98,24 @@ function legFeatureCollection(legs: JourneyLeg[]) {
   return { type: 'FeatureCollection' as const, features }
 }
 
-export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelected, onPlacesLoaded, onMapStatusChange, selectedPlace, initialViewport, onViewportChange, route, localArchive, legs, flyToLegsSignal }: MapCanvasProps) {
+export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelected, onPlacesLoaded, onMapStatusChange, selectedPlace, initialViewport, onViewportChange, route, localArchive, legs, flyToLegsSignal, offlineZone, zoneEditing, onZoneBoundsChange }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
   const markerRef = useRef<Marker | null>(null)
+  const zoneMarkersRef = useRef<Marker[]>([])
   const activeArchiveKeyRef = useRef<string | null>(null)
   const onPlaceSelectedRef = useRef(onPlaceSelected)
   const onPlacesLoadedRef = useRef(onPlacesLoaded)
   const onMapStatusChangeRef = useRef(onMapStatusChange)
   const onViewportChangeRef = useRef(onViewportChange)
+  const onZoneBoundsChangeRef = useRef(onZoneBoundsChange)
   const motionEnabledRef = useRef(motionEnabled)
 
   onPlaceSelectedRef.current = onPlaceSelected
   onPlacesLoadedRef.current = onPlacesLoaded
   onMapStatusChangeRef.current = onMapStatusChange
   onViewportChangeRef.current = onViewportChange
+  onZoneBoundsChangeRef.current = onZoneBoundsChange
   motionEnabledRef.current = motionEnabled
 
   useEffect(() => {
@@ -216,6 +223,97 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
       activeArchiveKeyRef.current = null
     }
   }, [localArchive])
+
+  const zoneBoundsKey = offlineZone?.bounds.join(',') ?? ''
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    const sourceId = 'offline-zone-boundary'
+    const fillId = 'offline-zone-fill'
+    const lineId = 'offline-zone-line'
+    const clearMarkers = () => {
+      zoneMarkersRef.current.forEach((marker) => marker.remove())
+      zoneMarkersRef.current = []
+    }
+    const removeOverlay = () => {
+      clearMarkers()
+      if (!map.isStyleLoaded()) return
+      if (map.getLayer(lineId)) map.removeLayer(lineId)
+      if (map.getLayer(fillId)) map.removeLayer(fillId)
+      if (map.getSource(sourceId)) map.removeSource(sourceId)
+    }
+    const drawZone = () => {
+      if (!offlineZone) {
+        removeOverlay()
+        return
+      }
+      const [west, south, east, north] = offlineZone.bounds
+      if (map.isStyleLoaded()) {
+        const data = {
+          type: 'Feature' as const,
+          properties: {},
+          geometry: { type: 'Polygon' as const, coordinates: [[[west, south], [east, south], [east, north], [west, north], [west, south]]] },
+        }
+        const source = map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined
+        if (source) source.setData(data)
+        else map.addSource(sourceId, { type: 'geojson', data })
+        if (!map.getLayer(fillId)) map.addLayer({ id: fillId, type: 'fill', source: sourceId, paint: { 'fill-color': '#d5ef9a', 'fill-opacity': 0.08 } })
+        if (!map.getLayer(lineId)) map.addLayer({ id: lineId, type: 'line', source: sourceId, paint: { 'line-color': '#d5ef9a', 'line-width': 2, 'line-dasharray': [2, 2], 'line-opacity': 0.9 } })
+      }
+
+      clearMarkers()
+      if (!zoneEditing) return
+      const center: [number, number] = [(west + east) / 2, (south + north) / 2]
+      const addHandle = (label: string, coordinates: [number, number], className: string, onDragEnd: (marker: Marker) => void) => {
+        const element = document.createElement('button')
+        element.type = 'button'
+        element.className = className
+        element.setAttribute('aria-label', label)
+        element.title = label
+        const marker = new maplibregl.Marker({ element, anchor: 'center', draggable: true })
+          .setLngLat(coordinates)
+          .addTo(map)
+        marker.on('dragend', () => onDragEnd(marker))
+        zoneMarkersRef.current.push(marker)
+      }
+      const minSpan = 0.001
+      const corners: Array<{ label: string; lng: number; lat: number; westSide: boolean; southSide: boolean }> = [
+        { label: 'Resize southwest corner', lng: west, lat: south, westSide: true, southSide: true },
+        { label: 'Resize southeast corner', lng: east, lat: south, westSide: false, southSide: true },
+        { label: 'Resize northeast corner', lng: east, lat: north, westSide: false, southSide: false },
+        { label: 'Resize northwest corner', lng: west, lat: north, westSide: true, southSide: false },
+      ]
+      for (const corner of corners) {
+        addHandle(corner.label, [corner.lng, corner.lat], 'offline-zone-handle', (marker) => {
+          const point = marker.getLngLat()
+          const longitude = Math.max(-180, Math.min(180, point.lng))
+          const latitude = Math.max(-85.05112878, Math.min(85.05112878, point.lat))
+          const nextWest = corner.westSide ? Math.min(longitude, east - minSpan) : west
+          const nextEast = corner.westSide ? east : Math.max(longitude, west + minSpan)
+          const nextSouth = corner.southSide ? Math.min(latitude, north - minSpan) : south
+          const nextNorth = corner.southSide ? north : Math.max(latitude, south + minSpan)
+          onZoneBoundsChangeRef.current([nextWest, nextSouth, nextEast, nextNorth])
+        })
+      }
+      addHandle('Move offline zone', center, 'offline-zone-move-handle', (marker) => {
+        const point = marker.getLngLat()
+        const lngDelta = point.lng - center[0]
+        const latDelta = point.lat - center[1]
+        const width = east - west
+        const height = north - south
+        const movedWest = Math.max(-180, Math.min(180 - width, west + lngDelta))
+        const movedSouth = Math.max(-85.05112878, Math.min(85.05112878 - height, south + latDelta))
+        onZoneBoundsChangeRef.current([movedWest, movedSouth, movedWest + width, movedSouth + height])
+      })
+    }
+
+    map.on('style.load', drawZone)
+    drawZone()
+    return () => {
+      map.off('style.load', drawZone)
+      removeOverlay()
+    }
+  }, [zoneBoundsKey, offlineZone?.maxZoom, zoneEditing, localArchive])
 
   useEffect(() => {
     const map = mapRef.current

@@ -8,6 +8,8 @@ import { useMapSearch } from '../hooks/useMapSearch'
 import { usePlaceData } from '../hooks/usePlaceData'
 import { useStoryPanels } from '../hooks/useStoryPanels'
 import { useOfflineZone } from '../hooks/useOfflineZone'
+import { enumerateZoneTiles, tileUrl } from '../providers/offlineCache'
+import { beginOfflineTileCache } from '../providers/offlineTileCache'
 import { ZoneControls } from './ZoneControls'
 import type { JourneyLeg, MapViewport, Place, PlacePhoto, UserSettings, WalkingRoute } from '../types/domain'
 import type { NarrativeEvent } from '../types/domain'
@@ -115,19 +117,42 @@ export function StoryPanels({
   const offlineZone = useOfflineZone(mapViewport?.center ?? null, mapViewport?.zoom ?? null)
   const [flyToLegsSignal, setFlyToLegsSignal] = useState(0)
 
+  useEffect(() => {
+    search.setOfflineZone(offlineZone.zone)
+  }, [offlineZone.zone, search.setOfflineZone])
+
   async function cacheZone() {
     const zone = offlineZone.zone
     if (!zone) return
-    await offlineZone.cacheZone(async (job, signal) => {
-      const url = `https://tiles.openfreemap.org/planet/${job.z}/${job.x}/${job.y}.pbf`
-      const response = await fetch(url, { signal, mode: 'cors' })
-      if (!response.ok) throw new Error(`Tile ${url} → HTTP ${response.status}`)
+    let jobs
+    try {
+      jobs = enumerateZoneTiles(zone)
+    } catch (error) {
+      offlineZone.reportCacheError(error)
+      return
+    }
+    const tileUrls = jobs.map(tileUrl)
+    let tileCachePromise: ReturnType<typeof beginOfflineTileCache> | null = null
+    const tileCacheSession: { current: Awaited<ReturnType<typeof beginOfflineTileCache>> | null } = { current: null }
+    const getTileCache = async () => {
+      tileCachePromise ??= beginOfflineTileCache(zone, tileUrls)
+      const session = await tileCachePromise
+      tileCacheSession.current = session
+      return session
+    }
+    const result = await offlineZone.cacheZone(async (job, signal) => {
+      const cache = await getTileCache()
+      const url = tileUrl(job)
+      const data = await cache.readOrFetch(url, signal, async (requestSignal) => fetch(url, { signal: requestSignal, mode: 'cors' }))
       const { placesFromVectorTile } = await import('../providers/vectorTilePlaces')
-      return placesFromVectorTile(await response.arrayBuffer(), job, zone)
-    }, async (places) => {
+      return placesFromVectorTile(data, job, zone)
+    }, async (places, generation) => {
+      const cache = await getTileCache()
       const { writeOfflineIndex } = await import('../providers/offlineIndex')
-      await writeOfflineIndex(zone, places)
+      await writeOfflineIndex(zone, places, generation)
+      await cache.commit(zone, generation, places.length)
     })
+    if (result?.status !== 'ready' && tileCacheSession.current) await tileCacheSession.current.rollback()
   }
 
   return (
@@ -165,9 +190,9 @@ export function StoryPanels({
             {search.query && search.onlineQuery === search.query.trim() && search.onlineState === 'ready' && search.onlineResults.length === 0 && <div className="online-search">No online places matched. <button onClick={() => void search.searchOnline()}>Try another search</button></div>}
             {search.query && search.mapStatus === 'unavailable' && <div className="search-state">Loaded map data is unavailable. <button onClick={() => void search.searchOnline()}>Search online</button></div>}
             {journeyReady
-              ? <Suspense fallback={<div className="map-loading">Loading map…</div>}><MapCanvas motionEnabled={motionEnabled} selectedPlace={mapPlace} initialViewport={mapViewport} onViewportChange={setMapViewport} route={route} localArchive={localArchive} legs={legs} flyToLegsSignal={flyToLegsSignal} onPlaceSelected={onChoosePlace} onPlacesLoaded={search.setPlaces} onMapStatusChange={search.setMapStatus} /></Suspense>
+              ? <Suspense fallback={<div className="map-loading">Loading map…</div>}><MapCanvas motionEnabled={motionEnabled} selectedPlace={mapPlace} initialViewport={mapViewport} onViewportChange={setMapViewport} route={route} localArchive={localArchive} legs={legs} flyToLegsSignal={flyToLegsSignal} offlineZone={offlineZone.zone} zoneEditing={offlineZone.editing} onZoneBoundsChange={(bounds) => { if (offlineZone.zone) void offlineZone.replaceZone({ ...offlineZone.zone, bounds }) }} onPlaceSelected={onChoosePlace} onPlacesLoaded={search.setPlaces} onMapStatusChange={search.setMapStatus} /></Suspense>
               : <div className="map-loading">Restoring journey…</div>}
-            <ZoneControls zone={offlineZone.zone} progress={offlineZone.progress} onCache={() => void cacheZone()} onCancel={offlineZone.cancelCache} />
+            <ZoneControls zone={offlineZone.zone} progress={offlineZone.progress} editing={offlineZone.editing} onCache={() => void cacheZone()} onCancel={offlineZone.cancelCache} onToggleEditing={offlineZone.setEditing} onMaxZoomChange={(maxZoom) => { if (offlineZone.zone) void offlineZone.replaceZone({ ...offlineZone.zone, maxZoom }) }} onBoundsChange={(bounds) => { if (offlineZone.zone) void offlineZone.replaceZone({ ...offlineZone.zone, bounds }) }} />
             {pendingDestination && <div className="route-choice"><p className="eyebrow">Begin transition</p><strong>Walk from {selectedPlace?.name} to {pendingDestination.name}?</strong><p>Calculate an optional walking route before arriving.</p><div><button onClick={() => onCompleteTransition(pendingDestination, true)}>Walk there</button><button onClick={() => onCompleteTransition(pendingDestination, false)}>Arrive without route</button></div></div>}
             {routeState === 'loading' && <div className="route-status">Calculating walking route…</div>}
             {routeState === 'ready' && route && <div className="route-status">Walking route · {(route.distanceMeters / 1000).toFixed(1)} km · {Math.round(route.durationSeconds / 60)} min</div>}

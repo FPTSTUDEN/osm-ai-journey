@@ -48,11 +48,32 @@ export async function get<T>(store: string, key: IDBValidKey): Promise<T | undef
   })
 }
 
+export async function getAll<T>(store: string): Promise<T[]> {
+  const database = await getDb()
+  return new Promise((resolve, reject) => {
+    const request = database.transaction(store, 'readonly').objectStore(store).getAll()
+    request.onsuccess = () => resolve(request.result as T[])
+    request.onerror = () => reject(request.error ?? new Error(`Unable to read IndexedDB store "${store}"`))
+  })
+}
+
 export async function put(store: string, value: unknown): Promise<void> {
   const database = await getDb()
   await new Promise<void>((resolve, reject) => {
     const transaction = database.transaction(store, 'readwrite')
     transaction.objectStore(store).put(value)
+    transaction.oncomplete = () => resolve()
+    transaction.onerror = () => reject(transaction.error ?? new Error(`Unable to write IndexedDB store "${store}"`))
+    transaction.onabort = () => reject(transaction.error ?? new Error(`Unable to write IndexedDB store "${store}"`))
+  })
+}
+
+export async function putMany(store: string, values: unknown[]): Promise<void> {
+  const database = await getDb()
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(store, 'readwrite')
+    const objectStore = transaction.objectStore(store)
+    for (const value of values) objectStore.put(value)
     transaction.oncomplete = () => resolve()
     transaction.onerror = () => reject(transaction.error ?? new Error(`Unable to write IndexedDB store "${store}"`))
     transaction.onabort = () => reject(transaction.error ?? new Error(`Unable to write IndexedDB store "${store}"`))

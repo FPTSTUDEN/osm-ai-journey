@@ -124,6 +124,7 @@ export function useMapSearch({ geocoder, mapOpen, toggleStoryPanel, onChoosePlac
     offlineIndexState,
     offlineIndexError,
     offlineZone,
+    setOfflineZone: setOfflineZoneState,
     onlineResults,
     onlineQuery,
     onlineState,

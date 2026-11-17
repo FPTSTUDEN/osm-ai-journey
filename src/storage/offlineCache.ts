@@ -1,3 +1,5 @@
+import { markZoneTilesCleared } from './offlineZones'
+
 export type OfflineCacheStatus = {
   cacheNames: string[]
   entries: number
@@ -13,6 +15,8 @@ export async function getOfflineCacheStatus(): Promise<OfflineCacheStatus> {
 export async function clearOfflineCache() {
   if (!('caches' in window)) throw new Error('Cache Storage is unavailable in this browser')
   await Promise.all((await caches.keys()).filter((name) => name.startsWith('osm-ai-journey-')).map((name) => caches.delete(name)))
+  await markZoneTilesCleared()
+  window.dispatchEvent(new Event('offline-cache-cleared'))
   const registration = await navigator.serviceWorker?.getRegistration()
   registration?.active?.postMessage({ type: 'PRECACHE_SHELL' })
 }

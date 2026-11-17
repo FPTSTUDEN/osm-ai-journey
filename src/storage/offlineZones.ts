@@ -1,4 +1,4 @@
-import { get, put } from './db'
+import { get, getAll, putMany } from './db'
 
 export type OfflineZone = {
   id: string
@@ -8,6 +8,8 @@ export type OfflineZone = {
   createdAt: string
   cachedBytes: number
   cachedTileCount?: number
+  cachedTileUrls?: string[]
+  cacheGeneration?: string
   indexedFeatureCount?: number
   cacheError?: string
   status: 'idle' | 'caching' | 'ready' | 'partial' | 'failed'
@@ -46,14 +48,69 @@ export async function loadZone(journeyId = 'active'): Promise<OfflineZone | null
 
 export async function saveZone(zone: OfflineZone, journeyId = 'active'): Promise<void> {
   try {
-    await put(STORE, { key: zoneKey(journeyId), zone })
+    await saveZoneStrict(zone, journeyId)
   } catch {
     // Storage may be unavailable; the zone remains usable in memory.
   }
+}
+
+export async function saveZoneStrict(zone: OfflineZone, journeyId = 'active'): Promise<void> {
+  await putMany(STORE, [
+    { key: zoneKey(journeyId), zone },
+    { key: `zone-cache:${zone.id}`, zone },
+  ])
+}
+
+export async function listZones(): Promise<OfflineZone[]> {
+  const records = await getAll<{ key: string; zone: OfflineZone }>(STORE)
+  const manifestRecords = records.filter((record) => record.key.startsWith('zone-cache:'))
+  const savedZones = [...records.filter((record) => record.key.startsWith('zone:')), ...manifestRecords]
+  return [...new Map(savedZones.map((record) => [record.zone.id, record.zone])).values()]
+}
+
+export async function markZoneTilesCleared(): Promise<void> {
+  const records = await getAll<{ key: string; zone: OfflineZone }>(STORE)
+  const updated = records
+    .filter((record) => record.key.startsWith('zone:') || record.key.startsWith('zone-cache:'))
+    .map(({ key, zone }) => ({
+      key,
+      zone: zone.status === 'ready' || zone.cachedTileUrls?.length
+        ? {
+          ...zone,
+          status: 'partial' as const,
+          cachedBytes: 0,
+          cachedTileCount: 0,
+          cachedTileUrls: [],
+          cacheError: 'Offline map tiles were cleared. Refresh this zone to cache them again.',
+        }
+        : zone,
+    }))
+  if (updated.length) await putMany(STORE, updated)
 }
 
 export function isInZone(zone: OfflineZone, coordinates: [number, number]): boolean {
   const [w, s, e, n] = zone.bounds
   const [lng, lat] = coordinates
   return lng >= w && lng <= e && lat >= s && lat <= n
+}
+
+export function replaceOfflineZoneBounds(zone: OfflineZone, bounds: OfflineZone['bounds']): OfflineZone | null {
+  const [west, south, east, north] = bounds
+  if (![west, south, east, north].every(Number.isFinite)
+    || west < -180 || east > 180 || south < -85.05112878 || north > 85.05112878
+    || west >= east || south >= north) return null
+
+  const changed = bounds.some((value, index) => value !== zone.bounds[index])
+  if (!changed) return zone
+  return {
+    ...zone,
+    bounds,
+    status: 'idle',
+    cachedBytes: 0,
+    cachedTileCount: undefined,
+    cachedTileUrls: undefined,
+    cacheGeneration: undefined,
+    indexedFeatureCount: undefined,
+    cacheError: undefined,
+  }
 }
