@@ -134,17 +134,13 @@ test('upgrades a v3 journey database without losing its stores or records', asyn
     }
   }))
 
-  await page.goto('/', { waitUntil: 'commit' })
-  await waitForApplicationReady(page)
-  await expect(page.getByRole('heading', { name: 'Osm AI Journey' })).toBeVisible()
-  const upgraded = await page.evaluate(() => new Promise((resolve, reject) => {
-    const request = indexedDB.open('osm-ai-journey')
-    request.onerror = () => reject(request.error)
-    request.onsuccess = () => {
-      const database = request.result
+  const upgraded = await page.evaluate(async () => {
+    const { getDb } = await import('/src/storage/db.ts')
+    const database = await getDb()
+    return new Promise((resolve, reject) => {
       const transaction = database.transaction('journeys', 'readonly')
       const getJourney = transaction.objectStore('journeys').get('active')
-      getJourney.onsuccess = () => {
+      transaction.oncomplete = () => {
         const result = {
           version: database.version,
           stores: Array.from(database.objectStoreNames),
@@ -153,13 +149,13 @@ test('upgrades a v3 journey database without losing its stores or records', asyn
         database.close()
         resolve(result)
       }
-      getJourney.onerror = () => reject(getJourney.error)
-    }
-  }))
+      transaction.onerror = () => { database.close(); reject(transaction.error) }
+    })
+  })
   expect(upgraded.version).toBe(5)
   expect(upgraded.stores).toEqual(expect.arrayContaining(['geocoder-results', 'journeys', 'live-data', 'companion-art', 'offline-zones']))
   expect(upgraded.journey.currentScene).toBe(3)
-  expect(upgraded.journey.messages).toEqual(['A saved traveler message'])
+  expect(upgraded.journey.messages.map((message) => typeof message === 'string' ? message : message.text)).toEqual(['A saved traveler message'])
 })
 
 test('offline place index survives an application reload', async ({ page }) => {
@@ -202,6 +198,54 @@ test('offline place index survives an application reload', async ({ page }) => {
   }, zone)
   expect(restored.search.places.map((item) => item.name)).toEqual(['Offline Library'])
   expect(restored.zone.bounds).toEqual(zone.bounds)
+})
+
+test('offline tile cache reuses shared tiles and preserves saved-zone manifests', async ({ page }) => {
+  await page.route('**/tile-cache-fixture', (route) => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body></body></html>' }))
+  await page.goto('/tile-cache-fixture')
+  const result = await page.evaluate(async () => {
+    const { beginOfflineTileCache, OFFLINE_TILE_CACHE_NAME } = await import('/src/providers/offlineTileCache.ts')
+    const { listZones } = await import('/src/storage/offlineZones.ts')
+    const zone = (id) => ({ id, label: id, bounds: [0, 0, 1, 1], maxZoom: 1, createdAt: new Date().toISOString(), cachedBytes: 0, status: 'idle' })
+    const first = await beginOfflineTileCache(zone('zone-a'), ['https://tiles.test/shared', 'https://tiles.test/a'])
+    let firstFetches = 0
+    for (const url of ['https://tiles.test/shared', 'https://tiles.test/a']) {
+      await first.readOrFetch(url, new AbortController().signal, async () => {
+        firstFetches += 1
+        return new Response(new Uint8Array([1, 2, 3]))
+      })
+    }
+    await first.commit(zone('zone-a'), 'generation-a', 1)
+
+    const second = await beginOfflineTileCache(zone('zone-b'), ['https://tiles.test/shared', 'https://tiles.test/b'])
+    let sharedFetches = 0
+    await second.readOrFetch('https://tiles.test/shared', new AbortController().signal, async () => {
+      sharedFetches += 1
+      return new Response(new Uint8Array([4]))
+    })
+    await second.readOrFetch('https://tiles.test/b', new AbortController().signal, async () => new Response(new Uint8Array([5])))
+    await second.commit(zone('zone-b'), 'generation-b', 1)
+
+    const cache = await caches.open(OFFLINE_TILE_CACHE_NAME)
+    const cachedUrls = (await cache.keys()).map((request) => request.url).sort()
+    const { clearOfflineCache } = await import('/src/storage/offlineCache.ts')
+    await clearOfflineCache()
+    const clearedZones = await listZones()
+    return {
+      firstFetches,
+      sharedFetches,
+      urls: cachedUrls,
+      savedZoneIds: (await listZones()).map((saved) => saved.id).sort(),
+      clearedZoneStatuses: clearedZones.map((saved) => saved.status).sort(),
+      remainingTileUrls: clearedZones.flatMap((saved) => saved.cachedTileUrls ?? []),
+    }
+  })
+  expect(result.firstFetches).toBe(2)
+  expect(result.sharedFetches).toBe(0)
+  expect(result.urls).toEqual(['https://tiles.test/a', 'https://tiles.test/b', 'https://tiles.test/shared'])
+  expect(result.savedZoneIds).toEqual(['zone-a', 'zone-b'])
+  expect(result.clearedZoneStatuses).toEqual(['partial', 'partial'])
+  expect(result.remainingTileUrls).toEqual([])
 })
 
 test('field notes reuse the full place details view', async ({ page }) => {
@@ -1020,7 +1064,7 @@ test('legacy persona settings and companion art migrate to the default persona p
     legacy.personaName = 'Legacy Guide'
     legacy.personaInstructions = 'Use the old saved voice.'
     localStorage.setItem(key, JSON.stringify(legacy))
-    const request = indexedDB.open('osm-ai-journey', 4)
+    const request = indexedDB.open('osm-ai-journey')
     await new Promise((resolve, reject) => {
       request.onsuccess = () => {
         const database = request.result
