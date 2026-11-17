@@ -9,7 +9,6 @@ import { usePlaceData } from '../hooks/usePlaceData'
 import { useStoryPanels } from '../hooks/useStoryPanels'
 import { useOfflineZone } from '../hooks/useOfflineZone'
 import { ZoneControls } from './ZoneControls'
-import { enumerateZoneTiles } from '../providers/offlineCache'
 import type { JourneyLeg, MapViewport, Place, PlacePhoto, UserSettings, WalkingRoute } from '../types/domain'
 import type { NarrativeEvent } from '../types/domain'
 import type { LocalPmtilesArchive } from '../providers/localPmtiles'
@@ -119,18 +118,16 @@ export function StoryPanels({
   async function cacheZone() {
     const zone = offlineZone.zone
     if (!zone) return
-    const tiles = enumerateZoneTiles(zone)
-    // Production fetch is intentionally minimal here: it warms the service-worker cache.
-    // The response body is discarded; only the Cache Storage entry matters.
     await offlineZone.cacheZone(async (job, signal) => {
       const url = `https://tiles.openfreemap.org/planet/${job.z}/${job.x}/${job.y}.pbf`
       const response = await fetch(url, { signal, mode: 'cors' })
       if (!response.ok) throw new Error(`Tile ${url} → HTTP ${response.status}`)
-      // Touch the body so the SW caches it, then drop it.
-      await response.arrayBuffer()
+      const { placesFromVectorTile } = await import('../providers/vectorTilePlaces')
+      return placesFromVectorTile(await response.arrayBuffer(), job, zone)
+    }, async (places) => {
+      const { writeOfflineIndex } = await import('../providers/offlineIndex')
+      await writeOfflineIndex(zone, places)
     })
-    // eslint-disable-next-line no-console
-    if (tiles.length === 0) console.warn('Offline zone has no tiles to cache')
   }
 
   return (
@@ -154,7 +151,10 @@ export function StoryPanels({
               <p className="result-label">From offline index{search.offlineIndexState === 'ready' ? '' : ' · preparing'}</p>
               {search.offlineResults.map((place) => <button key={place.id} onClick={() => onChoosePlace(place)}>{place.name}<span>{place.category ?? 'Place'}</span></button>)}
             </div>}
-            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.offlineResults.length === 0 && search.offlineIndexState === 'empty' && search.onlineState === 'idle' && <div className="online-search">No places in the offline zone. <button onClick={() => void search.searchOnline()}>Search online</button></div>}
+            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.offlineResults.length === 0 && search.offlineIndexState === 'empty' && search.onlineState === 'idle' && <div className="online-search">No named places are available in the offline zone. <button onClick={() => void search.searchOnline()}>Search online</button></div>}
+            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.offlineResults.length === 0 && search.offlineIndexState === 'not-indexed' && search.onlineState === 'idle' && <div className="online-search">This zone has no saved offline search index. Cache the zone or <button onClick={() => void search.searchOnline()}>search online</button>.</div>}
+            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.offlineResults.length === 0 && search.offlineIndexState === 'ready' && search.onlineState === 'idle' && <div className="online-search">No indexed places match. <button onClick={() => void search.searchOnline()}>Search online</button></div>}
+            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.offlineResults.length === 0 && search.offlineIndexState === 'unavailable' && search.onlineState === 'idle' && <div className="online-search">Offline search is unavailable{search.offlineIndexError ? `: ${search.offlineIndexError}` : '.'} <button onClick={() => void search.searchOnline()}>Search online</button></div>}
             {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.offlineResults.length === 0 && search.offlineIndexState === 'idle' && search.onlineState === 'idle' && <div className="online-search">No loaded places match. <button onClick={() => void search.searchOnline()}>Search online</button></div>}
             {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.offlineResults.length === 0 && search.offlineIndexState !== 'empty' && search.onlineState === 'loading' && <div className="search-state">Searching {settings.onlineGeocoder === 'nominatim' ? 'Nominatim' : 'Photon'} for “{search.onlineQuery}”…</div>}
             {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.offlineResults.length === 0 && search.offlineIndexState !== 'empty' && search.onlineState === 'error' && <div className="online-search">{search.onlineError} <button onClick={() => void search.searchOnline()}>Try again</button></div>}
@@ -165,7 +165,7 @@ export function StoryPanels({
             {search.query && search.onlineQuery === search.query.trim() && search.onlineState === 'ready' && search.onlineResults.length === 0 && <div className="online-search">No online places matched. <button onClick={() => void search.searchOnline()}>Try another search</button></div>}
             {search.query && search.mapStatus === 'unavailable' && <div className="search-state">Loaded map data is unavailable. <button onClick={() => void search.searchOnline()}>Search online</button></div>}
             {journeyReady
-              ? <Suspense fallback={<div className="map-loading">Loading map…</div>}><MapCanvas motionEnabled={motionEnabled} selectedPlace={mapPlace} initialViewport={mapViewport} onViewportChange={setMapViewport} route={route} localArchive={localArchive} legs={legs} flyToLegsSignal={flyToLegsSignal} onPlaceSelected={onChoosePlace} onPlacesLoaded={search.setPlaces} onMapStatusChange={search.setMapStatus} onPlacesLoadedForZone={(places) => { const zone = offlineZone.zone; if (zone && places.length) void import('../providers/offlineIndex').then(({ extendOfflineIndex }) => extendOfflineIndex(zone, places)) }} /></Suspense>
+              ? <Suspense fallback={<div className="map-loading">Loading map…</div>}><MapCanvas motionEnabled={motionEnabled} selectedPlace={mapPlace} initialViewport={mapViewport} onViewportChange={setMapViewport} route={route} localArchive={localArchive} legs={legs} flyToLegsSignal={flyToLegsSignal} onPlaceSelected={onChoosePlace} onPlacesLoaded={search.setPlaces} onMapStatusChange={search.setMapStatus} /></Suspense>
               : <div className="map-loading">Restoring journey…</div>}
             <ZoneControls zone={offlineZone.zone} progress={offlineZone.progress} onCache={() => void cacheZone()} onCancel={offlineZone.cancelCache} />
             {pendingDestination && <div className="route-choice"><p className="eyebrow">Begin transition</p><strong>Walk from {selectedPlace?.name} to {pendingDestination.name}?</strong><p>Calculate an optional walking route before arriving.</p><div><button onClick={() => onCompleteTransition(pendingDestination, true)}>Walk there</button><button onClick={() => onCompleteTransition(pendingDestination, false)}>Arrive without route</button></div></div>}

@@ -12,7 +12,7 @@ function normalized(value: string) {
   return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase().trim().replace(/\s+/g, ' ')
 }
 
-export function placeFromFeature(feature: { id?: string | number; properties?: Record<string, unknown>; geometry?: { type?: string; coordinates?: unknown } }): Place | null {
+export function placeFromFeature(feature: { id?: string | number; properties?: Record<string, unknown> | null; geometry?: { type?: string; coordinates?: unknown } | null }): Place | null {
   if (feature.geometry?.type !== 'Point' || !Array.isArray(feature.geometry.coordinates)) return null
   const coordinates = feature.geometry.coordinates
   if (typeof coordinates[0] !== 'number' || typeof coordinates[1] !== 'number') return null

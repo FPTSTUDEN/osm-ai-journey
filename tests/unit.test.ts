@@ -16,10 +16,31 @@ import { normalizeMotionPreference, normalizePersonaProfiles, normalizeStoryPres
 import { DEFAULT_PERSONA, DEFAULT_PERSONA_ID } from '../src/providers/config'
 import { parsePersonaSpriteFilename } from '../src/providers/personaSprites'
 import { defaultZoneFromViewport, isInZone, newZoneFromViewport } from '../src/storage/offlineZones'
-import { searchOfflineIndex } from '../src/providers/offlineIndex'
+import { offlineIndexKey, searchOfflineIndex, writeOfflineIndex } from '../src/providers/offlineIndex'
+import { enumerateZoneTiles, runCache, type TileJob } from '../src/providers/offlineCache'
+import { placesFromVectorTile } from '../src/providers/vectorTilePlaces'
+import { PbfWriter } from 'pbf'
 import type { ChatEntry, JourneyLeg, Place } from '../src/types/domain'
 
 const place = (id: string, name: string, category?: string): Place => ({ id, name, category, coordinates: [2.35, 48.85], source: 'map' })
+
+function pointVectorTile(name: string) {
+  const tile = new PbfWriter()
+  tile.writeMessage(3, (_layer, writer) => {
+    writer.writeStringField(1, 'places')
+    writer.writeMessage(2, (_feature, feature) => {
+      feature.writeVarintField(1, 1)
+      feature.writePackedVarint(2, [0, 0])
+      feature.writeVarintField(3, 1)
+      feature.writePackedVarint(4, [9, 4096, 4096])
+    }, {})
+    writer.writeStringField(3, 'name')
+    writer.writeMessage(4, (_value, value) => value.writeStringField(1, name), {})
+    writer.writeVarintField(5, 4096)
+    writer.writeVarintField(15, 2)
+  }, {})
+  return tile.finish()
+}
 
 test('local search ranks prefix matches and requires all terms', () => {
   const results = searchLocalPlaces([place('1', 'Central Station', 'transport'), place('2', 'Station Road', 'road'), place('3', 'Museum')], 'central station')
@@ -421,13 +442,106 @@ test('offline zone defaults from viewport and contains points inside its bounds'
 
 test('offline index search reports empty when no zone is provided or storage is unavailable', async () => {
   const noZone = await searchOfflineIndex(null, 'anything')
-  assert.equal(noZone.source, 'empty')
+  assert.equal(noZone.source, 'not-indexed')
   assert.deepEqual(noZone.places, [])
 
-  // In the Node test runner there is no IndexedDB, so readOfflineIndex returns null.
-  // This pins the storage-unavailable degradation path; the round-trip is covered by the browser suite.
+  // In the Node test runner there is no IndexedDB, so offline search reports the storage failure.
   const zone = newZoneFromViewport([2.35, 48.85], 11, 15)
   const withZone = await searchOfflineIndex(zone, 'anything')
-  assert.equal(withZone.source, 'empty')
+  assert.equal(withZone.source, 'unavailable')
   assert.deepEqual(withZone.places, [])
+  assert.match(withZone.error ?? '', /IndexedDB is unavailable/)
+})
+
+test('offline vector tile extraction indexes named point features only inside the zone', () => {
+  const zone = { ...newZoneFromViewport([0, 0], 11, 0), bounds: [-1, -1, 1, 1] as [number, number, number, number] }
+  const tile = pointVectorTile('Tile Center Place')
+  const places = placesFromVectorTile(tile, { z: 0, x: 0, y: 0 }, zone)
+  assert.deepEqual(places.map((item) => item.name), ['Tile Center Place'])
+
+  const outsideZone = { ...zone, bounds: [10, 10, 11, 11] as [number, number, number, number] }
+  assert.deepEqual(placesFromVectorTile(tile, { z: 0, x: 0, y: 0 }, outsideZone), [])
+})
+
+test('offline zone tile enumeration rejects sampled coverage instead of omitting tiles', () => {
+  const zone = { ...newZoneFromViewport([0, 0], 11, 5), bounds: [-180, -85, 180, 85] as [number, number, number, number] }
+  assert.throws(() => enumerateZoneTiles(zone), /Reduce the zone or maximum zoom/)
+})
+
+test('offline zone tile enumeration includes every tile at each zoom level', () => {
+  const zone = { ...newZoneFromViewport([0, 0], 11, 1), bounds: [-1, -1, 1, 1] as [number, number, number, number] }
+  const jobs = enumerateZoneTiles(zone)
+  assert.deepEqual(jobs.filter((job) => job.z === 0), [{ z: 0, x: 0, y: 0 }])
+  assert.deepEqual(jobs.filter((job) => job.z === 1), [
+    { z: 1, x: 0, y: 0 },
+    { z: 1, x: 0, y: 1 },
+    { z: 1, x: 1, y: 0 },
+    { z: 1, x: 1, y: 1 },
+  ])
+})
+
+test('offline cache persists the deduplicated index from every enumerated tile before reporting ready', async () => {
+  const zone = newZoneFromViewport([2.35, 48.85], 11, 1)
+  const jobs: TileJob[] = [{ z: 0, x: 0, y: 0 }, { z: 1, x: 1, y: 1 }]
+  let persisted: Place[] | null = null
+  const result = await runCache(zone, {
+    enumerate: () => jobs,
+    fetchTile: async (job) => job.z === 0
+      ? [place('shared', 'Shared Place'), place('first', 'First Tile Place')]
+      : [place('shared', 'Shared Place'), place('second', 'Second Tile Place')],
+    persistIndex: async (places) => { persisted = places },
+    concurrency: 1,
+  })
+
+  assert.equal(result.status, 'ready')
+  assert.equal(result.done, jobs.length)
+  assert.equal(result.featuresFound, 3)
+  assert.equal(result.indexedFeatures, 3)
+  assert.deepEqual(persisted?.map((item) => item.name), ['Shared Place', 'First Tile Place', 'Second Tile Place'])
+})
+
+test('offline cache never reports ready or persists an index when a zone tile fails', async () => {
+  const zone = newZoneFromViewport([2.35, 48.85], 11, 1)
+  const jobs: TileJob[] = [{ z: 0, x: 0, y: 0 }, { z: 1, x: 1, y: 1 }]
+  let persistCalled = false
+  const result = await runCache(zone, {
+    enumerate: () => jobs,
+    fetchTile: async (job) => {
+      if (job.z === 1) throw new Error('tile unavailable')
+      return [place('found', 'Found Place')]
+    },
+    persistIndex: async () => { persistCalled = true },
+    concurrency: 1,
+  })
+
+  assert.equal(result.status, 'partial')
+  assert.equal(result.failed, 1)
+  assert.equal(result.featuresFound, 1)
+  assert.equal(result.indexedFeatures, 0)
+  assert.match(result.error ?? '', /previous complete index was retained/)
+  assert.equal(persistCalled, false)
+})
+
+test('offline cache reports index persistence failures instead of claiming readiness', async () => {
+  const zone = newZoneFromViewport([2.35, 48.85], 11, 0)
+  const result = await runCache(zone, {
+    enumerate: () => [{ z: 0, x: 0, y: 0 }],
+    fetchTile: async () => [place('found', 'Found Place')],
+    persistIndex: async () => { throw new Error('IndexedDB quota exceeded') },
+  })
+
+  assert.equal(result.status, 'failed')
+  assert.equal(result.indexedFeatures, 0)
+  assert.equal(result.error, 'IndexedDB quota exceeded')
+})
+
+test('offline index keys distinguish exact zone bounds and zoom levels', () => {
+  const zone = newZoneFromViewport([2.35, 48.85], 11, 15)
+  assert.notEqual(offlineIndexKey(zone), offlineIndexKey({ ...zone, bounds: [2.35001, ...zone.bounds.slice(1)] as [number, number, number, number] }))
+  assert.notEqual(offlineIndexKey(zone), offlineIndexKey({ ...zone, maxZoom: zone.maxZoom - 1 }))
+})
+
+test('offline index persistence failures are surfaced to the cache workflow', async () => {
+  const zone = newZoneFromViewport([2.35, 48.85], 11, 15)
+  await assert.rejects(writeOfflineIndex(zone, []), /IndexedDB is unavailable/)
 })

@@ -28,6 +28,8 @@ Run validation with `pnpm test:unit` and `pnpm test:e2e`.
 - MapLibre with OpenFreeMap is the initial map stack.
 - Clicking a visible map feature is local and never geocodes automatically.
 - Search checks the local tile-derived index first; online geocoding only happens after an explicit action.
+- Caching a zone indexes named point features from every successfully fetched OpenFreeMap vector tile in its bounds and zoom range; the zone is ready only after all tiles succeed and the index is persisted.
+- Offline search cannot find places omitted from the vector tiles, features represented only by raster tiles, or uncached online-geocoder results. Browser storage may be evicted.
 - Online geocoder results are cached in IndexedDB.
 - Walking route calculation is optional for every destination transition.
 - Weather and other live data integrations are optional and lazy.

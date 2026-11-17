@@ -7,6 +7,9 @@ export type OfflineZone = {
   maxZoom: number
   createdAt: string
   cachedBytes: number
+  cachedTileCount?: number
+  indexedFeatureCount?: number
+  cacheError?: string
   status: 'idle' | 'caching' | 'ready' | 'partial' | 'failed'
 }
 

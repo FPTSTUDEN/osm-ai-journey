@@ -23,7 +23,8 @@ export function useMapSearch({ geocoder, mapOpen, toggleStoryPanel, onChoosePlac
   const [onlineError, setOnlineError] = useState('')
   const [offlineZone, setOfflineZoneState] = useState<OfflineZone | null>(null)
   const [offlineResults, setOfflineResults] = useState<Place[]>([])
-  const [offlineIndexState, setOfflineIndexState] = useState<'idle' | 'loading' | 'ready' | 'empty'>('idle')
+  const [offlineIndexState, setOfflineIndexState] = useState<'idle' | 'loading' | 'ready' | 'empty' | 'not-indexed' | 'unavailable'>('idle')
+  const [offlineIndexError, setOfflineIndexError] = useState('')
 
   useEffect(() => {
     if (!mapOpen) setMapStatus('loading')
@@ -38,17 +39,29 @@ export function useMapSearch({ geocoder, mapOpen, toggleStoryPanel, onChoosePlac
   }, [])
 
   useEffect(() => {
-    if (!query.trim() || !offlineZone) {
+    if (!query.trim()) {
       setOfflineResults([])
       setOfflineIndexState('idle')
       return
     }
+    if (!offlineZone) {
+      setOfflineResults([])
+      setOfflineIndexState('not-indexed')
+      return
+    }
     let active = true
     setOfflineIndexState('loading')
+    setOfflineIndexError('')
     void import('../providers/offlineIndex').then(({ searchOfflineIndex }) => searchOfflineIndex(offlineZone, query)).then((result) => {
       if (!active) return
       setOfflineResults(result.places)
-      setOfflineIndexState(result.source === 'empty' ? 'empty' : 'ready')
+      setOfflineIndexState(result.source === 'offline-index' ? 'ready' : result.source)
+      setOfflineIndexError(result.error ?? '')
+    }).catch((error: unknown) => {
+      if (!active) return
+      setOfflineResults([])
+      setOfflineIndexState('unavailable')
+      setOfflineIndexError(error instanceof Error ? error.message : 'Unable to read the offline place index')
     })
     return () => { active = false }
   }, [offlineZone, query])
@@ -109,6 +122,7 @@ export function useMapSearch({ geocoder, mapOpen, toggleStoryPanel, onChoosePlac
     localResults,
     offlineResults,
     offlineIndexState,
+    offlineIndexError,
     offlineZone,
     onlineResults,
     onlineQuery,

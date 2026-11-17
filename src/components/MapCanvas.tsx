@@ -18,7 +18,6 @@ type MapCanvasProps = {
   motionEnabled: boolean
   onPlaceSelected: (place: Place) => void
   onPlacesLoaded: (places: Place[]) => void
-  onPlacesLoadedForZone?: (places: Place[]) => void
   onMapStatusChange: (status: 'loading' | 'ready' | 'unavailable') => void
   selectedPlace: Place | null
   initialViewport: MapViewport | null
@@ -95,21 +94,19 @@ function legFeatureCollection(legs: JourneyLeg[]) {
   return { type: 'FeatureCollection' as const, features }
 }
 
-export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelected, onPlacesLoaded, onPlacesLoadedForZone, onMapStatusChange, selectedPlace, initialViewport, onViewportChange, route, localArchive, legs, flyToLegsSignal }: MapCanvasProps) {
+export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelected, onPlacesLoaded, onMapStatusChange, selectedPlace, initialViewport, onViewportChange, route, localArchive, legs, flyToLegsSignal }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
   const markerRef = useRef<Marker | null>(null)
   const activeArchiveKeyRef = useRef<string | null>(null)
   const onPlaceSelectedRef = useRef(onPlaceSelected)
   const onPlacesLoadedRef = useRef(onPlacesLoaded)
-  const onPlacesLoadedForZoneRef = useRef(onPlacesLoadedForZone)
   const onMapStatusChangeRef = useRef(onMapStatusChange)
   const onViewportChangeRef = useRef(onViewportChange)
   const motionEnabledRef = useRef(motionEnabled)
 
   onPlaceSelectedRef.current = onPlaceSelected
   onPlacesLoadedRef.current = onPlacesLoaded
-  onPlacesLoadedForZoneRef.current = onPlacesLoadedForZone
   onMapStatusChangeRef.current = onMapStatusChange
   onViewportChangeRef.current = onViewportChange
   motionEnabledRef.current = motionEnabled
@@ -155,7 +152,6 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
 
       const deduped = deduplicatePlaces(places)
       onPlacesLoadedRef.current(deduped)
-      onPlacesLoadedForZoneRef.current?.(deduped)
     }
 
     const handleClick = (event: MapMouseEvent) => {

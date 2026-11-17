@@ -156,10 +156,52 @@ test('upgrades a v3 journey database without losing its stores or records', asyn
       getJourney.onerror = () => reject(getJourney.error)
     }
   }))
-  expect(upgraded.version).toBe(4)
-  expect(upgraded.stores).toEqual(expect.arrayContaining(['geocoder-results', 'journeys', 'live-data', 'companion-art']))
+  expect(upgraded.version).toBe(5)
+  expect(upgraded.stores).toEqual(expect.arrayContaining(['geocoder-results', 'journeys', 'live-data', 'companion-art', 'offline-zones']))
   expect(upgraded.journey.currentScene).toBe(3)
   expect(upgraded.journey.messages).toEqual(['A saved traveler message'])
+})
+
+test('offline place index survives an application reload', async ({ page }) => {
+  await resetBrowser(page)
+  const zone = {
+    id: 'test-zone',
+    label: 'Test zone',
+    bounds: [2, 48, 3, 49],
+    maxZoom: 12,
+    createdAt: new Date().toISOString(),
+    cachedBytes: 1,
+    status: 'ready',
+  }
+  const saved = await page.evaluate(async (offlineZone) => {
+    const { writeOfflineIndex, searchOfflineIndex } = await import('/src/providers/offlineIndex.ts')
+    const { saveZone } = await import('/src/storage/offlineZones.ts')
+    await saveZone(offlineZone)
+    await writeOfflineIndex(offlineZone, [{
+      id: 'offline-place',
+      name: 'Offline Library',
+      category: 'library',
+      coordinates: [2.5, 48.5],
+      source: 'map',
+    }, {
+      id: 'outside-place',
+      name: 'Outside Place',
+      coordinates: [5, 5],
+      source: 'map',
+    }])
+    return searchOfflineIndex(offlineZone, '')
+  }, zone)
+  expect(saved.places.map((item) => item.name)).toEqual(['Offline Library'])
+
+  await page.reload()
+  await waitForApplicationReady(page)
+  const restored = await page.evaluate(async (offlineZone) => {
+    const { searchOfflineIndex } = await import('/src/providers/offlineIndex.ts')
+    const { loadZone } = await import('/src/storage/offlineZones.ts')
+    return { search: await searchOfflineIndex(offlineZone, ''), zone: await loadZone() }
+  }, zone)
+  expect(restored.search.places.map((item) => item.name)).toEqual(['Offline Library'])
+  expect(restored.zone.bounds).toEqual(zone.bounds)
 })
 
 test('field notes reuse the full place details view', async ({ page }) => {

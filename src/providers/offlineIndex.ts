@@ -1,34 +1,44 @@
-import { readCachedValue, writeCachedValue } from '../storage/geocoderCache'
+import { get, put } from '../storage/db'
 import { searchLocalPlaces } from './localPlaceIndex'
-import type { OfflineZone } from '../storage/offlineZones'
+import { isInZone, type OfflineZone } from '../storage/offlineZones'
 import type { Place } from '../types/domain'
 
-const INDEX_TTL = 30 * 24 * 60 * 60 * 1000
+const INDEX_STORE = 'geocoder-results'
+const INDEX_VERSION = 2
 
-function indexKey(zone: OfflineZone) {
-  return `offline-index:${zone.bounds.map((value) => value.toFixed(4)).join(':')}:${zone.maxZoom}`
+type CachedIndex = { key: string; value: Place[]; expiresAt: number }
+
+export function offlineIndexKey(zone: OfflineZone) {
+  return `offline-index:v${INDEX_VERSION}:openfreemap:${JSON.stringify(zone.bounds)}:${zone.maxZoom}`
 }
 
 export async function readOfflineIndex(zone: OfflineZone): Promise<Place[] | null> {
-  return readCachedValue<Place[]>(indexKey(zone))
+  const record = await get<CachedIndex>(INDEX_STORE, offlineIndexKey(zone))
+  if (!record || record.expiresAt <= Date.now()) return null
+  return record.value
 }
 
 export async function writeOfflineIndex(zone: OfflineZone, places: Place[]): Promise<void> {
-  await writeCachedValue(indexKey(zone), places, Date.now() + INDEX_TTL)
+  const key = offlineIndexKey(zone)
+  await put(INDEX_STORE, { key, value: places, expiresAt: Number.MAX_SAFE_INTEGER })
 }
 
-/** Merge loaded-tile places into the persisted offline index for a zone. Idempotent. */
-export async function extendOfflineIndex(zone: OfflineZone, places: Place[]): Promise<number> {
-  const current = await readOfflineIndex(zone) ?? []
-  const merged = [...new Map([...current, ...places].map((place) => [place.id, place])).values()]
-  if (merged.length === current.length) return current.length
-  await writeOfflineIndex(zone, merged)
-  return merged.length
-}
-
-export async function searchOfflineIndex(zone: OfflineZone | null, query: string): Promise<{ places: Place[]; source: 'offline-index' | 'empty' }> {
-  if (!zone) return { places: [], source: 'empty' }
-  const places = await readOfflineIndex(zone)
-  if (!places || places.length === 0) return { places: [], source: 'empty' }
-  return { places: searchLocalPlaces(places, query), source: 'offline-index' }
+export async function searchOfflineIndex(zone: OfflineZone | null, query: string): Promise<{
+  places: Place[]
+  source: 'offline-index' | 'empty' | 'not-indexed' | 'unavailable'
+  error?: string
+}> {
+  if (!zone) return { places: [], source: 'not-indexed' }
+  try {
+    const places = await readOfflineIndex(zone)
+    if (!places) return { places: [], source: 'not-indexed' }
+    if (places.length === 0) return { places: [], source: 'empty' }
+    return { places: searchLocalPlaces(places.filter((place) => isInZone(zone, place.coordinates)), query), source: 'offline-index' }
+  } catch (error) {
+    return {
+      places: [],
+      source: 'unavailable',
+      error: error instanceof Error ? error.message : 'Unable to read the offline place index',
+    }
+  }
 }

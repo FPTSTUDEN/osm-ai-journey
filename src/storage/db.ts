@@ -1,5 +1,5 @@
 const DATABASE_NAME = 'osm-ai-journey'
-const DATABASE_VERSION = 4
+const DATABASE_VERSION = 5
 
 let databasePromise: Promise<IDBDatabase> | null = null
 
@@ -19,6 +19,7 @@ export function getDb(): Promise<IDBDatabase> {
       if (!database.objectStoreNames.contains('journeys')) database.createObjectStore('journeys', { keyPath: 'id' })
       if (!database.objectStoreNames.contains('live-data')) database.createObjectStore('live-data', { keyPath: 'key' })
       if (!database.objectStoreNames.contains('companion-art')) database.createObjectStore('companion-art', { keyPath: 'key' })
+      if (!database.objectStoreNames.contains('offline-zones')) database.createObjectStore('offline-zones', { keyPath: 'key' })
     }
     request.onsuccess = () => {
       const database = request.result
@@ -50,9 +51,11 @@ export async function get<T>(store: string, key: IDBValidKey): Promise<T | undef
 export async function put(store: string, value: unknown): Promise<void> {
   const database = await getDb()
   await new Promise<void>((resolve, reject) => {
-    const request = database.transaction(store, 'readwrite').objectStore(store).put(value)
-    request.onsuccess = () => resolve()
-    request.onerror = () => reject(request.error ?? new Error(`Unable to write IndexedDB store "${store}"`))
+    const transaction = database.transaction(store, 'readwrite')
+    transaction.objectStore(store).put(value)
+    transaction.oncomplete = () => resolve()
+    transaction.onerror = () => reject(transaction.error ?? new Error(`Unable to write IndexedDB store "${store}"`))
+    transaction.onabort = () => reject(transaction.error ?? new Error(`Unable to write IndexedDB store "${store}"`))
   })
 }
 
