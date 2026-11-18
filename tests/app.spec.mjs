@@ -369,13 +369,14 @@ test('restores the last explored map viewport when no destination is selected', 
   await page.locator('.story-dock button').nth(0).click()
   const map = page.locator('.map-canvas')
   await expect(map.locator('canvas')).toBeVisible({ timeout: 15000 })
+  await expect.poll(() => readActiveMapViewport(page), { timeout: 15000 }).not.toBeNull()
   const bounds = await map.boundingBox()
   expect(bounds).not.toBeNull()
-  const startX = bounds.x + bounds.width / 2
+  const startX = bounds.x + bounds.width * 0.85
   const startY = bounds.y + bounds.height / 2
   await page.mouse.move(startX, startY)
   await page.mouse.down()
-  await page.mouse.move(startX + 120, startY + 70, { steps: 6 })
+  await page.mouse.move(startX + 40, startY + 40, { steps: 6 })
   await page.mouse.up()
 
   await expect.poll(async () => {
