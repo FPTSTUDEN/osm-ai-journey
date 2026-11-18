@@ -187,7 +187,7 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
   display: grid;
   grid-template-rows: auto auto;
   gap: 12px;
-  width: min(360px, calc(100vw - 130px));
+  width: min(500px, calc(48vw - 118px));
   height: auto;
   pointer-events: none;
 }
@@ -196,7 +196,7 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
   z-index: 0;
   inset: auto;
   width: 100%;
-  height: clamp(180px, 30vh, 280px);
+  height: clamp(300px, 44vh, 440px);
   min-height: 0;
   overflow: hidden;
   border: 1px solid #496b5a;
@@ -205,7 +205,15 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
   pointer-events: auto;
 }
 .map-panel--compact::after { background: linear-gradient(180deg, #07110d22, transparent 55%, #07110d55); }
-.zone-controls { position: absolute; z-index: 5; bottom: 28px; left: 12px; display: grid; gap: 7px; width: min(255px, calc(100% - 24px)); padding: 10px; border: 1px solid #496b5a; border-radius: 10px; background: #172521ed; color: #c8d7ca; box-shadow: 0 12px 30px #07110dcc; backdrop-filter: blur(12px); pointer-events: auto; }
+.zone-controls { position: absolute; z-index: 5; right: 12px; bottom: 12px; width: min(220px, calc(100% - 24px)); padding: 8px 10px; border: 1px solid #496b5a; border-radius: 10px; background: #172521ed; color: #c8d7ca; box-shadow: 0 12px 30px #07110dcc; backdrop-filter: blur(12px); pointer-events: auto; }
+.zone-controls[open] { width: min(300px, calc(100% - 24px)); max-height: calc(100% - 70px); overflow-y: auto; }
+.zone-controls-summary { display: flex; align-items: center; justify-content: space-between; gap: 9px; cursor: pointer; list-style: none; }
+.zone-controls-summary::-webkit-details-marker { display: none; }
+.zone-controls-summary::after { flex: 0 0 auto; color: #d5ef9a; content: '+'; }
+.zone-controls[open] .zone-controls-summary::after { content: '-'; }
+.zone-controls-summary strong { color: #d5e2d1; font: 9px ui-monospace, monospace; }
+.zone-controls-summary span { overflow: hidden; color: #9bb6a5; font: 8px ui-monospace, monospace; text-overflow: ellipsis; white-space: nowrap; }
+.zone-controls-content { display: grid; gap: 7px; padding-top: 8px; }
 .zone-toolbar-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .zone-label, .zone-progress-label, .zone-zoom-control, .zone-help { color: #9bb6a5; font: 9px ui-monospace, monospace; line-height: 1.4; }
 .zone-zoom-control { display: grid; gap: 3px; }
@@ -270,14 +278,14 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
 .conversation { max-height: 34vh; }
 
 @media (max-width: 900px) {
-  .map-layout--compact { left: 82px; width: min(330px, calc(50vw - 56px)); }
+  .map-layout--compact { left: 82px; width: min(460px, calc(50vw - 56px)); }
   .destination-dock-panel { right: 14px; width: min(320px, calc(50vw - 72px)); }
   .travelogue-panel { right: 14px; width: min(340px, calc(50vw - 72px)); }
   .journey-panel { width: calc(100vw - 40px); }
   .conversation { max-height: 26vh; }
 }
 @media (max-width: 520px) {
-  .map-layout--compact { top: 68px; right: 14px; bottom: calc(34vh + 104px); left: 14px; grid-template-rows: minmax(180px, 26vh) minmax(0, 1fr); width: auto; height: auto; }
+  .map-layout--compact { top: 68px; right: 14px; bottom: calc(34vh + 104px); left: 14px; grid-template-rows: minmax(240px, 34vh) minmax(0, 1fr); width: auto; height: auto; }
   .map-panel--compact { height: 100%; min-height: 0; }
   .destination-dock-panel { top: 68px; right: 14px; bottom: calc(34vh + 104px); left: 14px; width: auto; max-height: none; }
   .travelogue-panel { top: 68px; right: 14px; bottom: calc(34vh + 104px); left: 14px; width: auto; max-height: none; }
@@ -294,15 +302,15 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
   .story-dock { bottom: 10px; }
   .story-dock button { width: 54px; min-height: 54px; }
   .field-notes { top: 62px; right: 14px; bottom: calc(34vh + 104px); left: 14px; width: auto; max-height: none; }
-  .story-map-and-destination .map-layout--compact { top: 68px; right: 14px; bottom: auto; left: 14px; grid-template-rows: 24vh; height: 24vh; }
+  .story-map-and-destination .map-layout--compact { top: 68px; right: 14px; bottom: auto; left: 14px; grid-template-rows: 30vh; height: 30vh; }
   .story-map-and-destination .map-history-panel { display: none; }
   .story-map-and-destination .map-panel--compact { height: 100%; }
   .story-map-and-destination .map-panel--compact .map-toolbar > div { display: none; }
   .story-map-and-destination .map-panel--compact .map-toolbar .search-box { display: flex; width: calc(100% - 24px); margin: 0; }
-  .story-map-and-destination .destination-dock-panel { top: calc(68px + 24vh + 12px); right: 14px; bottom: calc(34vh + 104px); left: 14px; max-height: none; }
+  .story-map-and-destination .destination-dock-panel { top: calc(68px + 30vh + 12px); right: 14px; bottom: calc(34vh + 104px); left: 14px; max-height: none; }
 }
 @media (max-height: 650px) and (min-width: 521px) {
-  .map-panel--compact { height: 150px; }
+  .map-panel--compact { height: min(34vh, 240px); }
   .map-history-panel { max-height: 100px; padding: 10px; }
   .map-history-panel .story-dock-header, .map-history-panel .dock-hint { display: none; }
   .map-history-panel .dock-search { margin-top: 0; }
@@ -465,7 +473,7 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
 }
 @media (max-width: 520px) {
   .story-mode .map-layout--compact { top: 68px; right: 14px; bottom: calc(34vh + 104px); left: 14px; height: auto; }
-  .story-mode.story-map-and-destination .map-layout--compact { top: 68px; right: 14px; bottom: auto; left: 14px; grid-template-rows: 24vh; height: 24vh; }
+  .story-mode.story-map-and-destination .map-layout--compact { top: 68px; right: 14px; bottom: auto; left: 14px; grid-template-rows: 30vh; height: 30vh; }
   .story-mode.story-map-and-destination .map-panel--compact { height: 100%; }
   .story-presentation-control select { max-width: 88px; padding: 7px 5px; font-size: 9px; }
   .vn-character-stage { min-height: 74px; padding: 0 3%; }

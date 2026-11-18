@@ -1,7 +1,7 @@
 import { useEffect, useState, type RefObject } from 'react'
 import { LLM_PROVIDER_PRESETS } from '../providers/config'
 import { PERSONA_SPRITES } from '../providers/bundledPersonaSprites'
-import { clearOfflineCache, getOfflineCacheStatus, type OfflineCacheStatus } from '../storage/offlineCache'
+import { clearOfflineCache, clearOfflineMapCache, getOfflineCacheStatus, getOfflineMapCacheStatus, type OfflineCacheStatus, type OfflineMapCacheStatus } from '../storage/offlineCache'
 import { deleteCompanionArt, loadCompanionArt, saveCompanionArt } from '../storage/companionArt'
 import { loadSettings, saveSettings } from '../storage/settings'
 import type { UserSettings } from '../types/domain'
@@ -12,6 +12,8 @@ export function useAppSettings(settingsOpen: boolean, companionArtInputRef: RefO
   const [connectionMessage, setConnectionMessage] = useState('')
   const [offlineStatus, setOfflineStatus] = useState<OfflineCacheStatus | null>(null)
   const [offlineError, setOfflineError] = useState('')
+  const [offlineMapStatus, setOfflineMapStatus] = useState<OfflineMapCacheStatus | null>(null)
+  const [offlineMapError, setOfflineMapError] = useState('')
   const [settingsError, setSettingsError] = useState('')
   const [companionImageUrl, setCompanionImageUrl] = useState<string | null>(null)
   const [companionArtError, setCompanionArtError] = useState('')
@@ -52,8 +54,20 @@ export function useAppSettings(settingsOpen: boolean, companionArtInputRef: RefO
     }
   }
 
+  async function refreshOfflineMapStatus() {
+    setOfflineMapError('')
+    try {
+      setOfflineMapStatus(await getOfflineMapCacheStatus())
+    } catch (error) {
+      setOfflineMapError(error instanceof Error ? error.message : 'Unable to read the offline map cache')
+    }
+  }
+
   useEffect(() => {
-    if (settingsOpen) void refreshOfflineStatus()
+    if (settingsOpen) {
+      void refreshOfflineStatus()
+      void refreshOfflineMapStatus()
+    }
   }, [settingsOpen])
 
   async function clearOfflineData() {
@@ -63,6 +77,16 @@ export function useAppSettings(settingsOpen: boolean, companionArtInputRef: RefO
       await refreshOfflineStatus()
     } catch (error) {
       setOfflineError(error instanceof Error ? error.message : 'Unable to clear the offline cache')
+    }
+  }
+
+  async function clearOfflineMapData() {
+    setOfflineMapError('')
+    try {
+      await clearOfflineMapCache()
+      await refreshOfflineMapStatus()
+    } catch (error) {
+      setOfflineMapError(error instanceof Error ? error.message : 'Unable to clear the offline map cache')
     }
   }
 
@@ -126,8 +150,12 @@ export function useAppSettings(settingsOpen: boolean, companionArtInputRef: RefO
     connectionMessage,
     offlineStatus,
     offlineError,
+    offlineMapStatus,
+    offlineMapError,
     refreshOfflineStatus,
+    refreshOfflineMapStatus,
     clearOfflineData,
+    clearOfflineMapData,
     checkLlmConnection,
     changeProvider,
     companionImageUrl,

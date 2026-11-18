@@ -1,4 +1,4 @@
-import { get, put } from '../storage/db'
+import { get, getAll, put, remove } from '../storage/db'
 import { searchLocalPlaces } from './localPlaceIndex'
 import { isInZone, type OfflineZone } from '../storage/offlineZones'
 import type { Place } from '../types/domain'
@@ -24,6 +24,13 @@ export async function readOfflineIndex(zone: OfflineZone): Promise<Place[] | nul
 export async function writeOfflineIndex(zone: OfflineZone, places: Place[], generation = zone.cacheGeneration ?? 'legacy'): Promise<void> {
   const key = offlineIndexKey(zone, generation)
   await put(INDEX_STORE, { key, value: places, expiresAt: Number.MAX_SAFE_INTEGER })
+}
+
+export async function clearOfflineIndexes(): Promise<void> {
+  const records = await getAll<CachedIndex>(INDEX_STORE)
+  await Promise.all(records
+    .filter((record) => record.key.startsWith('offline-index:'))
+    .map((record) => remove(INDEX_STORE, record.key)))
 }
 
 export async function searchOfflineIndex(zone: OfflineZone | null, query: string): Promise<{

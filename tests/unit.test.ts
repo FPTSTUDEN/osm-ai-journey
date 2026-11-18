@@ -43,6 +43,25 @@ function pointVectorTile(name: string) {
   return tile.finish()
 }
 
+function polygonVectorTile(name: string) {
+  const tile = new PbfWriter()
+  tile.writeMessage(3, (_layer, writer) => {
+    writer.writeStringField(1, 'places')
+    writer.writeMessage(2, (_feature, feature) => {
+      feature.writePackedVarint(2, [0, 0, 1, 1])
+      feature.writeVarintField(3, 3)
+      feature.writePackedVarint(4, [9, 3584, 3584, 34, 1024, 0, 0, 1024, 1023, 0, 15])
+    }, {})
+    writer.writeStringField(3, 'name')
+    writer.writeStringField(3, 'class')
+    writer.writeMessage(4, (_value, value) => value.writeStringField(1, name), {})
+    writer.writeMessage(4, (_value, value) => value.writeStringField(1, 'museum'), {})
+    writer.writeVarintField(5, 4096)
+    writer.writeVarintField(15, 2)
+  }, {})
+  return tile.finish()
+}
+
 test('local search ranks prefix matches and requires all terms', () => {
   const results = searchLocalPlaces([place('1', 'Central Station', 'transport'), place('2', 'Station Road', 'road'), place('3', 'Museum')], 'central station')
   assert.deepEqual(results.map((item) => item.id), ['1'])
@@ -67,6 +86,14 @@ test('places preserve opening-hours tags from loaded map features', () => {
     properties: { name: 'Central Library', opening_hours: 'Mo-Fr 09:00-17:00' },
   })
   assert.equal(mapped?.openingHours, 'Mo-Fr 09:00-17:00')
+})
+
+test('places use localized English names when a vector feature has no default name', () => {
+  const mapped = placeFromFeature({
+    geometry: { type: 'Point', coordinates: [2.35, 48.85] },
+    properties: { 'name:en': 'Central Library' },
+  })
+  assert.equal(mapped?.name, 'Central Library')
 })
 
 test('Overpass queries escape place names and return nearby named transit stops in distance order', () => {
@@ -462,6 +489,21 @@ test('offline vector tile extraction indexes named point features only inside th
 
   const outsideZone = { ...zone, bounds: [10, 10, 11, 11] as [number, number, number, number] }
   assert.deepEqual(placesFromVectorTile(tile, { z: 0, x: 0, y: 0 }, outsideZone), [])
+})
+
+test('high-zoom polygon places make it into the completed offline search index', async () => {
+  const zone = { ...newZoneFromViewport([0, 0], 11, 16), bounds: [-180, -85, 180, 85] as [number, number, number, number] }
+  let persisted: Place[] = []
+  const result = await runCache(zone, {
+    enumerate: () => [{ z: 16, x: 33192, y: 22500 }],
+    fetchTile: async (tile) => placesFromVectorTile(polygonVectorTile('High-zoom Museum'), tile, zone),
+    persistIndex: async (places) => { persisted = places },
+  })
+
+  assert.equal(result.status, 'ready')
+  assert.equal(result.indexedFeatures, 1)
+  assert.deepEqual(persisted.map((item) => item.name), ['High-zoom Museum'])
+  assert.equal(Number.isFinite(persisted[0].coordinates[0]) && Number.isFinite(persisted[0].coordinates[1]), true)
 })
 
 test('offline zone tile enumeration rejects sampled coverage instead of omitting tiles', () => {

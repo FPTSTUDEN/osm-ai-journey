@@ -1,6 +1,7 @@
 import { listZones, saveZoneStrict, type OfflineZone } from '../storage/offlineZones'
+import { MAP_RESOURCE_CACHE_NAME, OFFLINE_TILE_CACHE_NAME } from '../storage/cacheNames'
 
-export const OFFLINE_TILE_CACHE_NAME = 'osm-ai-journey-offline-tiles-v1'
+export { MAP_RESOURCE_CACHE_NAME, OFFLINE_TILE_CACHE_NAME } from '../storage/cacheNames'
 export const MAX_OFFLINE_TILES = 1200
 
 export async function hasCompleteOfflineTileCache(zone: OfflineZone): Promise<boolean> {

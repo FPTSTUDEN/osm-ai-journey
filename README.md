@@ -29,8 +29,9 @@ Run validation with `pnpm test:unit` and `pnpm test:e2e`.
 - Clicking a visible map feature is local and never geocodes automatically.
 - Search checks the local tile-derived index first; online geocoding only happens after an explicit action.
 - Offline zones can be moved and resized on the map or by editing their bounds, and their maximum tile zoom is configurable.
-- Caching a zone indexes named point features from every successfully fetched OpenFreeMap vector tile in its bounds and zoom range; the zone is ready only after all tiles succeed and the index is persisted.
+- Caching a zone indexes named point and polygon features from every successfully fetched OpenFreeMap vector tile in its bounds and zoom range; the zone is ready only after all tiles succeed and the index is persisted.
 - Offline tiles use a bounded 1,200-tile cache. Tiles shared by zones are reused, and tiles referenced by saved zones are protected from LRU eviction.
+- Settings manage offline map resources separately from app-shell cache data; clearing the map cache also removes its search indexes and marks affected zones incomplete.
 - Offline search cannot find places omitted from vector tiles, features represented only by raster tiles, or uncached online-geocoder results. Browser storage may be evicted, and storage/quota limits can prevent caching.
 - Online geocoder results are cached in IndexedDB.
 - Walking route calculation is optional for every destination transition.

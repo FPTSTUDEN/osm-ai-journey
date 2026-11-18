@@ -204,8 +204,9 @@ test('offline tile cache reuses shared tiles and preserves saved-zone manifests'
   await page.route('**/tile-cache-fixture', (route) => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body></body></html>' }))
   await page.goto('/tile-cache-fixture')
   const result = await page.evaluate(async () => {
-    const { beginOfflineTileCache, OFFLINE_TILE_CACHE_NAME } = await import('/src/providers/offlineTileCache.ts')
+    const { beginOfflineTileCache, MAP_RESOURCE_CACHE_NAME, OFFLINE_TILE_CACHE_NAME } = await import('/src/providers/offlineTileCache.ts')
     const { listZones } = await import('/src/storage/offlineZones.ts')
+    const { writeOfflineIndex, searchOfflineIndex } = await import('/src/providers/offlineIndex.ts')
     const zone = (id) => ({ id, label: id, bounds: [0, 0, 1, 1], maxZoom: 1, createdAt: new Date().toISOString(), cachedBytes: 0, status: 'idle' })
     const first = await beginOfflineTileCache(zone('zone-a'), ['https://tiles.test/shared', 'https://tiles.test/a'])
     let firstFetches = 0
@@ -216,6 +217,8 @@ test('offline tile cache reuses shared tiles and preserves saved-zone manifests'
       })
     }
     await first.commit(zone('zone-a'), 'generation-a', 1)
+    const indexZone = { ...zone('zone-a'), cacheGeneration: 'generation-a' }
+    await writeOfflineIndex(indexZone, [{ id: 'offline-place', name: 'Offline Place', coordinates: [0.5, 0.5], source: 'map' }], 'generation-a')
 
     const second = await beginOfflineTileCache(zone('zone-b'), ['https://tiles.test/shared', 'https://tiles.test/b'])
     let sharedFetches = 0
@@ -226,10 +229,12 @@ test('offline tile cache reuses shared tiles and preserves saved-zone manifests'
     await second.readOrFetch('https://tiles.test/b', new AbortController().signal, async () => new Response(new Uint8Array([5])))
     await second.commit(zone('zone-b'), 'generation-b', 1)
 
+    const mapCache = await caches.open(MAP_RESOURCE_CACHE_NAME)
+    await mapCache.put('https://tiles.test/style-resource', new Response('map style'))
     const cache = await caches.open(OFFLINE_TILE_CACHE_NAME)
     const cachedUrls = (await cache.keys()).map((request) => request.url).sort()
-    const { clearOfflineCache } = await import('/src/storage/offlineCache.ts')
-    await clearOfflineCache()
+    const { clearOfflineMapCache } = await import('/src/storage/offlineCache.ts')
+    await clearOfflineMapCache()
     const clearedZones = await listZones()
     return {
       firstFetches,
@@ -238,6 +243,9 @@ test('offline tile cache reuses shared tiles and preserves saved-zone manifests'
       savedZoneIds: (await listZones()).map((saved) => saved.id).sort(),
       clearedZoneStatuses: clearedZones.map((saved) => saved.status).sort(),
       remainingTileUrls: clearedZones.flatMap((saved) => saved.cachedTileUrls ?? []),
+      clearedIndex: await searchOfflineIndex(indexZone, '').then((result) => result.source),
+      remainingMapCacheNames: (await caches.keys()).filter((name) => name.includes('map-v1') || name.includes('offline-tiles-v1')),
+      clearedFeatureCounts: clearedZones.map((saved) => saved.indexedFeatureCount),
     }
   })
   expect(result.firstFetches).toBe(2)
@@ -246,6 +254,9 @@ test('offline tile cache reuses shared tiles and preserves saved-zone manifests'
   expect(result.savedZoneIds).toEqual(['zone-a', 'zone-b'])
   expect(result.clearedZoneStatuses).toEqual(['partial', 'partial'])
   expect(result.remainingTileUrls).toEqual([])
+  expect(result.clearedIndex).toBe('not-indexed')
+  expect(result.remainingMapCacheNames).toEqual([])
+  expect(result.clearedFeatureCounts).toEqual([undefined, undefined])
 })
 
 test('field notes reuse the full place details view', async ({ page }) => {
@@ -310,12 +321,85 @@ test('a local PMTiles picker rejects files without a pmtiles extension', async (
 
 test('offline cache status ignores unrelated origin caches and clearing leaves them intact', async ({ page }) => {
   await resetBrowser(page)
-  await page.evaluate(() => caches.open('unrelated-cache'))
+  await page.evaluate(async () => {
+    const { MAP_RESOURCE_CACHE_NAME, OFFLINE_TILE_CACHE_NAME } = await import('/src/providers/offlineTileCache.ts')
+    const appCache = await caches.open('osm-ai-journey-shell-test')
+    await appCache.put('https://app.test/app.js', new Response('app'))
+    const tileCache = await caches.open(OFFLINE_TILE_CACHE_NAME)
+    await tileCache.put('https://tiles.test/one', new Response('tile'))
+    const mapCache = await caches.open(MAP_RESOURCE_CACHE_NAME)
+    await mapCache.put('https://tiles.test/style', new Response('map resource'))
+    await caches.open('unrelated-cache')
+  })
   await page.getByRole('button', { name: 'Toggle settings' }).click()
   await page.getByRole('button', { name: 'Refresh status' }).click()
-  await expect(page.locator('.offline-cache').first()).toContainText('0 cached resources across 0 caches')
-  await page.getByRole('button', { name: 'Clear cache' }).click()
+  await expect(page.locator('.offline-cache').first()).toContainText('1 cached resources across 1 cache')
+  await expect(page.locator('.map-cache')).toContainText('1 offline tiles · 1 map resources')
+  await page.getByRole('button', { name: 'Clear app cache' }).click()
   await expect.poll(() => page.evaluate(() => caches.keys())).toContain('unrelated-cache')
+  await expect.poll(() => page.evaluate(async () => {
+    const { OFFLINE_TILE_CACHE_NAME } = await import('/src/providers/offlineTileCache.ts')
+    return (await caches.keys()).includes(OFFLINE_TILE_CACHE_NAME)
+  })).toBe(true)
+})
+
+test('map cache controls clear map tiles and indexes without clearing the app cache', async ({ page }) => {
+  await resetBrowser(page)
+  await page.evaluate(async () => {
+    const { MAP_RESOURCE_CACHE_NAME, OFFLINE_TILE_CACHE_NAME } = await import('/src/providers/offlineTileCache.ts')
+    const { saveZoneStrict } = await import('/src/storage/offlineZones.ts')
+    const { writeOfflineIndex } = await import('/src/providers/offlineIndex.ts')
+    const zone = {
+      id: 'settings-map-zone',
+      label: 'Settings test zone',
+      bounds: [0, 0, 1, 1],
+      maxZoom: 14,
+      createdAt: new Date().toISOString(),
+      cachedBytes: 4,
+      cachedTileCount: 1,
+      cachedTileUrls: ['https://tiles.test/offline'],
+      cacheGeneration: 'settings-generation',
+      indexedFeatureCount: 1,
+      status: 'ready',
+    }
+    await saveZoneStrict(zone)
+    await writeOfflineIndex(zone, [{ id: 'place', name: 'Saved Place', coordinates: [0.5, 0.5], source: 'map' }], zone.cacheGeneration)
+    await (await caches.open(OFFLINE_TILE_CACHE_NAME)).put('https://tiles.test/offline', new Response('tile'))
+    await (await caches.open(MAP_RESOURCE_CACHE_NAME)).put('https://tiles.test/style', new Response('map'))
+    await (await caches.open('osm-ai-journey-shell-test')).put('https://app.test/app.js', new Response('app'))
+  })
+  await page.getByRole('button', { name: 'Toggle settings' }).click()
+  await expect(page.locator('.map-cache')).toContainText('1 offline tiles · 1 map resources · 1 places indexed across 1 saved zone')
+  await page.getByRole('button', { name: 'Clear map cache' }).click()
+  await expect(page.locator('.map-cache')).toContainText('0 offline tiles · 0 map resources · 0 places indexed across 1 saved zone')
+  const result = await page.evaluate(async () => {
+    const { OFFLINE_TILE_CACHE_NAME } = await import('/src/providers/offlineTileCache.ts')
+    const { loadZone } = await import('/src/storage/offlineZones.ts')
+    const { searchOfflineIndex } = await import('/src/providers/offlineIndex.ts')
+    const zone = await loadZone()
+    return {
+      tileCacheExists: (await caches.keys()).includes(OFFLINE_TILE_CACHE_NAME),
+      appCacheExists: (await caches.keys()).includes('osm-ai-journey-shell-test'),
+      status: zone?.status,
+      indexedFeatureCount: zone?.indexedFeatureCount,
+      indexState: zone ? (await searchOfflineIndex(zone, '')).source : 'missing-zone',
+    }
+  })
+  expect(result).toEqual({ tileCacheExists: false, appCacheExists: true, status: 'partial', indexedFeatureCount: undefined, indexState: 'not-indexed' })
+})
+
+test('map panel is larger and offline-zone tools stay collapsed until opened', async ({ page }) => {
+  await resetBrowser(page)
+  await page.locator('.story-dock button').first().click()
+  const mapPanel = page.locator('.map-panel--compact')
+  await expect(mapPanel).toBeVisible()
+  const panelHeight = await mapPanel.evaluate((element) => element.getBoundingClientRect().height)
+  expect(panelHeight).toBeGreaterThanOrEqual(300)
+  const zoneControls = page.locator('.zone-controls')
+  await expect(zoneControls.locator('summary')).toBeVisible()
+  await expect(zoneControls.locator('.zone-controls-content')).toBeHidden()
+  await zoneControls.locator('summary').click()
+  await expect(zoneControls.locator('.zone-controls-content')).toBeVisible()
 })
 
 test('completes and restores an online destination journey', async ({ page }) => {

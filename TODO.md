@@ -22,6 +22,9 @@
   - [x] Verify failed tile downloads or index/storage failures never report the zone as fully ready.
   - [~] Verify browser refresh and eviction keep the tile cache and search index consistent. (unit eviction policy and browser shared-tile manifests are covered; browser quota/eviction integration remains)
 - [x] Update product and architecture documentation for zone selection, the searchable-feature guarantee, and limitations. (README, `docs/PRODUCT.md`, and `docs/ARCHITECTURE.md`)
+- [x] Fix zero-place indexing for high-zoom vector tiles by indexing named polygon features and localized names; add regression coverage.
+- [x] Add separate map-cache status and clearing controls alongside the app cache; clear map indexes and mark affected zones incomplete.
+- [x] Enlarge the map panel and make offline-zone tools collapsible so they do not obscure the map.
 
 ## 2. Highlight the complete journey on the map
 

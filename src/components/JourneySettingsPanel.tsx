@@ -55,6 +55,9 @@ export function JourneySettingsPanel({ open, onClose, appSettings, journeyAction
     offlineStatus={appSettings.offlineStatus}
     onRefreshOfflineStatus={() => void appSettings.refreshOfflineStatus()}
     onClearOfflineData={() => void appSettings.clearOfflineData()}
+    offlineMapStatus={appSettings.offlineMapStatus}
+    onRefreshOfflineMapStatus={() => void appSettings.refreshOfflineMapStatus()}
+    onClearOfflineMapData={() => void appSettings.clearOfflineMapData()}
     summaryState={summaryState}
     conversationSummary={conversationSummary}
     destinationCount={destinationCount}
@@ -73,6 +76,7 @@ export function JourneySettingsPanel({ open, onClose, appSettings, journeyAction
     onDeleteJourney={() => void journeyActions.deleteJourney()}
     settingsError={appSettings.settingsError}
     offlineError={appSettings.offlineError}
+    offlineMapError={appSettings.offlineMapError}
     localPmtilesFileName={localPmtiles.archive?.fileName ?? null}
     localPmtilesError={localPmtiles.error}
     localPmtilesLoading={localPmtiles.loading}

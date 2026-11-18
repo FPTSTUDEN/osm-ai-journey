@@ -1,5 +1,5 @@
 import type { RefObject } from 'react'
-import type { OfflineCacheStatus } from '../storage/offlineCache'
+import type { OfflineCacheStatus, OfflineMapCacheStatus } from '../storage/offlineCache'
 import type { PersonaProfile, UserSettings } from '../types/domain'
 import { DEFAULT_PERSONA_ID } from '../providers/config'
 import { PERSONA_SPRITES } from '../providers/bundledPersonaSprites'
@@ -31,6 +31,9 @@ type SettingsDrawerProps = {
   offlineStatus: OfflineCacheStatus | null
   onRefreshOfflineStatus: () => void
   onClearOfflineData: () => void
+  offlineMapStatus: OfflineMapCacheStatus | null
+  onRefreshOfflineMapStatus: () => void
+  onClearOfflineMapData: () => void
   summaryState: 'idle' | 'loading'
   conversationSummary: string
   destinationCount: number
@@ -49,6 +52,7 @@ type SettingsDrawerProps = {
   onDeleteJourney: () => void
   settingsError: string
   offlineError: string
+  offlineMapError: string
   localPmtilesFileName: string | null
   localPmtilesError: string
   localPmtilesLoading: boolean
@@ -86,6 +90,9 @@ export function SettingsDrawer({
   offlineStatus,
   onRefreshOfflineStatus,
   onClearOfflineData,
+  offlineMapStatus,
+  onRefreshOfflineMapStatus,
+  onClearOfflineMapData,
   summaryState,
   conversationSummary,
   destinationCount,
@@ -104,6 +111,7 @@ export function SettingsDrawer({
   onDeleteJourney,
   settingsError,
   offlineError,
+  offlineMapError,
   localPmtilesFileName,
   localPmtilesError,
   localPmtilesLoading,
@@ -147,7 +155,8 @@ export function SettingsDrawer({
       </fieldset>
       <label className="toggle-row"><span>Calculate walking routes by default</span><input type="checkbox" checked={settings.calculateWalkingRoutes} onChange={(event) => onSettingsChange({ calculateWalkingRoutes: event.target.checked })} /></label>
       <label className="toggle-row"><span>Enable optional live data</span><input type="checkbox" checked={settings.liveDataEnabled} onChange={(event) => onSettingsChange({ liveDataEnabled: event.target.checked })} /></label>
-      <div className="offline-cache"><p className="memory-label">Offline cache</p><p className="settings-note">{offlineStatus ? `${offlineStatus.entries} cached resources across ${offlineStatus.cacheNames.length} cache${offlineStatus.cacheNames.length === 1 ? '' : 's'}.` : 'Checking cached resources…'}</p>{offlineError && <p className="connection-error" role="alert">{offlineError}</p>}<div className="settings-actions"><button type="button" onClick={onRefreshOfflineStatus}>Refresh status</button><button type="button" onClick={onClearOfflineData}>Clear cache</button></div></div>
+      <div className="offline-cache"><p className="memory-label">Offline app cache</p><p className="settings-note">{offlineStatus ? `${offlineStatus.entries} cached resources across ${offlineStatus.cacheNames.length} cache${offlineStatus.cacheNames.length === 1 ? '' : 's'}. Map tiles are managed separately below.` : 'Checking cached resources…'}</p>{offlineError && <p className="connection-error" role="alert">{offlineError}</p>}<div className="settings-actions"><button type="button" onClick={onRefreshOfflineStatus}>Refresh status</button><button type="button" onClick={onClearOfflineData}>Clear app cache</button></div></div>
+      <div className="offline-cache map-cache"><p className="memory-label">Offline map cache</p><p className="settings-note">{offlineMapStatus ? `${offlineMapStatus.tiles} offline tiles · ${offlineMapStatus.mapResources} map resources · ${offlineMapStatus.indexedPlaces} places indexed across ${offlineMapStatus.zones} saved zone${offlineMapStatus.zones === 1 ? '' : 's'}.` : 'Checking cached map data…'}</p>{offlineMapError && <p className="connection-error" role="alert">{offlineMapError}</p>}<div className="settings-actions"><button type="button" onClick={onRefreshOfflineMapStatus}>Refresh map status</button><button type="button" onClick={onClearOfflineMapData}>Clear map cache</button></div></div>
       <div className="offline-cache">
         <p className="memory-label">Local PMTiles map</p>
         <label>Choose a .pmtiles archive<input type="file" accept=".pmtiles,application/octet-stream" onChange={(event) => { onSelectLocalPmtiles(event.target.files?.[0]); event.currentTarget.value = '' }} /></label>

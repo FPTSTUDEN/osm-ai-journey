@@ -46,29 +46,32 @@ export function ZoneControls({ zone, progress, editing, onCache, onCancel, onTog
 
   const boundLabels = ['West longitude', 'South latitude', 'East longitude', 'North latitude']
   return (
-    <div className="zone-controls">
-      <div className="zone-toolbar-row"><strong className="zone-label">Offline zone</strong>
-        {!busy && <button type="button" className="zone-button" aria-pressed={editing} onClick={() => onToggleEditing(!editing)}>{editing ? 'Done editing' : 'Edit zone'}</button>}
-      </div>
-      {!busy && <label className="zone-zoom-control">Maximum zoom · {zone.maxZoom}
-        <input aria-label="Maximum offline map zoom" type="range" min="0" max="16" step="1" value={zone.maxZoom} disabled={editing} onChange={(event) => onMaxZoomChange(Number(event.target.value))} />
-      </label>}
-      {editing && <>
-        <div className="zone-bounds-grid">{boundLabels.map((label, index) => <label key={label}>{label}
-          <input aria-label={label} type="text" inputMode="decimal" value={boundsDraft[index]} onChange={(event) => setBoundsDraft((current) => { const next = [...current] as BoundsDraft; next[index] = event.target.value; return next })} onBlur={() => commitBound(index)} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur() }} />
-        </label>)}</div>
-        <span className="zone-help">Drag the center or enter coordinates; drag a corner to resize.</span>
-        {boundsError && <span className="zone-progress-label" role="status">{boundsError}</span>}
-      </>}
-      {busy
-        ? <><span className="zone-progress-label">{progress ? `${percent}% · ${progress.done}/${progress.total} tiles · ${progress.featuresFound} features found` : 'Starting…'}</span><button type="button" className="zone-button zone-cancel" onClick={onCancel}>Cancel</button></>
-        : <>
-          {zone.status === 'ready' && <span className="zone-progress-label">{zone.cachedTileCount ?? 0} tiles fetched · {zone.indexedFeatureCount ?? 0} places indexed</span>}
-          {zone.status === 'partial' && <span className="zone-progress-label">Incomplete · {zone.cachedTileCount ?? 0} tiles fetched · {zone.indexedFeatureCount ?? 0} places in previous index</span>}
-          {zone.status === 'failed' && <span className="zone-progress-label" role="status">{zone.cacheError ?? 'Offline cache failed'}</span>}
-          <button type="button" className="zone-button" onClick={onCache}>{zone.status === 'ready' ? 'Refresh cache' : 'Cache this zone'}</button>
+    <details className="zone-controls" open={editing || busy}>
+      <summary className="zone-controls-summary"><strong>Offline zone</strong><span>{busy ? 'Caching…' : zone.status === 'ready' ? `${zone.cachedTileCount ?? 0} tiles · ${zone.indexedFeatureCount ?? 0} places` : zone.status === 'partial' ? 'Cache incomplete' : zone.status === 'failed' ? 'Cache failed' : 'Manage cache'}</span></summary>
+      <div className="zone-controls-content">
+        <div className="zone-toolbar-row"><strong className="zone-label">Zone settings</strong>
+          {!busy && <button type="button" className="zone-button" aria-pressed={editing} onClick={() => onToggleEditing(!editing)}>{editing ? 'Done editing' : 'Edit zone'}</button>}
+        </div>
+        {!busy && <label className="zone-zoom-control">Maximum zoom · {zone.maxZoom}
+          <input aria-label="Maximum offline map zoom" type="range" min="0" max="16" step="1" value={zone.maxZoom} disabled={editing} onChange={(event) => onMaxZoomChange(Number(event.target.value))} />
+        </label>}
+        {editing && <>
+          <div className="zone-bounds-grid">{boundLabels.map((label, index) => <label key={label}>{label}
+            <input aria-label={label} type="text" inputMode="decimal" value={boundsDraft[index]} onChange={(event) => setBoundsDraft((current) => { const next = [...current] as BoundsDraft; next[index] = event.target.value; return next })} onBlur={() => commitBound(index)} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur() }} />
+          </label>)}</div>
+          <span className="zone-help">Drag the center or enter coordinates; drag a corner to resize.</span>
+          {boundsError && <span className="zone-progress-label" role="status">{boundsError}</span>}
         </>}
-      {!busy && zone.status === 'partial' && zone.cacheError && <span className="zone-progress-label" role="status">{zone.cacheError}</span>}
-    </div>
+        {busy
+          ? <><span className="zone-progress-label">{progress ? `${percent}% · ${progress.done}/${progress.total} tiles · ${progress.featuresFound} features found` : 'Starting…'}</span><button type="button" className="zone-button zone-cancel" onClick={onCancel}>Cancel</button></>
+          : <>
+            {zone.status === 'ready' && <span className="zone-progress-label">{zone.cachedTileCount ?? 0} tiles fetched · {zone.indexedFeatureCount ?? 0} places indexed</span>}
+            {zone.status === 'partial' && <span className="zone-progress-label">Incomplete · {zone.cachedTileCount ?? 0} tiles fetched · {zone.indexedFeatureCount ?? 0} places in previous index</span>}
+            {zone.status === 'failed' && <span className="zone-progress-label" role="status">{zone.cacheError ?? 'Offline cache failed'}</span>}
+            <button type="button" className="zone-button" onClick={onCache}>{zone.status === 'ready' ? 'Refresh cache' : 'Cache this zone'}</button>
+          </>}
+        {!busy && zone.status === 'partial' && zone.cacheError && <span className="zone-progress-label" role="status">{zone.cacheError}</span>}
+      </div>
+    </details>
   )
 }

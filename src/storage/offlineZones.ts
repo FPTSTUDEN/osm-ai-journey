@@ -81,6 +81,8 @@ export async function markZoneTilesCleared(): Promise<void> {
           cachedBytes: 0,
           cachedTileCount: 0,
           cachedTileUrls: [],
+          cacheGeneration: undefined,
+          indexedFeatureCount: undefined,
           cacheError: 'Offline map tiles were cleared. Refresh this zone to cache them again.',
         }
         : zone,

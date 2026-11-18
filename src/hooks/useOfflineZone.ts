@@ -66,6 +66,8 @@ export function useOfflineZone(mapCenter: [number, number] | null, mapZoom: numb
           cachedBytes: 0,
           cachedTileCount: 0,
           cachedTileUrls: [],
+          cacheGeneration: undefined,
+          indexedFeatureCount: undefined,
           cacheError: 'Offline map tiles were cleared. Refresh this zone to cache them again.',
         }
         void saveZone(incomplete)
