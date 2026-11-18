@@ -8,7 +8,7 @@ import { useMapSearch } from '../hooks/useMapSearch'
 import { usePlaceData } from '../hooks/usePlaceData'
 import { useStoryPanels } from '../hooks/useStoryPanels'
 import { useOfflineZone } from '../hooks/useOfflineZone'
-import { enumerateZoneTiles, tileUrl } from '../providers/offlineCache'
+import { enumerateZoneTiles, loadOpenFreeMapTileSource, tileUrl } from '../providers/offlineCache'
 import { beginOfflineTileCache } from '../providers/offlineTileCache'
 import { ZoneControls } from './ZoneControls'
 import type { JourneyLeg, MapViewport, Place, PlacePhoto, UserSettings, WalkingRoute } from '../types/domain'
@@ -125,13 +125,15 @@ export function StoryPanels({
     const zone = offlineZone.zone
     if (!zone) return
     let jobs
+    let tileSource
     try {
-      jobs = enumerateZoneTiles(zone)
+      tileSource = await loadOpenFreeMapTileSource()
+      jobs = enumerateZoneTiles(zone, tileSource.maxZoom)
     } catch (error) {
       offlineZone.reportCacheError(error)
       return
     }
-    const tileUrls = jobs.map(tileUrl)
+    const tileUrls = jobs.map((job) => tileUrl(job, tileSource.tileTemplate))
     let tileCachePromise: ReturnType<typeof beginOfflineTileCache> | null = null
     const tileCacheSession: { current: Awaited<ReturnType<typeof beginOfflineTileCache>> | null } = { current: null }
     const getTileCache = async () => {
@@ -142,7 +144,7 @@ export function StoryPanels({
     }
     const result = await offlineZone.cacheZone(async (job, signal) => {
       const cache = await getTileCache()
-      const url = tileUrl(job)
+      const url = tileUrl(job, tileSource.tileTemplate)
       const data = await cache.readOrFetch(url, signal, async (requestSignal) => fetch(url, { signal: requestSignal, mode: 'cors' }))
       const { placesFromVectorTile } = await import('../providers/vectorTilePlaces')
       return placesFromVectorTile(data, job, zone)
@@ -151,7 +153,7 @@ export function StoryPanels({
       const { writeOfflineIndex } = await import('../providers/offlineIndex')
       await writeOfflineIndex(zone, places, generation)
       await cache.commit(zone, generation, places.length)
-    })
+    }, () => jobs, (job) => tileUrl(job, tileSource.tileTemplate))
     if (result?.status !== 'ready' && tileCacheSession.current) await tileCacheSession.current.rollback()
   }
 

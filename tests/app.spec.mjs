@@ -388,6 +388,49 @@ test('map cache controls clear map tiles and indexes without clearing the app ca
   expect(result).toEqual({ tileCacheExists: false, appCacheExists: true, status: 'partial', indexedFeatureCount: undefined, indexState: 'not-indexed' })
 })
 
+test('caches and searches real OpenFreeMap places for a high-zoom zone', async ({ page }) => {
+  test.setTimeout(180_000)
+  await resetBrowser(page)
+  test.setTimeout(180_000)
+  await page.evaluate(async () => {
+    const { saveZoneStrict } = await import('/src/storage/offlineZones.ts')
+    await saveZoneStrict({
+      id: 'live-high-zoom-zone',
+      label: 'Louvre test zone',
+      bounds: [2.331, 48.861, 2.34, 48.864],
+      maxZoom: 16,
+      createdAt: new Date().toISOString(),
+      cachedBytes: 0,
+      status: 'idle',
+    })
+  })
+  await page.reload()
+  await waitForApplicationReady(page)
+  await page.locator('.story-dock button').first().click()
+  const zoneControls = page.locator('.zone-controls')
+  await zoneControls.locator('summary').click()
+  await expect(zoneControls.locator('.zone-zoom-control')).toContainText('Maximum zoom · 16')
+  await zoneControls.getByRole('button', { name: 'Cache this zone' }).click()
+  await expect(zoneControls.locator('.zone-progress-label')).toContainText(/\d+ tiles fetched · [1-9]\d* places indexed/, { timeout: 150_000 })
+
+  const result = await page.evaluate(async () => {
+    const { loadZone } = await import('/src/storage/offlineZones.ts')
+    const { searchOfflineIndex } = await import('/src/providers/offlineIndex.ts')
+    const zone = await loadZone()
+    if (!zone) throw new Error('The cached zone was not saved')
+    return { zone, search: await searchOfflineIndex(zone, 'Louvre') }
+  })
+  expect(result.zone.status).toBe('ready')
+  expect(result.zone.indexedFeatureCount).toBeGreaterThan(0)
+  expect(result.search.source).toBe('offline-index')
+  expect(result.search.places.some((place) => /louvre/i.test(place.name))).toBe(true)
+
+  const searchBox = page.getByPlaceholder('Search places')
+  await searchBox.fill('Louvre')
+  await expect(page.locator('.result-label')).toHaveText('From offline index')
+  await expect(page.locator('.search-results')).toContainText('Louvre')
+})
+
 test('map panel is larger and offline-zone tools stay collapsed until opened', async ({ page }) => {
   await resetBrowser(page)
   await page.locator('.story-dock button').first().click()

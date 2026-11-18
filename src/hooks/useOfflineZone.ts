@@ -88,6 +88,8 @@ export function useOfflineZone(mapCenter: [number, number] | null, mapZoom: numb
   const cacheZone = useCallback(async (
     fetchTile: Parameters<typeof runCache>[1]['fetchTile'],
     persistIndex: Parameters<typeof runCache>[1]['persistIndex'],
+    enumerate?: Parameters<typeof runCache>[1]['enumerate'],
+    tileUrl?: Parameters<typeof runCache>[1]['tileUrl'],
   ) => {
     if (!zone) return null
     abortRef.current?.abort()
@@ -95,6 +97,8 @@ export function useOfflineZone(mapCenter: [number, number] | null, mapZoom: numb
     abortRef.current = controller
     setZone((current) => current ? { ...current, status: 'caching' } : current)
     const next = await runCache(zone, {
+      enumerate,
+      tileUrl,
       fetchTile,
       persistIndex,
       signal: controller.signal,

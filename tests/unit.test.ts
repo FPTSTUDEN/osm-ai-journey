@@ -17,7 +17,7 @@ import { DEFAULT_PERSONA, DEFAULT_PERSONA_ID } from '../src/providers/config'
 import { parsePersonaSpriteFilename } from '../src/providers/personaSprites'
 import { defaultZoneFromViewport, isInZone, newZoneFromViewport, replaceOfflineZoneBounds } from '../src/storage/offlineZones'
 import { offlineIndexKey, searchOfflineIndex, writeOfflineIndex } from '../src/providers/offlineIndex'
-import { enumerateZoneTiles, runCache, type TileJob } from '../src/providers/offlineCache'
+import { enumerateZoneTiles, loadOpenFreeMapTileSource, runCache, tileUrl, type TileJob } from '../src/providers/offlineCache'
 import { MAX_OFFLINE_TILES, selectTileEvictions } from '../src/providers/offlineTileCache'
 import { placesFromVectorTile } from '../src/providers/vectorTilePlaces'
 import { PbfWriter } from 'pbf'
@@ -509,6 +509,18 @@ test('high-zoom polygon places make it into the completed offline search index',
 test('offline zone tile enumeration rejects sampled coverage instead of omitting tiles', () => {
   const zone = { ...newZoneFromViewport([0, 0], 11, 5), bounds: [-180, -85, 180, 85] as [number, number, number, number] }
   assert.throws(() => enumerateZoneTiles(zone), /Reduce the zone or maximum zoom/)
+})
+
+test('offline caching uses the current versioned tile template and source maximum zoom', async () => {
+  const source = await loadOpenFreeMapTileSource(async () => new Response(JSON.stringify({
+    tiles: ['https://tiles.openfreemap.org/planet/20261115_080022_pt/{z}/{x}/{y}.pbf'],
+    maxzoom: 14,
+  })))
+  const zone = { ...newZoneFromViewport([2.35, 48.85], 11, 16), bounds: [2.3, 48.8, 2.4, 48.9] as [number, number, number, number] }
+  const jobs = enumerateZoneTiles(zone, source.maxZoom)
+
+  assert.equal(jobs.at(-1)?.z, 14)
+  assert.equal(tileUrl({ z: 14, x: 8299, y: 5636 }, source.tileTemplate), 'https://tiles.openfreemap.org/planet/20261115_080022_pt/14/8299/5636.pbf')
 })
 
 test('offline zone tile enumeration includes every tile at each zoom level', () => {

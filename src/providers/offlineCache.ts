@@ -3,6 +3,8 @@ import type { Place } from '../types/domain'
 
 export type TileJob = { z: number; x: number; y: number }
 
+export type OpenFreeMapTileSource = { tileTemplate: string; maxZoom: number }
+
 export type CacheProgress = {
   total: number
   done: number
@@ -18,6 +20,8 @@ export type CacheProgress = {
 export type CacheOptions = {
   /** Pure tile enumerator, exported separately so tests can drive it without a map. */
   enumerate?: (zone: OfflineZone) => TileJob[]
+  /** Resolves the URL template selected from the provider's tile metadata. */
+  tileUrl?: (job: TileJob) => string
   /** Fetch and extract searchable places from one vector tile. */
   fetchTile: (job: TileJob, signal: AbortSignal) => Promise<Place[]>
   /** Persists the complete index. Cache status is not ready until this succeeds. */
@@ -28,8 +32,29 @@ export type CacheOptions = {
   signal?: AbortSignal
 }
 
-export function tileUrl(job: TileJob) {
-  return `https://tiles.openfreemap.org/planet/${job.z}/${job.x}/${job.y}.pbf`
+export async function loadOpenFreeMapTileSource(fetchMetadata: (url: string) => Promise<Response> = fetch): Promise<OpenFreeMapTileSource> {
+  const response = await fetchMetadata('https://tiles.openfreemap.org/planet')
+  if (!response.ok) throw new Error(`Unable to load OpenFreeMap tile metadata (HTTP ${response.status})`)
+
+  const metadata: unknown = await response.json()
+  if (!metadata || typeof metadata !== 'object') throw new Error('OpenFreeMap returned invalid tile metadata')
+  const record = metadata as Record<string, unknown>
+  const templates = record.tiles
+  const tileTemplate = Array.isArray(templates)
+    ? templates.find((template): template is string => typeof template === 'string' && ['{z}', '{x}', '{y}'].every((key) => template.includes(key)))
+    : undefined
+  const maxZoom = record.maxzoom
+  if (!tileTemplate || typeof maxZoom !== 'number' || !Number.isInteger(maxZoom) || maxZoom < 0) {
+    throw new Error('OpenFreeMap tile metadata is missing a valid tile template or maximum zoom')
+  }
+  return { tileTemplate, maxZoom }
+}
+
+export function tileUrl(job: TileJob, template: string) {
+  return template
+    .replace('{z}', String(job.z))
+    .replace('{x}', String(job.x))
+    .replace('{y}', String(job.y))
 }
 
 const TILE_SIZE = 256
@@ -50,16 +75,17 @@ function tileSpanMeters(z: number) {
   return EARTH_CIRCUMFERENCE / (TILE_SIZE * 2 ** z)
 }
 
-export function enumerateZoneTiles(zone: OfflineZone): TileJob[] {
+export function enumerateZoneTiles(zone: OfflineZone, sourceMaxZoom = zone.maxZoom): TileJob[] {
   const [west, south, east, north] = zone.bounds
   if (![west, south, east, north, zone.maxZoom].every(Number.isFinite)
     || west < -180 || east > 180 || south < -85.05112878 || north > 85.05112878
-    || west >= east || south >= north || !Number.isInteger(zone.maxZoom) || zone.maxZoom < 0) {
+    || west >= east || south >= north || !Number.isInteger(zone.maxZoom) || zone.maxZoom < 0
+    || !Number.isInteger(sourceMaxZoom) || sourceMaxZoom < 0) {
     throw new Error('Offline zone has invalid bounds or maximum zoom')
   }
 
   const jobs: TileJob[] = []
-  for (let z = 0; z <= zone.maxZoom; z++) {
+  for (let z = 0; z <= Math.min(zone.maxZoom, sourceMaxZoom); z++) {
     const x0 = Math.max(0, lngToTileX(west, z))
     const x1 = Math.min(2 ** z - 1, lngToTileX(east, z))
     const y0 = latToTileY(north, z)
@@ -148,7 +174,7 @@ export async function runCache(zone: OfflineZone, options: CacheOptions): Promis
     progress.status = 'failed'
     progress.error = `All ${total} map tiles failed to download or index. ${firstTileError ?? ''}`.trim()
   }
-  if (progress.status === 'ready') progress.tileUrls = jobs.map(tileUrl)
+  if (progress.status === 'ready' && options.tileUrl) progress.tileUrls = jobs.map(options.tileUrl)
   options.onProgress?.(progress)
   return progress
 }
