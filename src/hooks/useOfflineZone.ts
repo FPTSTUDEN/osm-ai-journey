@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { newZoneFromViewport, replaceOfflineZoneBounds, saveZone, saveZoneStrict, loadZone, type OfflineZone } from '../storage/offlineZones'
+import { defaultZoneFromViewport, newZoneFromViewport, replaceOfflineZoneBounds, saveZone, saveZoneStrict, loadZone, type OfflineZone } from '../storage/offlineZones'
 import { runCache, type CacheProgress } from '../providers/offlineCache'
 import { hasCompleteOfflineTileCache } from '../providers/offlineTileCache'
 
@@ -8,6 +8,7 @@ export function useOfflineZone(mapCenter: [number, number] | null, mapZoom: numb
   const [progress, setProgress] = useState<CacheProgress | null>(null)
   const [editing, setEditing] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
+  const zoneManuallyEdited = useRef(false)
 
   useEffect(() => {
     let active = true
@@ -17,6 +18,7 @@ export function useOfflineZone(mapCenter: [number, number] | null, mapZoom: numb
         if (mapCenter && mapZoom !== null) setZone(newZoneFromViewport(mapCenter, mapZoom))
         return
       }
+      zoneManuallyEdited.current = saved.viewportDefault === false
 
       if (saved.status === 'ready') {
         try {
@@ -78,11 +80,32 @@ export function useOfflineZone(mapCenter: [number, number] | null, mapZoom: numb
     return () => window.removeEventListener('offline-cache-cleared', clearTiles)
   }, [])
 
-  // Keep the default zone in sync with the current view until the user has cached one.
   useEffect(() => {
-    if (zone && zone.status !== 'idle') return
-    if (!mapCenter || mapZoom === null) return
-    setZone((current) => current ? current : newZoneFromViewport(mapCenter, mapZoom))
+    const handleZoneDeleted = (event: Event) => {
+      const zoneId = (event as CustomEvent<{ zoneId?: string }>).detail?.zoneId
+      if (!zoneId) return
+      setZone((current) => {
+        if (current?.id !== zoneId) return current
+        zoneManuallyEdited.current = false
+        return null
+      })
+    }
+    window.addEventListener('offline-zone-deleted', handleZoneDeleted)
+    return () => window.removeEventListener('offline-zone-deleted', handleZoneDeleted)
+  }, [])
+
+  useEffect(() => {
+    if (!mapCenter || mapZoom === null || zoneManuallyEdited.current) return
+    setZone((current) => {
+      if (current && current.status !== 'idle') return current
+      const defaults = defaultZoneFromViewport(mapCenter, mapZoom, current?.maxZoom ?? 15)
+      if (current && current.bounds.every((value, index) => value === defaults.bounds[index])) return current
+      const updated: OfflineZone = current
+        ? { ...current, ...defaults, viewportDefault: current.viewportDefault !== false }
+        : newZoneFromViewport(mapCenter, mapZoom)
+      void saveZone(updated)
+      return updated
+    })
   }, [mapCenter, mapZoom, zone])
 
   const cacheZone = useCallback(async (
@@ -137,9 +160,10 @@ export function useOfflineZone(mapCenter: [number, number] | null, mapZoom: numb
   }, [])
 
   const replaceZone = useCallback(async (next: OfflineZone) => {
+    zoneManuallyEdited.current = true
     const updatedZone = zone && zone.maxZoom === next.maxZoom
       ? replaceOfflineZoneBounds(zone, next.bounds) ?? { ...zone, status: 'failed', cacheError: 'Bounds must be valid longitude and latitude coordinates.' }
-      : { ...next, status: 'idle' as const, cachedTileCount: undefined, cachedTileUrls: undefined, cacheGeneration: undefined, indexedFeatureCount: undefined, cacheError: undefined, cachedBytes: 0 }
+      : { ...next, label: 'Custom zone', viewportDefault: false, status: 'idle' as const, cachedTileCount: undefined, cachedTileUrls: undefined, cacheGeneration: undefined, indexedFeatureCount: undefined, cacheError: undefined, cachedBytes: 0 }
     setZone(updatedZone)
     try {
       await saveZoneStrict(updatedZone)

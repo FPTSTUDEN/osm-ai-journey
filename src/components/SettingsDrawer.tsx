@@ -1,8 +1,8 @@
 import type { RefObject } from 'react'
-import type { OfflineCacheStatus, OfflineMapCacheStatus } from '../storage/offlineCache'
 import type { PersonaProfile, UserSettings } from '../types/domain'
 import { DEFAULT_PERSONA_ID } from '../providers/config'
 import { PERSONA_SPRITES } from '../providers/bundledPersonaSprites'
+import type { StorageOverview } from '../storage/storageOverview'
 
 type MemoryKind = 'people' | 'entities' | 'facts'
 type JourneyItem = Record<MemoryKind, string>
@@ -28,12 +28,15 @@ type SettingsDrawerProps = {
   connectionState: 'idle' | 'testing' | 'ready' | 'error'
   connectionMessage: string
   onTestConnection: () => void
-  offlineStatus: OfflineCacheStatus | null
-  onRefreshOfflineStatus: () => void
+  storageOverview: StorageOverview | null
+  storageError: string
+  onRefreshStorageOverview: () => void
   onClearOfflineData: () => void
-  offlineMapStatus: OfflineMapCacheStatus | null
-  onRefreshOfflineMapStatus: () => void
   onClearOfflineMapData: () => void
+  onClearZone: (zoneId: string) => void
+  onClearGeocoderResults: () => void
+  onClearLiveData: () => void
+  onClearPersonaArt: () => void
   summaryState: 'idle' | 'loading'
   conversationSummary: string
   destinationCount: number
@@ -51,8 +54,6 @@ type SettingsDrawerProps = {
   onResetJourney: () => void
   onDeleteJourney: () => void
   settingsError: string
-  offlineError: string
-  offlineMapError: string
   localPmtilesFileName: string | null
   localPmtilesError: string
   localPmtilesLoading: boolean
@@ -87,12 +88,15 @@ export function SettingsDrawer({
   connectionState,
   connectionMessage,
   onTestConnection,
-  offlineStatus,
-  onRefreshOfflineStatus,
+  storageOverview,
+  storageError,
+  onRefreshStorageOverview,
   onClearOfflineData,
-  offlineMapStatus,
-  onRefreshOfflineMapStatus,
   onClearOfflineMapData,
+  onClearZone,
+  onClearGeocoderResults,
+  onClearLiveData,
+  onClearPersonaArt,
   summaryState,
   conversationSummary,
   destinationCount,
@@ -110,8 +114,6 @@ export function SettingsDrawer({
   onResetJourney,
   onDeleteJourney,
   settingsError,
-  offlineError,
-  offlineMapError,
   localPmtilesFileName,
   localPmtilesError,
   localPmtilesLoading,
@@ -119,6 +121,16 @@ export function SettingsDrawer({
   onClearLocalPmtiles,
 }: SettingsDrawerProps) {
   const activeSprite = PERSONA_SPRITES[activePersona.spriteId]
+  const clearWithConfirmation = (label: string, action: () => void) => {
+    if (window.confirm(`Clear ${label}? This cannot be undone.`)) action()
+  }
+  const removeZoneWithConfirmation = (zoneId: string, label: string) => {
+    if (window.confirm(`Remove offline zone "${label}"? Tiles shared with other zones will be kept.`)) onClearZone(zoneId)
+  }
+  const exportBeforeJourneyAction = (actionLabel: string, action: () => void) => {
+    onExportJourney()
+    if (window.confirm(`A journey export has been downloaded. ${actionLabel} the current journey now?`)) action()
+  }
   return (
     <aside className="settings panel" role="dialog" aria-modal="false" aria-labelledby="settings-title">
       <div className="settings-header"><div><p className="eyebrow">Local configuration</p><h2 id="settings-title">Journey settings</h2></div><button className="close-button" type="button" onClick={onClose} aria-label="Close settings">×</button></div>
@@ -155,8 +167,43 @@ export function SettingsDrawer({
       </fieldset>
       <label className="toggle-row"><span>Calculate walking routes by default</span><input type="checkbox" checked={settings.calculateWalkingRoutes} onChange={(event) => onSettingsChange({ calculateWalkingRoutes: event.target.checked })} /></label>
       <label className="toggle-row"><span>Enable optional live data</span><input type="checkbox" checked={settings.liveDataEnabled} onChange={(event) => onSettingsChange({ liveDataEnabled: event.target.checked })} /></label>
-      <div className="offline-cache"><p className="memory-label">Offline app cache</p><p className="settings-note">{offlineStatus ? `${offlineStatus.entries} cached resources across ${offlineStatus.cacheNames.length} cache${offlineStatus.cacheNames.length === 1 ? '' : 's'}. Map tiles are managed separately below.` : 'Checking cached resources…'}</p>{offlineError && <p className="connection-error" role="alert">{offlineError}</p>}<div className="settings-actions"><button type="button" onClick={onRefreshOfflineStatus}>Refresh status</button><button type="button" onClick={onClearOfflineData}>Clear app cache</button></div></div>
-      <div className="offline-cache map-cache"><p className="memory-label">Offline map cache</p><p className="settings-note">{offlineMapStatus ? `${offlineMapStatus.tiles} offline tiles · ${offlineMapStatus.mapResources} map resources · ${offlineMapStatus.indexedPlaces} places indexed across ${offlineMapStatus.zones} saved zone${offlineMapStatus.zones === 1 ? '' : 's'}.` : 'Checking cached map data…'}</p>{offlineMapError && <p className="connection-error" role="alert">{offlineMapError}</p>}<div className="settings-actions"><button type="button" onClick={onRefreshOfflineMapStatus}>Refresh map status</button><button type="button" onClick={onClearOfflineMapData}>Clear map cache</button></div></div>
+      <section className="storage-overview" aria-labelledby="storage-overview-title">
+        <div className="storage-overview-heading"><div><p className="storage-label">Browser storage</p><h3 id="storage-overview-title">Storage overview</h3></div><button type="button" onClick={onRefreshStorageOverview}>Refresh</button></div>
+        {storageError && <p className="connection-error" role="alert">{storageError}</p>}
+        {!storageOverview && <p className="settings-note">Checking local storage…</p>}
+        {storageOverview && <>
+          <p className="settings-note">{storageOverview.browserStorage.usage === null
+            ? 'Browser storage usage estimate unavailable.'
+            : `${formatBytes(storageOverview.browserStorage.usage)} used${storageOverview.browserStorage.quota === null ? '' : ` of ${formatBytes(storageOverview.browserStorage.quota)} available`}.`}</p>
+          <div className="storage-group">
+            <p className="storage-label">Offline map zones</p>
+            {storageOverview.zones.length === 0 && <p className="settings-note">No offline zones saved.</p>}
+            {storageOverview.zones.map(({ zone, selected, tileCount, tileBytes, indexedPlaces, indexBytes }) => {
+              const [west, south, east, north] = zone.bounds
+              return <div className="storage-entry" key={zone.id}>
+                <strong>{zone.label}{selected ? ' · Selected for caching' : ''}</strong>
+                <span>Bounds: {west.toFixed(4)}°, {south.toFixed(4)}° to {east.toFixed(4)}°, {north.toFixed(4)}°</span>
+                <span>{tileCount} tiles · {indexedPlaces} indexed places · {formatBytes(tileBytes)} tile data referenced · {formatBytes(indexBytes)} index</span>
+                <button type="button" onClick={() => removeZoneWithConfirmation(zone.id, zone.label)}>Remove zone</button>
+              </div>
+            })}
+            <p className="settings-note">{storageOverview.mapTiles.count} unique tiles · {formatBytes(storageOverview.mapTiles.bytes)}; {storageOverview.mapResources.count} map resources · {formatBytes(storageOverview.mapResources.bytes)}.</p>
+            <button type="button" onClick={() => clearWithConfirmation('all offline map tiles, zones, and place indexes', onClearOfflineMapData)}>Clear all map data</button>
+          </div>
+          <div className="storage-group">
+            <p className="storage-label">Journey and messages</p>
+            <p className="settings-note">{storageOverview.journey.journeys} saved journey{storageOverview.journey.journeys === 1 ? '' : 's'} · {storageOverview.journey.conversations} conversations · {storageOverview.journey.messages} messages · {formatBytes(storageOverview.journey.bytes)} estimated. Message contents are not shown here; inspect them in the conversation UI.</p>
+            <button type="button" onClick={() => exportBeforeJourneyAction('Delete', onDeleteJourney)}>Export &amp; delete journey</button>
+          </div>
+          <div className="storage-group">
+            <p className="storage-label">Other cached data</p>
+            <StorageCacheRow label="App resources" summary={storageOverview.appCache} onClear={() => clearWithConfirmation('cached app resources', onClearOfflineData)} />
+            <StorageCacheRow label="Geocoder results" summary={storageOverview.geocoderResults} onClear={() => clearWithConfirmation('cached geocoder results', onClearGeocoderResults)} />
+            <StorageCacheRow label="Live data" summary={storageOverview.liveData} onClear={() => clearWithConfirmation('cached live data', onClearLiveData)} />
+            <StorageCacheRow label="Persona art" summary={storageOverview.personaArt} onClear={() => clearWithConfirmation('saved persona art', onClearPersonaArt)} />
+          </div>
+        </>}
+      </section>
       <div className="offline-cache">
         <p className="memory-label">Local PMTiles map</p>
         <label>Choose a .pmtiles archive<input type="file" accept=".pmtiles,application/octet-stream" onChange={(event) => { onSelectLocalPmtiles(event.target.files?.[0]); event.currentTarget.value = '' }} /></label>
@@ -183,8 +230,19 @@ export function SettingsDrawer({
         {journeyTransferMessage && <p className="connection-ready">{journeyTransferMessage}</p>}
         {journeyTransferError && <p className="connection-error">{journeyTransferError}</p>}
       </div>
-      <div className="settings-actions"><button type="button" onClick={onResetJourney}>Reset journey</button><button type="button" onClick={onDeleteJourney}>Delete saved journey</button></div>
+      <div className="settings-actions"><button type="button" onClick={() => exportBeforeJourneyAction('Reset', onResetJourney)}>Reset journey</button></div>
       <p className="settings-note">Settings stay in this browser. API keys are not safe to share in a public static deployment.</p>
     </aside>
   )
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`
+  return `${(bytes / 1024 ** 3).toFixed(1)} GB`
+}
+
+function StorageCacheRow({ label, summary, onClear }: { label: string; summary: { count: number; bytes: number }; onClear: () => void }) {
+  return <div className="storage-cache-row"><span>{label}: {summary.count} item{summary.count === 1 ? '' : 's'} · {formatBytes(summary.bytes)}</span><button type="button" onClick={onClear}>Clear</button></div>
 }

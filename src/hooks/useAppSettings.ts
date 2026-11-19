@@ -1,7 +1,9 @@
 import { useEffect, useState, type RefObject } from 'react'
 import { LLM_PROVIDER_PRESETS } from '../providers/config'
 import { PERSONA_SPRITES } from '../providers/bundledPersonaSprites'
-import { clearOfflineCache, clearOfflineMapCache, getOfflineCacheStatus, getOfflineMapCacheStatus, type OfflineCacheStatus, type OfflineMapCacheStatus } from '../storage/offlineCache'
+import { clearOfflineCache, clearOfflineMapCache } from '../storage/offlineCache'
+import { deleteOfflineZone } from '../storage/offlineZones'
+import { clearGeocoderResults, clearLiveData, clearPersonaArt, getStorageOverview, type StorageOverview } from '../storage/storageOverview'
 import { deleteCompanionArt, loadCompanionArt, saveCompanionArt } from '../storage/companionArt'
 import { loadSettings, saveSettings } from '../storage/settings'
 import type { UserSettings } from '../types/domain'
@@ -10,10 +12,8 @@ export function useAppSettings(settingsOpen: boolean, companionArtInputRef: RefO
   const [settings, setSettings] = useState<UserSettings>(() => loadSettings(Object.keys(PERSONA_SPRITES)))
   const [connectionState, setConnectionState] = useState<'idle' | 'testing' | 'ready' | 'error'>('idle')
   const [connectionMessage, setConnectionMessage] = useState('')
-  const [offlineStatus, setOfflineStatus] = useState<OfflineCacheStatus | null>(null)
-  const [offlineError, setOfflineError] = useState('')
-  const [offlineMapStatus, setOfflineMapStatus] = useState<OfflineMapCacheStatus | null>(null)
-  const [offlineMapError, setOfflineMapError] = useState('')
+  const [storageOverview, setStorageOverview] = useState<StorageOverview | null>(null)
+  const [storageError, setStorageError] = useState('')
   const [settingsError, setSettingsError] = useState('')
   const [companionImageUrl, setCompanionImageUrl] = useState<string | null>(null)
   const [companionArtError, setCompanionArtError] = useState('')
@@ -45,48 +45,68 @@ export function useAppSettings(settingsOpen: boolean, companionArtInputRef: RefO
     return () => URL.revokeObjectURL(companionImageUrl)
   }, [companionImageUrl])
 
-  async function refreshOfflineStatus() {
-    setOfflineError('')
+  async function refreshStorageOverview() {
+    setStorageError('')
     try {
-      setOfflineStatus(await getOfflineCacheStatus())
+      setStorageOverview(await getStorageOverview())
     } catch (error) {
-      setOfflineError(error instanceof Error ? error.message : 'Unable to read the offline cache')
-    }
-  }
-
-  async function refreshOfflineMapStatus() {
-    setOfflineMapError('')
-    try {
-      setOfflineMapStatus(await getOfflineMapCacheStatus())
-    } catch (error) {
-      setOfflineMapError(error instanceof Error ? error.message : 'Unable to read the offline map cache')
+      setStorageError(error instanceof Error ? error.message : 'Unable to read browser storage')
     }
   }
 
   useEffect(() => {
-    if (settingsOpen) {
-      void refreshOfflineStatus()
-      void refreshOfflineMapStatus()
-    }
+    if (settingsOpen) void refreshStorageOverview()
   }, [settingsOpen])
 
   async function clearOfflineData() {
-    setOfflineError('')
+    setStorageError('')
     try {
       await clearOfflineCache()
-      await refreshOfflineStatus()
+      await refreshStorageOverview()
     } catch (error) {
-      setOfflineError(error instanceof Error ? error.message : 'Unable to clear the offline cache')
+      setStorageError(error instanceof Error ? error.message : 'Unable to clear app cache data')
     }
   }
 
   async function clearOfflineMapData() {
-    setOfflineMapError('')
+    setStorageError('')
     try {
       await clearOfflineMapCache()
-      await refreshOfflineMapStatus()
+      await refreshStorageOverview()
     } catch (error) {
-      setOfflineMapError(error instanceof Error ? error.message : 'Unable to clear the offline map cache')
+      setStorageError(error instanceof Error ? error.message : 'Unable to clear offline map data')
+    }
+  }
+
+  async function clearZoneData(zoneId: string) {
+    setStorageError('')
+    try {
+      await deleteOfflineZone(zoneId)
+      await refreshStorageOverview()
+    } catch (error) {
+      setStorageError(error instanceof Error ? error.message : 'Unable to remove the offline zone')
+    }
+  }
+
+  async function clearOtherData(clear: () => Promise<void>, fallback: string) {
+    setStorageError('')
+    try {
+      await clear()
+      await refreshStorageOverview()
+    } catch (error) {
+      setStorageError(error instanceof Error ? error.message : fallback)
+    }
+  }
+
+  async function clearSavedPersonaArt() {
+    setStorageError('')
+    try {
+      await clearPersonaArt()
+      setCompanionImageUrl(null)
+      setSettings((current) => ({ ...current, companionImage: false }))
+      await refreshStorageOverview()
+    } catch (error) {
+      setStorageError(error instanceof Error ? error.message : 'Unable to clear saved persona art')
     }
   }
 
@@ -148,14 +168,15 @@ export function useAppSettings(settingsOpen: boolean, companionArtInputRef: RefO
     settingsError,
     connectionState,
     connectionMessage,
-    offlineStatus,
-    offlineError,
-    offlineMapStatus,
-    offlineMapError,
-    refreshOfflineStatus,
-    refreshOfflineMapStatus,
+    storageOverview,
+    storageError,
+    refreshStorageOverview,
     clearOfflineData,
     clearOfflineMapData,
+    clearZoneData,
+    clearGeocoderResults: () => clearOtherData(clearGeocoderResults, 'Unable to clear geocoder cache'),
+    clearLiveData: () => clearOtherData(clearLiveData, 'Unable to clear live-data cache'),
+    clearPersonaArt: clearSavedPersonaArt,
     checkLlmConnection,
     changeProvider,
     companionImageUrl,

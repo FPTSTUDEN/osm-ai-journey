@@ -332,10 +332,11 @@ test('offline cache status ignores unrelated origin caches and clearing leaves t
     await caches.open('unrelated-cache')
   })
   await page.getByRole('button', { name: 'Toggle settings' }).click()
-  await page.getByRole('button', { name: 'Refresh status' }).click()
-  await expect(page.locator('.offline-cache').first()).toContainText('1 cached resources across 1 cache')
-  await expect(page.locator('.map-cache')).toContainText('1 offline tiles · 1 map resources')
-  await page.getByRole('button', { name: 'Clear app cache' }).click()
+  await expect(page.locator('.storage-overview')).toContainText('App resources: 1 item')
+  await expect(page.locator('.storage-overview')).toContainText('1 unique tiles')
+  await expect(page.locator('.storage-overview')).toContainText('1 map resources')
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.locator('.storage-cache-row').filter({ hasText: 'App resources' }).getByRole('button', { name: 'Clear' }).click()
   await expect.poll(() => page.evaluate(() => caches.keys())).toContain('unrelated-cache')
   await expect.poll(() => page.evaluate(async () => {
     const { OFFLINE_TILE_CACHE_NAME } = await import('/src/providers/offlineTileCache.ts')
@@ -369,9 +370,12 @@ test('map cache controls clear map tiles and indexes without clearing the app ca
     await (await caches.open('osm-ai-journey-shell-test')).put('https://app.test/app.js', new Response('app'))
   })
   await page.getByRole('button', { name: 'Toggle settings' }).click()
-  await expect(page.locator('.map-cache')).toContainText('1 offline tiles · 1 map resources · 1 places indexed across 1 saved zone')
-  await page.getByRole('button', { name: 'Clear map cache' }).click()
-  await expect(page.locator('.map-cache')).toContainText('0 offline tiles · 0 map resources · 0 places indexed across 1 saved zone')
+  await expect(page.locator('.storage-entry')).toContainText('1 tiles · 1 indexed places')
+  await expect(page.locator('.storage-overview')).toContainText('1 unique tiles')
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.getByRole('button', { name: 'Clear all map data' }).click()
+  await expect(page.locator('.storage-overview')).toContainText('0 unique tiles')
+  await expect(page.locator('.storage-entry')).toContainText('0 tiles · 0 indexed places')
   const result = await page.evaluate(async () => {
     const { OFFLINE_TILE_CACHE_NAME } = await import('/src/providers/offlineTileCache.ts')
     const { loadZone } = await import('/src/storage/offlineZones.ts')
@@ -386,6 +390,80 @@ test('map cache controls clear map tiles and indexes without clearing the app ca
     }
   })
   expect(result).toEqual({ tileCacheExists: false, appCacheExists: true, status: 'partial', indexedFeatureCount: undefined, indexState: 'not-indexed' })
+})
+
+test('storage overview hides message text and removes only unshared tiles with a selected zone', async ({ page }) => {
+  await resetBrowser(page)
+  await page.evaluate(async () => {
+    const { OFFLINE_TILE_CACHE_NAME } = await import('/src/providers/offlineTileCache.ts')
+    const { saveZoneStrict } = await import('/src/storage/offlineZones.ts')
+    const database = await new Promise((resolve, reject) => {
+      const request = indexedDB.open('osm-ai-journey')
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    await new Promise((resolve, reject) => {
+      const transaction = database.transaction('journeys', 'readwrite')
+      transaction.objectStore('journeys').put({
+        id: 'active',
+        currentDestination: null,
+        mapViewport: null,
+        destinationHistory: [],
+        currentScene: 1,
+        messages: [{ id: 'private', role: 'user', text: 'private message text', createdAt: new Date().toISOString() }],
+        knownPeople: [],
+        knownEntities: [],
+        userFacts: [],
+        narrativeEvents: [],
+      })
+      transaction.oncomplete = () => { database.close(); resolve() }
+      transaction.onerror = () => reject(transaction.error)
+    })
+    const first = {
+      id: 'zone-a', label: 'Zone A', bounds: [0, 0, 1, 1], maxZoom: 1, createdAt: new Date().toISOString(),
+      cachedBytes: 0, cachedTileCount: 2, cachedTileUrls: ['https://tiles.test/shared', 'https://tiles.test/a'],
+      cacheGeneration: 'generation-a', indexedFeatureCount: 1, status: 'ready',
+    }
+    const second = {
+      ...first, id: 'zone-b', label: 'Zone B', cachedTileCount: 1,
+      cachedTileUrls: ['https://tiles.test/shared'], cacheGeneration: 'generation-b',
+    }
+    await saveZoneStrict(first)
+    await saveZoneStrict(second)
+    const tileCache = await caches.open(OFFLINE_TILE_CACHE_NAME)
+    await tileCache.put('https://tiles.test/shared', new Response('shared'))
+    await tileCache.put('https://tiles.test/a', new Response('zone a'))
+  })
+  await page.reload()
+  await waitForApplicationReady(page)
+  await page.getByRole('button', { name: 'Toggle settings' }).click()
+  const overview = page.locator('.storage-overview')
+  await expect(overview).toContainText('1 messages')
+  await expect(overview).not.toContainText('private message text')
+  await expect(overview.locator('.storage-entry').filter({ hasText: 'Zone A' })).toContainText('2 tiles')
+  page.once('dialog', (dialog) => dialog.accept())
+  await overview.locator('.storage-entry').filter({ hasText: 'Zone A' }).getByRole('button', { name: 'Remove zone' }).click()
+  await expect(overview.locator('.storage-entry').filter({ hasText: 'Zone A' })).toHaveCount(0)
+  const remaining = await page.evaluate(async () => {
+    const { OFFLINE_TILE_CACHE_NAME } = await import('/src/providers/offlineTileCache.ts')
+    const { listZones } = await import('/src/storage/offlineZones.ts')
+    return {
+      zones: (await listZones()).map((zone) => zone.id).sort(),
+      tiles: (await (await caches.open(OFFLINE_TILE_CACHE_NAME)).keys()).map((request) => request.url).sort(),
+    }
+  })
+  expect(remaining).toEqual({ zones: ['zone-b'], tiles: ['https://tiles.test/shared'] })
+  let confirmation = ''
+  page.once('dialog', async (dialog) => {
+    confirmation = dialog.message()
+    await dialog.accept()
+  })
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    overview.getByRole('button', { name: 'Export & delete journey' }).click(),
+  ])
+  expect(download.suggestedFilename()).toBe('osm-ai-journey.json')
+  expect(confirmation).toContain('A journey export has been downloaded')
 })
 
 test('caches and searches real OpenFreeMap places for a high-zoom zone', async ({ page }) => {
@@ -497,6 +575,7 @@ test('restores the last explored map viewport when no destination is selected', 
   const map = page.locator('.map-canvas')
   await expect(map.locator('canvas')).toBeVisible({ timeout: 15000 })
   await expect.poll(() => readActiveMapViewport(page), { timeout: 15000 }).not.toBeNull()
+  await expect(page.locator('.zone-controls-summary')).toContainText('2.3522°, 48.8566°')
   const bounds = await map.boundingBox()
   expect(bounds).not.toBeNull()
   const startX = bounds.x + bounds.width * 0.85
@@ -511,6 +590,7 @@ test('restores the last explored map viewport when no destination is selected', 
     if (!viewport) return 0
     return Math.hypot(viewport.center[0] - 2.3522, viewport.center[1] - 48.8566)
   }, { timeout: 15000 }).toBeGreaterThan(0.01)
+  await expect(page.locator('.zone-controls-summary')).not.toContainText('2.3522°, 48.8566°')
   const savedViewport = await readActiveMapViewport(page)
   expect(savedViewport).not.toBeNull()
 

@@ -52,12 +52,15 @@ export function JourneySettingsPanel({ open, onClose, appSettings, journeyAction
     connectionState={appSettings.connectionState}
     connectionMessage={appSettings.connectionMessage}
     onTestConnection={() => void appSettings.checkLlmConnection()}
-    offlineStatus={appSettings.offlineStatus}
-    onRefreshOfflineStatus={() => void appSettings.refreshOfflineStatus()}
+    storageOverview={appSettings.storageOverview}
+    storageError={appSettings.storageError}
+    onRefreshStorageOverview={() => void appSettings.refreshStorageOverview()}
     onClearOfflineData={() => void appSettings.clearOfflineData()}
-    offlineMapStatus={appSettings.offlineMapStatus}
-    onRefreshOfflineMapStatus={() => void appSettings.refreshOfflineMapStatus()}
     onClearOfflineMapData={() => void appSettings.clearOfflineMapData()}
+    onClearZone={(zoneId) => void appSettings.clearZoneData(zoneId)}
+    onClearGeocoderResults={() => void appSettings.clearGeocoderResults()}
+    onClearLiveData={() => void appSettings.clearLiveData()}
+    onClearPersonaArt={() => void appSettings.clearPersonaArt()}
     summaryState={summaryState}
     conversationSummary={conversationSummary}
     destinationCount={destinationCount}
@@ -75,8 +78,6 @@ export function JourneySettingsPanel({ open, onClose, appSettings, journeyAction
     onResetJourney={journeyActions.resetJourney}
     onDeleteJourney={() => void journeyActions.deleteJourney()}
     settingsError={appSettings.settingsError}
-    offlineError={appSettings.offlineError}
-    offlineMapError={appSettings.offlineMapError}
     localPmtilesFileName={localPmtiles.archive?.fileName ?? null}
     localPmtilesError={localPmtiles.error}
     localPmtilesLoading={localPmtiles.loading}

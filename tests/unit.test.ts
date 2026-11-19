@@ -456,11 +456,14 @@ test('Wikimedia photo parsing filters unsupported MIME types and sorts by distan
 
 test('offline zone defaults from viewport and contains points inside its bounds', () => {
   const base = defaultZoneFromViewport([2.35, 48.85], 11, 15)
+  assert.equal(base.viewportDefault, true)
+  assert.equal(base.label, 'Current view')
   assert.equal(base.maxZoom, 15)
   assert.equal(base.bounds[0] < 2.35 && base.bounds[2] > 2.35, true)
   assert.equal(base.bounds[1] < 48.85 && base.bounds[3] > 48.85, true)
 
   const zone = newZoneFromViewport([2.35, 48.85], 11, 15)
+  assert.equal(zone.viewportDefault, true)
   assert.equal(typeof zone.id, 'string')
   assert.equal(zone.status, 'idle')
   assert.equal(zone.cachedBytes, 0)
@@ -621,6 +624,8 @@ test('editing offline zone bounds invalidates its cache and rejects invalid coor
   }
   const updated = replaceOfflineZoneBounds(zone, [2.3, 48.8, 2.4, 48.9])
   assert.equal(updated?.status, 'idle')
+  assert.equal(updated?.viewportDefault, false)
+  assert.equal(updated?.label, 'Custom zone')
   assert.equal(updated?.cacheGeneration, undefined)
   assert.equal(updated?.cachedTileUrls, undefined)
   assert.equal(updated?.indexedFeatureCount, undefined)

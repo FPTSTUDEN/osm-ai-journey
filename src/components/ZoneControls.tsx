@@ -29,6 +29,9 @@ export function ZoneControls({ zone, progress, editing, onCache, onCancel, onTog
   if (!zone) return null
   const busy = zone.status === 'caching'
   const percent = progress && progress.total > 0 ? Math.round((progress.done + progress.failed) / progress.total * 100) : 0
+  const [west, south, east, north] = zone.bounds
+  const centerLng = (west + east) / 2
+  const centerLat = (south + north) / 2
   const commitBound = (index: number) => {
     const draft = boundsDraft[index].trim()
     const value = draft ? Number(draft) : Number.NaN
@@ -47,11 +50,12 @@ export function ZoneControls({ zone, progress, editing, onCache, onCancel, onTog
   const boundLabels = ['West longitude', 'South latitude', 'East longitude', 'North latitude']
   return (
     <details className="zone-controls" open={editing || busy}>
-      <summary className="zone-controls-summary"><strong>Offline zone</strong><span>{busy ? 'Caching…' : zone.status === 'ready' ? `${zone.cachedTileCount ?? 0} tiles · ${zone.indexedFeatureCount ?? 0} places` : zone.status === 'partial' ? 'Cache incomplete' : zone.status === 'failed' ? 'Cache failed' : 'Manage cache'}</span></summary>
+      <summary className="zone-controls-summary"><strong>{zone.label}</strong><span>{centerLng.toFixed(4)}°, {centerLat.toFixed(4)}° · {busy ? 'Caching…' : zone.status === 'ready' ? `${zone.cachedTileCount ?? 0} tiles · ${zone.indexedFeatureCount ?? 0} places` : zone.status === 'partial' ? 'Cache incomplete' : zone.status === 'failed' ? 'Cache failed' : 'Ready to cache'}</span></summary>
       <div className="zone-controls-content">
-        <div className="zone-toolbar-row"><strong className="zone-label">Zone settings</strong>
+        <div className="zone-toolbar-row"><strong className="zone-label">Zone selected for caching</strong>
           {!busy && <button type="button" className="zone-button" aria-pressed={editing} onClick={() => onToggleEditing(!editing)}>{editing ? 'Done editing' : 'Edit zone'}</button>}
         </div>
+        <span className="zone-help">Center {centerLng.toFixed(5)}°, {centerLat.toFixed(5)}° · bounds {west.toFixed(5)}°, {south.toFixed(5)}° to {east.toFixed(5)}°, {north.toFixed(5)}°</span>
         {!busy && <label className="zone-zoom-control">Maximum zoom · {zone.maxZoom}
           <input aria-label="Maximum offline map zoom" type="range" min="0" max="16" step="1" value={zone.maxZoom} disabled={editing} onChange={(event) => onMaxZoomChange(Number(event.target.value))} />
         </label>}

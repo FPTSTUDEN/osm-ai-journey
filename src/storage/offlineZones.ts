@@ -1,8 +1,10 @@
-import { get, getAll, putMany } from './db'
+import { get, getAll, putMany, remove } from './db'
+import { OFFLINE_TILE_CACHE_NAME } from './cacheNames'
 
 export type OfflineZone = {
   id: string
   label: string
+  viewportDefault?: boolean
   bounds: [number, number, number, number] // west, south, east, north (LngLatBoundsLike order)
   maxZoom: number
   createdAt: string
@@ -27,6 +29,7 @@ export function defaultZoneFromViewport(center: [number, number], zoom: number, 
   const [lng, lat] = center
   return {
     label: 'Current view',
+    viewportDefault: true,
     bounds: [lng - span, lat - span * 0.7, lng + span, lat + span * 0.7],
     maxZoom,
   }
@@ -90,6 +93,35 @@ export async function markZoneTilesCleared(): Promise<void> {
   if (updated.length) await putMany(STORE, updated)
 }
 
+export async function deleteOfflineZone(zoneId: string): Promise<void> {
+  const records = await getAll<{ key: string; zone: OfflineZone }>(STORE)
+  const targets = records.filter((record) => record.zone.id === zoneId)
+  const selectedZone = targets[0]?.zone
+  if (!selectedZone) return
+
+  if ((selectedZone.cachedTileUrls?.length ?? 0) > 0) {
+    if (typeof caches === 'undefined') throw new Error('Cache Storage is unavailable in this browser')
+    const remainingZones = [...new Map(records
+      .filter((record) => record.zone.id !== zoneId)
+      .map((record) => [record.zone.id, record.zone])).values()]
+    const retainedUrls = new Set(remainingZones.flatMap((zone) => zone.cachedTileUrls ?? []))
+    const tileCache = await caches.open(OFFLINE_TILE_CACHE_NAME)
+    for (const url of new Set(selectedZone.cachedTileUrls ?? [])) {
+      if (!retainedUrls.has(url)) await tileCache.delete(url)
+    }
+  }
+
+  const indexPrefix = `offline-index:v2:openfreemap:${JSON.stringify(selectedZone.bounds)}:${selectedZone.maxZoom}`
+  const indexKeys = new Set([`${indexPrefix}:${selectedZone.cacheGeneration ?? 'legacy'}`])
+  if (!selectedZone.cacheGeneration) indexKeys.add(indexPrefix)
+  const indexes = await getAll<{ key: string }>('geocoder-results')
+  await Promise.all(indexes
+    .filter((record) => indexKeys.has(record.key))
+    .map((record) => remove('geocoder-results', record.key)))
+  await Promise.all(targets.map((record) => remove(STORE, record.key)))
+  window.dispatchEvent(new CustomEvent('offline-zone-deleted', { detail: { zoneId } }))
+}
+
 export function isInZone(zone: OfflineZone, coordinates: [number, number]): boolean {
   const [w, s, e, n] = zone.bounds
   const [lng, lat] = coordinates
@@ -106,6 +138,8 @@ export function replaceOfflineZoneBounds(zone: OfflineZone, bounds: OfflineZone[
   if (!changed) return zone
   return {
     ...zone,
+    label: 'Custom zone',
+    viewportDefault: false,
     bounds,
     status: 'idle',
     cachedBytes: 0,

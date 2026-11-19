@@ -35,7 +35,7 @@ function App() {
     appendArrival, appendLeg, legs,
   } = useJourney()
   const appSettings = useAppSettings(showSettings, companionArtInputRef, personaId)
-  const { settings, setSettings, connectionState, connectionMessage, offlineStatus, offlineError, refreshOfflineStatus, clearOfflineData, checkLlmConnection, changeProvider, companionImageUrl, companionArtError, uploadCompanionArt, removeCompanionArt } = appSettings
+  const { settings, setSettings, connectionState, connectionMessage, checkLlmConnection, changeProvider, companionImageUrl, companionArtError, uploadCompanionArt, removeCompanionArt } = appSettings
   const motionPreference = settings.motionPreference ?? 'auto'
   const motionEnabled = motionPreference === 'on' || (motionPreference === 'auto' && !systemReducedMotion)
   const personaProfiles = settings.personaProfiles ?? [DEFAULT_PERSONA]
