@@ -42,11 +42,13 @@ export function newZoneFromViewport(center: [number, number], zoom: number, maxZ
 
 export function followDefaultZone(zone: OfflineZone | null, center: [number, number], zoom: number): OfflineZone {
   if (!zone) return newZoneFromViewport(center, zoom)
-  if (zone.viewportDefault === false || zone.status === 'caching' || isInZone(zone, center)) return zone
+  if (zone.viewportDefault === false || zone.status === 'caching') return zone
+  if (zone.status !== 'idle' && isInZone(zone, center)) return zone
 
   if (zone.status !== 'idle') return newZoneFromViewport(center, zoom, zone.maxZoom)
 
   const defaults = defaultZoneFromViewport(center, zoom, zone.maxZoom)
+  if (zone.bounds.every((value, index) => value === defaults.bounds[index])) return zone
   return {
     ...zone,
     ...defaults,

@@ -464,12 +464,14 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
 .opening-pins i { position: absolute; width: 9px; height: 9px; border: 2px solid #d5ef9a; border-radius: 50% 50% 50% 0; box-shadow: 0 0 16px #b9df91; transform: rotate(-45deg); }
 .opening-pins i:nth-child(1) { top: 17%; left: 13%; }.opening-pins i:nth-child(2) { top: 25%; right: 12%; }.opening-pins i:nth-child(3) { bottom: 17%; left: 20%; }.opening-pins i:nth-child(4) { right: 19%; bottom: 12%; }
 .story-mode .workspace { --left-inset: 24px; --right-inset: 24px; }
-.story-mode.story-map-open .workspace { --left-inset: 474px; }
+.story-mode.story-map-open .workspace { --left-inset: calc(94px + min(500px, calc(48vw - 118px)) + 24px); }
 .story-mode.story-destination-open .workspace { --right-inset: 390px; }
 .story-mode .journey-panel { left: calc((var(--left-inset) + 100vw - var(--right-inset)) / 2); width: min(900px, calc(100vw - var(--left-inset) - var(--right-inset) - 24px)); }
 .story-mode .dialogue-panel { position: fixed; z-index: 6; bottom: 20px; left: calc((var(--left-inset) + 100vw - var(--right-inset)) / 2); width: min(900px, calc(100vw - var(--left-inset) - var(--right-inset) - 24px)); transform: translateX(-50%); transition: left 220ms cubic-bezier(.2,.7,.2,1), width 220ms cubic-bezier(.2,.7,.2,1); }
 
-@media (max-width: 1100px) {
+@media (max-width: 900px) {
+  .story-mode.story-map-open .workspace { --left-inset: calc(82px + min(460px, calc(50vw - 56px)) + 24px); }
+  .story-mode.story-destination-open .workspace { --right-inset: calc(14px + min(320px, calc(50vw - 72px)) + 24px); }
   .story-mode .journey-panel { left: 50%; width: calc(100vw - 28px); }
   .story-mode .dialogue-panel { bottom: 18px; min-height: 0; max-height: 32vh; padding-bottom: 8px; }
   .story-mode .dialogue-panel .conversation-expanded { max-height: 16vh; }
@@ -488,6 +490,7 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
   .destination-dock-panel { width: min(300px, calc(100vw - 130px)); }
 }
 @media (max-width: 520px) {
+  .story-mode .dialogue-panel { right: 7px; left: 7px; width: auto; transform: none; }
   .story-mode .map-layout--compact { top: 68px; right: 14px; bottom: calc(34vh + 104px); left: 14px; height: auto; }
   .story-mode.story-map-and-destination .map-layout--compact { top: 68px; right: 14px; bottom: auto; left: 14px; grid-template-rows: 30vh; height: 30vh; }
   .story-mode.story-map-and-destination .map-panel--compact { height: 100%; }

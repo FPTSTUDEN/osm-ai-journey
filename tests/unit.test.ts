@@ -497,6 +497,14 @@ test('default cache zone follows distant views without replacing the saved cache
   assert.equal(followDefaultZone(customZone, [139.6503, 35.6762], 14), customZone)
 })
 
+test('idle default cache zone follows viewport changes within its previous bounds', () => {
+  const zone = newZoneFromViewport([2.35, 48.85], 11, 15)
+  const panned = followDefaultZone(zone, [2.36, 48.85], 11)
+
+  assert.equal(panned.id, zone.id)
+  assert.deepEqual(panned.bounds, defaultZoneFromViewport([2.36, 48.85], 11, 15).bounds)
+})
+
 test('offline index search reports empty when no zone is provided or storage is unavailable', async () => {
   const noZone = await searchOfflineIndex(null, 'anything')
   assert.equal(noZone.source, 'not-indexed')
