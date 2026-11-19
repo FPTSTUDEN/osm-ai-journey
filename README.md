@@ -28,6 +28,13 @@ Run validation with `pnpm test:unit` and `pnpm test:e2e`.
 - MapLibre with OpenFreeMap is the initial map stack.
 - Clicking a visible map feature is local and never geocodes automatically.
 - Search checks the local tile-derived index first; online geocoding only happens after an explicit action.
+- Offline zones can be moved and resized on the map or by editing their bounds, and their maximum tile zoom is configurable.
+- The default zone follows the map when you move outside it. Leaving a cached zone selects a new uncached zone and keeps the old cache; manually edited zones stay fixed. The map controls show the selected zone and prompt you to cache a new area.
+- Caching a zone indexes named point and polygon features from every successfully fetched OpenFreeMap vector tile in its bounds and zoom range; the zone is ready only after all tiles succeed and the index is persisted.
+- Offline tiles use a bounded 1,200-tile cache. Tiles shared by zones are reused, and tiles referenced by saved zones are protected from LRU eviction.
+- Settings manage offline map resources separately from app-shell cache data; clearing the map cache also removes its search indexes and marks affected zones incomplete.
+- Settings show storage counts and available size estimates by map zone, journey/conversation, and cache category. Zone and cache deletion is scoped and confirmed; journey reset or deletion downloads an export first. Message text is not included in the storage overview.
+- Offline search cannot find places omitted from vector tiles, features represented only by raster tiles, or uncached online-geocoder results. Browser storage may be evicted, and storage/quota limits can prevent caching.
 - Online geocoder results are cached in IndexedDB.
 - Walking route calculation is optional for every destination transition.
 - Weather and other live data integrations are optional and lazy.

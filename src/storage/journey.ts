@@ -1,9 +1,18 @@
-import type { JourneyConversation, JourneyState, JourneyTimeline, StoryBranch, StoryProgress } from '../types/domain'
+import type { JourneyConversation, JourneyLeg, JourneyState, JourneyTimeline, StoryBranch, StoryProgress } from '../types/domain'
 import { DEFAULT_PERSONA_ID } from '../providers/config'
 import { get, put, remove } from './db'
 import { normalizeMessages } from './messages'
 
 const JOURNEY_STORE = 'journeys'
+
+function normalizeLegs(value: unknown): JourneyLeg[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((leg): leg is JourneyLeg => Boolean(leg && typeof leg === 'object'
+    && typeof (leg as JourneyLeg).id === 'string'
+    && typeof (leg as JourneyLeg).to === 'object'
+    && typeof (leg as JourneyLeg).routed === 'boolean'
+    && typeof (leg as JourneyLeg).createdAt === 'string'))
+}
 
 function normalizeProgress(value: unknown, messages: JourneyTimeline['messages']): StoryProgress | null {
   if (!value || typeof value !== 'object') return null
@@ -34,6 +43,7 @@ function normalizeTimeline(value: unknown): JourneyTimeline | null {
     narrativeEvents: timeline.narrativeEvents,
     conversationSummary: typeof timeline.conversationSummary === 'string' ? timeline.conversationSummary : '',
     storyProgress: normalizeProgress(timeline.storyProgress, messages),
+    legs: normalizeLegs(timeline.legs),
   }
 }
 
@@ -83,6 +93,7 @@ export async function loadActiveJourney(onRestore?: () => void): Promise<Journey
   const messages = normalizeMessages(journey.messages) ?? []
   const branches = normalizeBranches(journey.branches)
   const storyProgress = normalizeProgress(journey.storyProgress, messages)
+  const legs = normalizeLegs(journey.legs)
   const conversations = normalizeConversations(journey.conversations)
   const migratedConversations = conversations.length ? conversations : [{
     id: crypto.randomUUID(),
@@ -100,6 +111,7 @@ export async function loadActiveJourney(onRestore?: () => void): Promise<Journey
   return {
     ...journey,
     messages,
+    legs,
     branches,
     storyProgress,
     conversations: migratedConversations,

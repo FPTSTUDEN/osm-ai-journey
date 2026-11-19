@@ -7,7 +7,11 @@ import { SelectedPhotoDetails } from './SelectedPhotoDetails'
 import { useMapSearch } from '../hooks/useMapSearch'
 import { usePlaceData } from '../hooks/usePlaceData'
 import { useStoryPanels } from '../hooks/useStoryPanels'
-import type { MapViewport, Place, PlacePhoto, UserSettings, WalkingRoute } from '../types/domain'
+import { useOfflineZone } from '../hooks/useOfflineZone'
+import { enumerateZoneTiles, loadOpenFreeMapTileSource, tileUrl } from '../providers/offlineCache'
+import { beginOfflineTileCache } from '../providers/offlineTileCache'
+import { ZoneControls } from './ZoneControls'
+import type { JourneyLeg, MapViewport, Place, PlacePhoto, UserSettings, WalkingRoute } from '../types/domain'
 import type { NarrativeEvent } from '../types/domain'
 import type { LocalPmtilesArchive } from '../providers/localPmtiles'
 
@@ -55,6 +59,7 @@ type Props = {
   routeMessage: string
   destinationHistory: Place[]
   narrativeEvents: NarrativeEvent[]
+  legs: JourneyLeg[]
   arrivalCard: string | null
   currentScene: number
   localArchive: LocalPmtilesArchive | null
@@ -93,6 +98,7 @@ export function StoryPanels({
   routeMessage,
   destinationHistory,
   narrativeEvents,
+  legs,
   arrivalCard,
   currentScene,
   localArchive,
@@ -108,6 +114,48 @@ export function StoryPanels({
     () => (selectedPhoto && selectedPlace ? photoToPlace(selectedPhoto, selectedPlace) : selectedPlace),
     [selectedPhoto, selectedPlace],
   )
+  const offlineZone = useOfflineZone(mapViewport?.center ?? null, mapViewport?.zoom ?? null)
+  const [flyToLegsSignal, setFlyToLegsSignal] = useState(0)
+
+  useEffect(() => {
+    search.setOfflineZone(offlineZone.zone)
+  }, [offlineZone.zone, search.setOfflineZone])
+
+  async function cacheZone() {
+    const zone = offlineZone.zone
+    if (!zone) return
+    let jobs
+    let tileSource
+    try {
+      tileSource = await loadOpenFreeMapTileSource()
+      jobs = enumerateZoneTiles(zone, tileSource.maxZoom)
+    } catch (error) {
+      offlineZone.reportCacheError(error)
+      return
+    }
+    const tileUrls = jobs.map((job) => tileUrl(job, tileSource.tileTemplate))
+    let tileCachePromise: ReturnType<typeof beginOfflineTileCache> | null = null
+    const tileCacheSession: { current: Awaited<ReturnType<typeof beginOfflineTileCache>> | null } = { current: null }
+    const getTileCache = async () => {
+      tileCachePromise ??= beginOfflineTileCache(zone, tileUrls)
+      const session = await tileCachePromise
+      tileCacheSession.current = session
+      return session
+    }
+    const result = await offlineZone.cacheZone(async (job, signal) => {
+      const cache = await getTileCache()
+      const url = tileUrl(job, tileSource.tileTemplate)
+      const data = await cache.readOrFetch(url, signal, async (requestSignal) => fetch(url, { signal: requestSignal, mode: 'cors' }))
+      const { placesFromVectorTile } = await import('../providers/vectorTilePlaces')
+      return placesFromVectorTile(data, job, zone)
+    }, async (places, generation) => {
+      const cache = await getTileCache()
+      const { writeOfflineIndex } = await import('../providers/offlineIndex')
+      await writeOfflineIndex(zone, places, generation)
+      await cache.commit(zone, generation, places.length)
+    }, () => jobs, (job) => tileUrl(job, tileSource.tileTemplate))
+    if (result?.status !== 'ready' && tileCacheSession.current) await tileCacheSession.current.rollback()
+  }
 
   return (
     <>
@@ -126,9 +174,17 @@ export function StoryPanels({
               <p className="result-label">From loaded map data</p>
               {search.localResults.map((place) => <button key={place.id} onClick={() => onChoosePlace(place)}>{place.name}<span>{place.category ?? 'Place'}</span></button>)}
             </div>}
-            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.onlineState === 'idle' && <div className="online-search">No loaded places match. <button onClick={() => void search.searchOnline()}>Search online</button></div>}
-            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.onlineState === 'loading' && <div className="search-state">Searching {settings.onlineGeocoder === 'nominatim' ? 'Nominatim' : 'Photon'} for “{search.onlineQuery}”…</div>}
-            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.onlineState === 'error' && <div className="online-search">{search.onlineError} <button onClick={() => void search.searchOnline()}>Try again</button></div>}
+            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.offlineResults.length > 0 && <div className="search-results">
+              <p className="result-label">From offline index{search.offlineIndexState === 'ready' ? '' : ' · preparing'}</p>
+              {search.offlineResults.map((place) => <button key={place.id} onClick={() => onChoosePlace(place)}>{place.name}<span>{place.category ?? 'Place'}</span></button>)}
+            </div>}
+            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.offlineResults.length === 0 && search.offlineIndexState === 'empty' && search.onlineState === 'idle' && <div className="online-search">No named places are available in the offline zone. <button onClick={() => void search.searchOnline()}>Search online</button></div>}
+            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.offlineResults.length === 0 && search.offlineIndexState === 'not-indexed' && search.onlineState === 'idle' && <div className="online-search">This zone has no saved offline search index. Cache the zone or <button onClick={() => void search.searchOnline()}>search online</button>.</div>}
+            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.offlineResults.length === 0 && search.offlineIndexState === 'ready' && search.onlineState === 'idle' && <div className="online-search">No indexed places match. <button onClick={() => void search.searchOnline()}>Search online</button></div>}
+            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.offlineResults.length === 0 && search.offlineIndexState === 'unavailable' && search.onlineState === 'idle' && <div className="online-search">Offline search is unavailable{search.offlineIndexError ? `: ${search.offlineIndexError}` : '.'} <button onClick={() => void search.searchOnline()}>Search online</button></div>}
+            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.offlineResults.length === 0 && search.offlineIndexState === 'idle' && search.onlineState === 'idle' && <div className="online-search">No loaded places match. <button onClick={() => void search.searchOnline()}>Search online</button></div>}
+            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.offlineResults.length === 0 && search.offlineIndexState !== 'empty' && search.onlineState === 'loading' && <div className="search-state">Searching {settings.onlineGeocoder === 'nominatim' ? 'Nominatim' : 'Photon'} for “{search.onlineQuery}”…</div>}
+            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.offlineResults.length === 0 && search.offlineIndexState !== 'empty' && search.onlineState === 'error' && <div className="online-search">{search.onlineError} <button onClick={() => void search.searchOnline()}>Try again</button></div>}
             {search.query && search.onlineQuery === search.query.trim() && search.onlineState === 'ready' && search.onlineResults.length > 0 && <div className="search-results">
               <p className="result-label">Online results{search.onlineCached ? ' · cached' : ' · live'}</p>
               {search.onlineResults.map((place) => <button key={place.id} onClick={() => onChoosePlace(place)}>{place.name}<span>{place.category ?? place.description ?? 'Place'}</span></button>)}
@@ -136,8 +192,9 @@ export function StoryPanels({
             {search.query && search.onlineQuery === search.query.trim() && search.onlineState === 'ready' && search.onlineResults.length === 0 && <div className="online-search">No online places matched. <button onClick={() => void search.searchOnline()}>Try another search</button></div>}
             {search.query && search.mapStatus === 'unavailable' && <div className="search-state">Loaded map data is unavailable. <button onClick={() => void search.searchOnline()}>Search online</button></div>}
             {journeyReady
-              ? <Suspense fallback={<div className="map-loading">Loading map…</div>}><MapCanvas motionEnabled={motionEnabled} selectedPlace={mapPlace} initialViewport={mapViewport} onViewportChange={setMapViewport} route={route} localArchive={localArchive} onPlaceSelected={onChoosePlace} onPlacesLoaded={search.setPlaces} onMapStatusChange={search.setMapStatus} /></Suspense>
+              ? <Suspense fallback={<div className="map-loading">Loading map…</div>}><MapCanvas motionEnabled={motionEnabled} selectedPlace={mapPlace} initialViewport={mapViewport} onViewportChange={setMapViewport} route={route} localArchive={localArchive} legs={legs} flyToLegsSignal={flyToLegsSignal} offlineZone={offlineZone.zone} zoneEditing={offlineZone.editing} onZoneBoundsChange={(bounds) => { if (offlineZone.zone) void offlineZone.replaceZone({ ...offlineZone.zone, bounds }) }} onPlaceSelected={onChoosePlace} onPlacesLoaded={search.setPlaces} onMapStatusChange={search.setMapStatus} /></Suspense>
               : <div className="map-loading">Restoring journey…</div>}
+            <ZoneControls zone={offlineZone.zone} progress={offlineZone.progress} editing={offlineZone.editing} cachePrompt={offlineZone.cachePrompt} onCache={() => void cacheZone()} onCancel={offlineZone.cancelCache} onToggleEditing={offlineZone.setEditing} onMaxZoomChange={(maxZoom) => { if (offlineZone.zone) void offlineZone.replaceZone({ ...offlineZone.zone, maxZoom }) }} onBoundsChange={(bounds) => { if (offlineZone.zone) void offlineZone.replaceZone({ ...offlineZone.zone, bounds }) }} />
             {pendingDestination && <div className="route-choice"><p className="eyebrow">Begin transition</p><strong>Walk from {selectedPlace?.name} to {pendingDestination.name}?</strong><p>Calculate an optional walking route before arriving.</p><div><button onClick={() => onCompleteTransition(pendingDestination, true)}>Walk there</button><button onClick={() => onCompleteTransition(pendingDestination, false)}>Arrive without route</button></div></div>}
             {routeState === 'loading' && <div className="route-status">Calculating walking route…</div>}
             {routeState === 'ready' && route && <div className="route-status">Walking route · {(route.distanceMeters / 1000).toFixed(1)} km · {Math.round(route.durationSeconds / 60)} min</div>}
@@ -182,7 +239,7 @@ export function StoryPanels({
             : <PlaceDetails layout="compact" place={selectedPlace} geocoder={settings.onlineGeocoder} liveDataEnabled={settings.liveDataEnabled} {...placeData} onLoadWeather={(force) => void placeData.loadWeather(force)} onLoadNearbyData={(force) => void placeData.loadNearbyData(force)} scenePhoto={scenePhoto} onSelectPhoto={setSelectedPhoto} onOpenFieldNotes={() => setFieldNotesOpen(true)} />
           : <p className="dock-empty">Choose a place first, then return here to examine it.</p>}
       </aside>}
-      {storyMode && traveloguePresent && <JournalPanel events={narrativeEvents} isOpen={travelogueOpen} onClose={() => closeStoryPanel('travelogue')} />}
+      {storyMode && traveloguePresent && <JournalPanel events={narrativeEvents} legs={legs} isOpen={travelogueOpen} onClose={() => closeStoryPanel('travelogue')} onFitJourney={legs.length > 0 ? () => setFlyToLegsSignal((value) => value + 1) : undefined} />}
       {arrivalCard && <ArrivalCard placeName={arrivalCard} sceneNumber={currentScene} />}
       {fieldNotesOpen && selectedPlace && <FieldNotes place={selectedPlace} geocoder={settings.onlineGeocoder} liveDataEnabled={settings.liveDataEnabled} {...placeData} selectedPhoto={selectedPhoto} scenePhoto={scenePhoto} onLoadWeather={(force) => void placeData.loadWeather(force)} onLoadNearbyData={(force) => void placeData.loadNearbyData(force)} onSelectPhoto={setSelectedPhoto} onClose={() => setFieldNotesOpen(false)} />}
     </>

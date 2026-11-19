@@ -1,11 +1,32 @@
+import { readFileSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
 
 const place = { osm_type: 'node', osm_id: 314, name: 'Test Destination', display_name: 'Test Destination, Test City', type: 'museum', lat: '35.6762', lon: '139.6503' }
+const portraitPng = readFileSync(new URL('../src/assets/sprites/aurelio-sprite-classic.png', import.meta.url))
+
+async function waitForApplicationReady(page) {
+  await expect(page.locator('.topbar h1')).toHaveText('Osm AI Journey', { timeout: 75_000 })
+  await expect(page.getByRole('dialog', { name: 'Osm AI Journey' })).toHaveCount(0, { timeout: 15_000 })
+}
 
 async function resetBrowser(page) {
-  await page.goto('/', { waitUntil: 'domcontentloaded' })
-  await page.evaluate(() => { localStorage.clear(); indexedDB.deleteDatabase('osm-ai-journey') })
-  await page.reload()
+  test.setTimeout(120_000)
+  await page.route('**/reset-browser-fixture', (route) => route.fulfill({
+    contentType: 'text/html',
+    body: '<!doctype html><html><body></body></html>',
+  }))
+  await page.goto('/reset-browser-fixture', { waitUntil: 'commit' })
+  await page.evaluate(async () => {
+    localStorage.clear()
+    await new Promise((resolve, reject) => {
+      const request = indexedDB.deleteDatabase('osm-ai-journey')
+      request.onsuccess = resolve
+      request.onerror = () => reject(request.error)
+      request.onblocked = () => reject(new Error('Journey database deletion was blocked'))
+    })
+  })
+  await page.goto('/', { waitUntil: 'commit' })
+  await waitForApplicationReady(page)
 }
 
 async function mockSearch(page) {
@@ -81,6 +102,7 @@ async function waitForDialogueLayout(page) {
 }
 
 test('upgrades a v3 journey database without losing its stores or records', async ({ page }) => {
+  test.setTimeout(120_000)
   await page.route('**/database-migration-fixture', (route) => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body></body></html>' }))
   await page.goto('/database-migration-fixture')
   await page.evaluate(() => new Promise((resolve, reject) => {
@@ -112,16 +134,13 @@ test('upgrades a v3 journey database without losing its stores or records', asyn
     }
   }))
 
-  await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'Osm AI Journey' })).toBeVisible()
-  const upgraded = await page.evaluate(() => new Promise((resolve, reject) => {
-    const request = indexedDB.open('osm-ai-journey')
-    request.onerror = () => reject(request.error)
-    request.onsuccess = () => {
-      const database = request.result
+  const upgraded = await page.evaluate(async () => {
+    const { getDb } = await import('/src/storage/db.ts')
+    const database = await getDb()
+    return new Promise((resolve, reject) => {
       const transaction = database.transaction('journeys', 'readonly')
       const getJourney = transaction.objectStore('journeys').get('active')
-      getJourney.onsuccess = () => {
+      transaction.oncomplete = () => {
         const result = {
           version: database.version,
           stores: Array.from(database.objectStoreNames),
@@ -130,13 +149,114 @@ test('upgrades a v3 journey database without losing its stores or records', asyn
         database.close()
         resolve(result)
       }
-      getJourney.onerror = () => reject(getJourney.error)
-    }
-  }))
-  expect(upgraded.version).toBe(4)
-  expect(upgraded.stores).toEqual(expect.arrayContaining(['geocoder-results', 'journeys', 'live-data', 'companion-art']))
+      transaction.onerror = () => { database.close(); reject(transaction.error) }
+    })
+  })
+  expect(upgraded.version).toBe(5)
+  expect(upgraded.stores).toEqual(expect.arrayContaining(['geocoder-results', 'journeys', 'live-data', 'companion-art', 'offline-zones']))
   expect(upgraded.journey.currentScene).toBe(3)
-  expect(upgraded.journey.messages).toEqual(['A saved traveler message'])
+  expect(upgraded.journey.messages.map((message) => typeof message === 'string' ? message : message.text)).toEqual(['A saved traveler message'])
+})
+
+test('offline place index survives an application reload', async ({ page }) => {
+  await resetBrowser(page)
+  const zone = {
+    id: 'test-zone',
+    label: 'Test zone',
+    bounds: [2, 48, 3, 49],
+    maxZoom: 12,
+    createdAt: new Date().toISOString(),
+    cachedBytes: 1,
+    status: 'ready',
+  }
+  const saved = await page.evaluate(async (offlineZone) => {
+    const { writeOfflineIndex, searchOfflineIndex } = await import('/src/providers/offlineIndex.ts')
+    const { saveZone } = await import('/src/storage/offlineZones.ts')
+    await saveZone(offlineZone)
+    await writeOfflineIndex(offlineZone, [{
+      id: 'offline-place',
+      name: 'Offline Library',
+      category: 'library',
+      coordinates: [2.5, 48.5],
+      source: 'map',
+    }, {
+      id: 'outside-place',
+      name: 'Outside Place',
+      coordinates: [5, 5],
+      source: 'map',
+    }])
+    return searchOfflineIndex(offlineZone, '')
+  }, zone)
+  expect(saved.places.map((item) => item.name)).toEqual(['Offline Library'])
+
+  await page.reload()
+  await waitForApplicationReady(page)
+  const restored = await page.evaluate(async (offlineZone) => {
+    const { searchOfflineIndex } = await import('/src/providers/offlineIndex.ts')
+    const { loadZone } = await import('/src/storage/offlineZones.ts')
+    return { search: await searchOfflineIndex(offlineZone, ''), zone: await loadZone() }
+  }, zone)
+  expect(restored.search.places.map((item) => item.name)).toEqual(['Offline Library'])
+  expect(restored.zone.bounds).toEqual(zone.bounds)
+})
+
+test('offline tile cache reuses shared tiles and preserves saved-zone manifests', async ({ page }) => {
+  await page.route('**/tile-cache-fixture', (route) => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body></body></html>' }))
+  await page.goto('/tile-cache-fixture')
+  const result = await page.evaluate(async () => {
+    const { beginOfflineTileCache, MAP_RESOURCE_CACHE_NAME, OFFLINE_TILE_CACHE_NAME } = await import('/src/providers/offlineTileCache.ts')
+    const { listZones } = await import('/src/storage/offlineZones.ts')
+    const { writeOfflineIndex, searchOfflineIndex } = await import('/src/providers/offlineIndex.ts')
+    const zone = (id) => ({ id, label: id, bounds: [0, 0, 1, 1], maxZoom: 1, createdAt: new Date().toISOString(), cachedBytes: 0, status: 'idle' })
+    const first = await beginOfflineTileCache(zone('zone-a'), ['https://tiles.test/shared', 'https://tiles.test/a'])
+    let firstFetches = 0
+    for (const url of ['https://tiles.test/shared', 'https://tiles.test/a']) {
+      await first.readOrFetch(url, new AbortController().signal, async () => {
+        firstFetches += 1
+        return new Response(new Uint8Array([1, 2, 3]))
+      })
+    }
+    await first.commit(zone('zone-a'), 'generation-a', 1)
+    const indexZone = { ...zone('zone-a'), cacheGeneration: 'generation-a' }
+    await writeOfflineIndex(indexZone, [{ id: 'offline-place', name: 'Offline Place', coordinates: [0.5, 0.5], source: 'map' }], 'generation-a')
+
+    const second = await beginOfflineTileCache(zone('zone-b'), ['https://tiles.test/shared', 'https://tiles.test/b'])
+    let sharedFetches = 0
+    await second.readOrFetch('https://tiles.test/shared', new AbortController().signal, async () => {
+      sharedFetches += 1
+      return new Response(new Uint8Array([4]))
+    })
+    await second.readOrFetch('https://tiles.test/b', new AbortController().signal, async () => new Response(new Uint8Array([5])))
+    await second.commit(zone('zone-b'), 'generation-b', 1)
+
+    const mapCache = await caches.open(MAP_RESOURCE_CACHE_NAME)
+    await mapCache.put('https://tiles.test/style-resource', new Response('map style'))
+    const cache = await caches.open(OFFLINE_TILE_CACHE_NAME)
+    const cachedUrls = (await cache.keys()).map((request) => request.url).sort()
+    const { clearOfflineMapCache } = await import('/src/storage/offlineCache.ts')
+    await clearOfflineMapCache()
+    const clearedZones = await listZones()
+    return {
+      firstFetches,
+      sharedFetches,
+      urls: cachedUrls,
+      savedZoneIds: (await listZones()).map((saved) => saved.id).sort(),
+      clearedZoneStatuses: clearedZones.map((saved) => saved.status).sort(),
+      remainingTileUrls: clearedZones.flatMap((saved) => saved.cachedTileUrls ?? []),
+      clearedIndex: await searchOfflineIndex(indexZone, '').then((result) => result.source),
+      remainingMapCacheNames: (await caches.keys()).filter((name) => name.includes('map-v1') || name.includes('offline-tiles-v1')),
+      clearedFeatureCounts: clearedZones.map((saved) => saved.indexedFeatureCount),
+    }
+  })
+  expect(result.firstFetches).toBe(2)
+  expect(result.sharedFetches).toBe(0)
+  expect(result.urls).toEqual(['https://tiles.test/a', 'https://tiles.test/b', 'https://tiles.test/shared'])
+  expect(result.savedZoneIds).toEqual(['zone-a', 'zone-b'])
+  expect(result.clearedZoneStatuses).toEqual(['partial', 'partial'])
+  expect(result.remainingTileUrls).toEqual([])
+  expect(result.clearedIndex).toBe('not-indexed')
+  expect(result.remainingMapCacheNames).toEqual([])
+  expect(result.clearedFeatureCounts).toEqual([undefined, undefined])
 })
 
 test('field notes reuse the full place details view', async ({ page }) => {
@@ -201,12 +321,248 @@ test('a local PMTiles picker rejects files without a pmtiles extension', async (
 
 test('offline cache status ignores unrelated origin caches and clearing leaves them intact', async ({ page }) => {
   await resetBrowser(page)
-  await page.evaluate(() => caches.open('unrelated-cache'))
+  await page.evaluate(async () => {
+    const { MAP_RESOURCE_CACHE_NAME, OFFLINE_TILE_CACHE_NAME } = await import('/src/providers/offlineTileCache.ts')
+    const appCache = await caches.open('osm-ai-journey-shell-test')
+    await appCache.put('https://app.test/app.js', new Response('app'))
+    const tileCache = await caches.open(OFFLINE_TILE_CACHE_NAME)
+    await tileCache.put('https://tiles.test/one', new Response('tile'))
+    const mapCache = await caches.open(MAP_RESOURCE_CACHE_NAME)
+    await mapCache.put('https://tiles.test/style', new Response('map resource'))
+    await caches.open('unrelated-cache')
+  })
   await page.getByRole('button', { name: 'Toggle settings' }).click()
-  await page.getByRole('button', { name: 'Refresh status' }).click()
-  await expect(page.locator('.offline-cache').first()).toContainText('0 cached resources across 0 caches')
-  await page.getByRole('button', { name: 'Clear cache' }).click()
+  await expect(page.locator('.storage-overview')).toContainText('App resources: 1 item')
+  await expect(page.locator('.storage-overview')).toContainText('1 unique tiles')
+  await expect(page.locator('.storage-overview')).toContainText('1 map resources')
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.locator('.storage-cache-row').filter({ hasText: 'App resources' }).getByRole('button', { name: 'Clear' }).click()
   await expect.poll(() => page.evaluate(() => caches.keys())).toContain('unrelated-cache')
+  await expect.poll(() => page.evaluate(async () => {
+    const { OFFLINE_TILE_CACHE_NAME } = await import('/src/providers/offlineTileCache.ts')
+    return (await caches.keys()).includes(OFFLINE_TILE_CACHE_NAME)
+  })).toBe(true)
+})
+
+test('map cache controls clear map tiles and indexes without clearing the app cache', async ({ page }) => {
+  await resetBrowser(page)
+  await page.evaluate(async () => {
+    const { MAP_RESOURCE_CACHE_NAME, OFFLINE_TILE_CACHE_NAME } = await import('/src/providers/offlineTileCache.ts')
+    const { saveZoneStrict } = await import('/src/storage/offlineZones.ts')
+    const { writeOfflineIndex } = await import('/src/providers/offlineIndex.ts')
+    const zone = {
+      id: 'settings-map-zone',
+      label: 'Settings test zone',
+      bounds: [0, 0, 1, 1],
+      maxZoom: 14,
+      createdAt: new Date().toISOString(),
+      cachedBytes: 4,
+      cachedTileCount: 1,
+      cachedTileUrls: ['https://tiles.test/offline'],
+      cacheGeneration: 'settings-generation',
+      indexedFeatureCount: 1,
+      status: 'ready',
+    }
+    await saveZoneStrict(zone)
+    await writeOfflineIndex(zone, [{ id: 'place', name: 'Saved Place', coordinates: [0.5, 0.5], source: 'map' }], zone.cacheGeneration)
+    await (await caches.open(OFFLINE_TILE_CACHE_NAME)).put('https://tiles.test/offline', new Response('tile'))
+    await (await caches.open(MAP_RESOURCE_CACHE_NAME)).put('https://tiles.test/style', new Response('map'))
+    await (await caches.open('osm-ai-journey-shell-test')).put('https://app.test/app.js', new Response('app'))
+  })
+  await page.getByRole('button', { name: 'Toggle settings' }).click()
+  await expect(page.locator('.storage-entry')).toContainText('1 tiles · 1 indexed places')
+  await expect(page.locator('.storage-overview')).toContainText('1 unique tiles')
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.getByRole('button', { name: 'Clear all map data' }).click()
+  await expect(page.locator('.storage-overview')).toContainText('0 unique tiles')
+  await expect(page.locator('.storage-entry')).toContainText('0 tiles · 0 indexed places')
+  const result = await page.evaluate(async () => {
+    const { OFFLINE_TILE_CACHE_NAME } = await import('/src/providers/offlineTileCache.ts')
+    const { loadZone } = await import('/src/storage/offlineZones.ts')
+    const { searchOfflineIndex } = await import('/src/providers/offlineIndex.ts')
+    const zone = await loadZone()
+    return {
+      tileCacheExists: (await caches.keys()).includes(OFFLINE_TILE_CACHE_NAME),
+      appCacheExists: (await caches.keys()).includes('osm-ai-journey-shell-test'),
+      status: zone?.status,
+      indexedFeatureCount: zone?.indexedFeatureCount,
+      indexState: zone ? (await searchOfflineIndex(zone, '')).source : 'missing-zone',
+    }
+  })
+  expect(result).toEqual({ tileCacheExists: false, appCacheExists: true, status: 'partial', indexedFeatureCount: undefined, indexState: 'not-indexed' })
+})
+
+test('storage overview hides message text and removes only unshared tiles with a selected zone', async ({ page }) => {
+  await resetBrowser(page)
+  await page.evaluate(async () => {
+    const { OFFLINE_TILE_CACHE_NAME } = await import('/src/providers/offlineTileCache.ts')
+    const { saveZoneStrict } = await import('/src/storage/offlineZones.ts')
+    const database = await new Promise((resolve, reject) => {
+      const request = indexedDB.open('osm-ai-journey')
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    await new Promise((resolve, reject) => {
+      const transaction = database.transaction('journeys', 'readwrite')
+      transaction.objectStore('journeys').put({
+        id: 'active',
+        currentDestination: null,
+        mapViewport: null,
+        destinationHistory: [],
+        currentScene: 1,
+        messages: [{ id: 'private', role: 'user', text: 'private message text', createdAt: new Date().toISOString() }],
+        knownPeople: [],
+        knownEntities: [],
+        userFacts: [],
+        narrativeEvents: [],
+      })
+      transaction.oncomplete = () => { database.close(); resolve() }
+      transaction.onerror = () => reject(transaction.error)
+    })
+    const first = {
+      id: 'zone-a', label: 'Zone A', bounds: [0, 0, 1, 1], maxZoom: 1, createdAt: new Date().toISOString(),
+      cachedBytes: 0, cachedTileCount: 2, cachedTileUrls: ['https://tiles.test/shared', 'https://tiles.test/a'],
+      cacheGeneration: 'generation-a', indexedFeatureCount: 1, status: 'ready',
+    }
+    const second = {
+      ...first, id: 'zone-b', label: 'Zone B', cachedTileCount: 1,
+      cachedTileUrls: ['https://tiles.test/shared'], cacheGeneration: 'generation-b',
+    }
+    await saveZoneStrict(first)
+    await saveZoneStrict(second)
+    const tileCache = await caches.open(OFFLINE_TILE_CACHE_NAME)
+    await tileCache.put('https://tiles.test/shared', new Response('shared'))
+    await tileCache.put('https://tiles.test/a', new Response('zone a'))
+  })
+  await page.reload()
+  await waitForApplicationReady(page)
+  await page.getByRole('button', { name: 'Toggle settings' }).click()
+  const overview = page.locator('.storage-overview')
+  await expect(overview).toContainText('1 messages')
+  await expect(overview).not.toContainText('private message text')
+  await expect(overview.locator('.storage-entry').filter({ hasText: 'Zone A' })).toContainText('2 tiles')
+  page.once('dialog', (dialog) => dialog.accept())
+  await overview.locator('.storage-entry').filter({ hasText: 'Zone A' }).getByRole('button', { name: 'Remove zone' }).click()
+  await expect(overview.locator('.storage-entry').filter({ hasText: 'Zone A' })).toHaveCount(0)
+  const remaining = await page.evaluate(async () => {
+    const { OFFLINE_TILE_CACHE_NAME } = await import('/src/providers/offlineTileCache.ts')
+    const { listZones } = await import('/src/storage/offlineZones.ts')
+    return {
+      zones: (await listZones()).map((zone) => zone.id).sort(),
+      tiles: (await (await caches.open(OFFLINE_TILE_CACHE_NAME)).keys()).map((request) => request.url).sort(),
+    }
+  })
+  expect(remaining).toEqual({ zones: ['zone-b'], tiles: ['https://tiles.test/shared'] })
+  let confirmation = ''
+  page.once('dialog', async (dialog) => {
+    confirmation = dialog.message()
+    await dialog.accept()
+  })
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    overview.getByRole('button', { name: 'Export & delete journey' }).click(),
+  ])
+  expect(download.suggestedFilename()).toBe('osm-ai-journey.json')
+  expect(confirmation).toContain('A journey export has been downloaded')
+})
+
+test('caches and searches real OpenFreeMap places for a high-zoom zone', async ({ page }) => {
+  test.setTimeout(180_000)
+  await resetBrowser(page)
+  test.setTimeout(180_000)
+  await page.evaluate(async () => {
+    const { saveZoneStrict } = await import('/src/storage/offlineZones.ts')
+    await saveZoneStrict({
+      id: 'live-high-zoom-zone',
+      label: 'Louvre test zone',
+      bounds: [2.331, 48.861, 2.34, 48.864],
+      maxZoom: 16,
+      createdAt: new Date().toISOString(),
+      cachedBytes: 0,
+      status: 'idle',
+    })
+  })
+  await page.reload()
+  await waitForApplicationReady(page)
+  await page.locator('.story-dock button').first().click()
+  const zoneControls = page.locator('.zone-controls')
+  await zoneControls.locator('summary').click()
+  await expect(zoneControls.locator('.zone-zoom-control')).toContainText('Maximum zoom · 16')
+  await zoneControls.getByRole('button', { name: 'Cache this zone' }).click()
+  await expect(zoneControls.locator('.zone-progress-label')).toContainText(/\d+ tiles fetched · [1-9]\d* places indexed/, { timeout: 150_000 })
+
+  const result = await page.evaluate(async () => {
+    const { loadZone } = await import('/src/storage/offlineZones.ts')
+    const { searchOfflineIndex } = await import('/src/providers/offlineIndex.ts')
+    const zone = await loadZone()
+    if (!zone) throw new Error('The cached zone was not saved')
+    return { zone, search: await searchOfflineIndex(zone, 'Louvre') }
+  })
+  expect(result.zone.status).toBe('ready')
+  expect(result.zone.indexedFeatureCount).toBeGreaterThan(0)
+  expect(result.search.source).toBe('offline-index')
+  expect(result.search.places.some((place) => /louvre/i.test(place.name))).toBe(true)
+
+  const searchBox = page.getByPlaceholder('Search places')
+  await searchBox.fill('Louvre')
+  await expect(page.locator('.result-label')).toHaveText('From offline index')
+  await expect(page.locator('.search-results')).toContainText('Louvre')
+})
+
+test('switches from a saved Paris cache to an uncached destination view', async ({ page }) => {
+  await mockSearch(page)
+  await resetBrowser(page)
+  await page.evaluate(async () => {
+    const { newZoneFromViewport, saveZoneStrict } = await import('/src/storage/offlineZones.ts')
+    const { beginOfflineTileCache } = await import('/src/providers/offlineTileCache.ts')
+    const { writeOfflineIndex } = await import('/src/providers/offlineIndex.ts')
+    const parisZone = newZoneFromViewport([2.3522, 48.8566], 11.5)
+    const tileUrl = 'https://tiles.test/paris'
+    const cache = await beginOfflineTileCache(parisZone, [tileUrl])
+    await cache.readOrFetch(tileUrl, new AbortController().signal, async () => new Response('Paris tile'))
+    await writeOfflineIndex(parisZone, [{ id: 'paris-place', name: 'Paris Place', coordinates: [2.3522, 48.8566], source: 'map' }], 'paris-generation')
+    await cache.commit(parisZone, 'paris-generation', 1)
+  })
+  await page.reload()
+  await waitForApplicationReady(page)
+  await chooseOnlinePlace(page)
+
+  const zoneControls = page.locator('.zone-controls')
+  await expect(zoneControls.locator('.zone-controls-summary')).toContainText('139.6503°, 35.6762°', { timeout: 15_000 })
+  await expect(zoneControls.locator('.zone-controls-content')).toBeVisible()
+  await expect(zoneControls.getByRole('status')).toContainText('This view is not cached yet')
+  await expect(zoneControls.getByRole('button', { name: 'Cache this zone' })).toBeVisible()
+
+  const result = await page.evaluate(async () => {
+    const { listZones, loadZone } = await import('/src/storage/offlineZones.ts')
+    const { searchOfflineIndex } = await import('/src/providers/offlineIndex.ts')
+    const activeZone = await loadZone()
+    if (!activeZone) throw new Error('The active cache zone was not saved')
+    const zones = await listZones()
+    return {
+      activeZone,
+      savedParisZone: zones.find((zone) => zone.label === 'Current view' && zone.bounds[0] < 3),
+      currentSearch: await searchOfflineIndex(activeZone, 'Paris Place'),
+    }
+  })
+  expect(result.activeZone.status).toBe('idle')
+  expect(result.activeZone.bounds[0]).toBeGreaterThan(100)
+  expect(result.savedParisZone?.status).toBe('ready')
+  expect(result.currentSearch.source).toBe('not-indexed')
+})
+
+test('map panel is larger and offline-zone tools stay collapsed until opened', async ({ page }) => {
+  await resetBrowser(page)
+  await page.locator('.story-dock button').first().click()
+  const mapPanel = page.locator('.map-panel--compact')
+  await expect(mapPanel).toBeVisible()
+  const panelHeight = await mapPanel.evaluate((element) => element.getBoundingClientRect().height)
+  expect(panelHeight).toBeGreaterThanOrEqual(300)
+  const zoneControls = page.locator('.zone-controls')
+  await expect(zoneControls.locator('summary')).toBeVisible()
+  await expect(zoneControls.locator('.zone-controls-content')).toBeHidden()
+  await zoneControls.locator('summary').click()
+  await expect(zoneControls.locator('.zone-controls-content')).toBeVisible()
 })
 
 test('completes and restores an online destination journey', async ({ page }) => {
@@ -260,13 +616,15 @@ test('restores the last explored map viewport when no destination is selected', 
   await page.locator('.story-dock button').nth(0).click()
   const map = page.locator('.map-canvas')
   await expect(map.locator('canvas')).toBeVisible({ timeout: 15000 })
+  await expect.poll(() => readActiveMapViewport(page), { timeout: 15000 }).not.toBeNull()
+  await expect(page.locator('.zone-controls-summary')).toContainText('2.3522°, 48.8566°')
   const bounds = await map.boundingBox()
   expect(bounds).not.toBeNull()
-  const startX = bounds.x + bounds.width / 2
+  const startX = bounds.x + bounds.width * 0.85
   const startY = bounds.y + bounds.height / 2
   await page.mouse.move(startX, startY)
   await page.mouse.down()
-  await page.mouse.move(startX + 120, startY + 70, { steps: 6 })
+  await page.mouse.move(startX + 40, startY + 40, { steps: 6 })
   await page.mouse.up()
 
   await expect.poll(async () => {
@@ -274,6 +632,7 @@ test('restores the last explored map viewport when no destination is selected', 
     if (!viewport) return 0
     return Math.hypot(viewport.center[0] - 2.3522, viewport.center[1] - 48.8566)
   }, { timeout: 15000 }).toBeGreaterThan(0.01)
+  await expect(page.locator('.zone-controls-summary')).not.toContainText('2.3522°, 48.8566°')
   const savedViewport = await readActiveMapViewport(page)
   expect(savedViewport).not.toBeNull()
 
@@ -490,20 +849,20 @@ test('renders structured story turns with subtle response effects', async ({ pag
     { type: 'scene', text: 'The scene shifts beneath an awning.' },
     { type: 'dialogue', speaker: 'Mira', text: 'Let’s find shelter.' },
   ] })
+  await resetBrowser(page)
+  await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('chat')
+  await page.getByPlaceholder(/Speak freely/).fill('What happens next?')
   await page.route('http://localhost:11434/v1/chat/completions', (route) => route.fulfill({
     status: 200,
     contentType: 'text/event-stream',
     body: `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\ndata: [DONE]\n\n`,
   }))
-  await resetBrowser(page)
-  await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('chat')
-  await page.getByPlaceholder(/Speak freely/).fill('What happens next?')
   await page.getByRole('button', { name: 'Send message' }).click()
   const conversation = page.locator('.conversation')
   await expect(conversation).toContainText('Rain begins to fall.')
   await expect(conversation).toContainText('Mira')
   await expect(conversation).toContainText('Let’s find shelter.')
-  await expect(conversation.locator('.story-entry-arrive')).toContainText('What happens next?')
+  await expect(conversation.locator('.chat-line-user.story-entry-arrive')).toContainText('What happens next?')
   await expect(conversation.locator('.scene-transition')).toContainText('The scene shifts beneath an awning.')
   await expect(conversation.locator('.speaker-focus')).toContainText('Let’s find shelter.')
   await expect(conversation).not.toContainText('"blocks"')
@@ -585,14 +944,14 @@ test('switches between novel, visual novel, and chat renderers with the same str
     { type: 'dialogue', speaker: 'The Wayfinder', text: 'Let’s find shelter.' },
     { type: 'scene', text: 'The station lights flicker.' },
   ] })
+  await resetBrowser(page)
+  const mode = page.getByRole('combobox', { name: 'Story presentation' })
+  await page.getByPlaceholder(/Speak freely/).fill('What happens next?')
   await page.route('http://localhost:11434/v1/chat/completions', (route) => route.fulfill({
     status: 200,
     contentType: 'text/event-stream',
     body: `data: ${JSON.stringify({ choices: [{ delta: { content: structuredTurn } }] })}\n\ndata: [DONE]\n\n`,
   }))
-  await resetBrowser(page)
-  const mode = page.getByRole('combobox', { name: 'Story presentation' })
-  await page.getByPlaceholder(/Speak freely/).fill('What happens next?')
   await page.getByRole('button', { name: 'Send message' }).click()
   await expect(page.locator('.story-conversation')).toContainText('Let’s find shelter.')
 
@@ -666,16 +1025,16 @@ test('desktop story layouts adapt by presentation and side panels animate out ac
 })
 
 test('story modes fit common laptop and tablet viewports with oversized VN portraits visible', async ({ page }) => {
-  await page.route('http://localhost:11434/v1/chat/completions', (route) => route.fulfill({
-    status: 200,
-    contentType: 'text/event-stream',
-    body: `data: ${JSON.stringify({ choices: [{ delta: { content: 'The lanterns come alive.' } }] })}\n\ndata: [DONE]\n\n`,
-  }))
   await resetBrowser(page)
   await page.setViewportSize({ width: 1024, height: 768 })
   await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('visual-novel')
   await expect(page.locator('.vn-character-stage')).toBeHidden()
   await page.getByPlaceholder(/Speak freely/).fill('Begin a story')
+  await page.route('http://localhost:11434/v1/chat/completions', (route) => route.fulfill({
+    status: 200,
+    contentType: 'text/event-stream',
+    body: `data: ${JSON.stringify({ choices: [{ delta: { content: 'The lanterns come alive.' } }] })}\n\ndata: [DONE]\n\n`,
+  }))
   await page.getByRole('button', { name: 'Send message' }).click()
   await expect(page.locator('.story-conversation')).toContainText('The lanterns come alive.')
   const mode = page.getByRole('combobox', { name: 'Story presentation' })
@@ -867,23 +1226,27 @@ test('built-in sprites are discovered and labeled from their filenames', async (
 })
 
 test('default persona portrait uploads remain browser-local and appear in VN mode', async ({ page }) => {
+  await mockSearch(page)
   await resetBrowser(page)
   await page.getByRole('button', { name: 'Toggle settings' }).click()
   await page.getByLabel('Use a custom portrait').setInputFiles({
     name: 'companion.png',
     mimeType: 'image/png',
-    buffer: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    buffer: portraitPng,
   })
   await expect(page.getByRole('button', { name: 'Restore built-in sprite' })).toBeVisible()
   await page.getByRole('button', { name: 'Toggle settings' }).click()
   await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('visual-novel')
+  await chooseOnlinePlace(page)
   await expect(page.locator('.vn-character-left img')).toBeVisible()
+  await page.waitForTimeout(450)
   await page.reload()
   await expect(page.getByRole('combobox', { name: 'Story presentation' })).toHaveValue('visual-novel')
   await expect(page.locator('.vn-character-left img')).toBeVisible()
 })
 
 test('custom persona profiles save their prompt, sprite, portrait, and per-journey selection', async ({ page }) => {
+  await mockSearch(page)
   let requestMessages = []
   const reply = JSON.stringify({ blocks: [
     { type: 'dialogue', speaker: 'Mira', text: 'We can take the quieter street.' },
@@ -908,7 +1271,7 @@ test('custom persona profiles save their prompt, sprite, portrait, and per-journ
   await page.getByLabel('Use a custom portrait').setInputFiles({
     name: 'mira.png',
     mimeType: 'image/png',
-    buffer: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    buffer: portraitPng,
   })
   await expect(page.locator('.persona-art-preview')).toContainText('Custom portrait')
   await page.getByRole('button', { name: 'Restore built-in sprite' }).click()
@@ -916,9 +1279,10 @@ test('custom persona profiles save their prompt, sprite, portrait, and per-journ
   await page.getByLabel('Use a custom portrait').setInputFiles({
     name: 'mira.png',
     mimeType: 'image/png',
-    buffer: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    buffer: portraitPng,
   })
   await page.getByRole('button', { name: 'Toggle settings' }).click()
+  await chooseOnlinePlace(page)
   await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('visual-novel')
   await page.getByPlaceholder(/Speak freely/).fill('Which way?')
   await page.getByRole('button', { name: 'Send message' }).click()
@@ -941,32 +1305,35 @@ test('custom persona profiles save their prompt, sprite, portrait, and per-journ
 })
 
 test('legacy persona settings and companion art migrate to the default persona profile', async ({ page }) => {
+  await mockSearch(page)
   await resetBrowser(page)
-  await page.evaluate(async () => {
+  await page.evaluate(async (portraitBase64) => {
     const key = 'osm-ai-journey.settings.v1'
     const legacy = JSON.parse(localStorage.getItem(key) ?? '{}')
     delete legacy.personaProfiles
     legacy.personaName = 'Legacy Guide'
     legacy.personaInstructions = 'Use the old saved voice.'
     localStorage.setItem(key, JSON.stringify(legacy))
-    const request = indexedDB.open('osm-ai-journey', 4)
+    const request = indexedDB.open('osm-ai-journey')
     await new Promise((resolve, reject) => {
       request.onsuccess = () => {
         const database = request.result
         const transaction = database.transaction('companion-art', 'readwrite')
-        transaction.objectStore('companion-art').put({ key: 'active', image: new Blob(['legacy portrait'], { type: 'image/png' }) })
+        const portraitBytes = Uint8Array.from(atob(portraitBase64), (character) => character.charCodeAt(0))
+        transaction.objectStore('companion-art').put({ key: 'active', image: new Blob([portraitBytes], { type: 'image/png' }) })
         transaction.oncomplete = () => { database.close(); resolve() }
         transaction.onerror = () => reject(transaction.error)
       }
       request.onerror = () => reject(request.error)
     })
-  })
+  }, portraitPng.toString('base64'))
   await page.reload()
   await page.getByRole('button', { name: 'Toggle settings' }).click()
   await expect(page.getByLabel('Persona name')).toHaveValue('Legacy Guide')
   await expect(page.getByLabel('Persona instructions')).toHaveValue('Use the old saved voice.')
   await expect(page.locator('.persona-art-preview')).toContainText('Custom portrait')
   await page.getByRole('button', { name: 'Toggle settings' }).click()
+  await chooseOnlinePlace(page)
   await page.getByRole('combobox', { name: 'Story presentation' }).selectOption('visual-novel')
   await expect(page.locator('.vn-character-left img')).toBeVisible()
 })

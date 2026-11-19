@@ -12,7 +12,9 @@
     "test:unit": "node --import tsx --test tests/unit.test.ts"
   },
   "dependencies": {
+    "@mapbox/vector-tile": "3.0.0",
     "maplibre-gl": "^6.16.0",
+    "pbf": "5.1.2",
     "pmtiles": "^4.5.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"

@@ -1,5 +1,7 @@
 import type { Place } from '../types/domain'
 
+const PLACE_CATEGORY_KEYS = ['class', 'subclass', 'amenity', 'tourism', 'shop', 'leisure', 'historic', 'healthcare', 'office', 'craft', 'building']
+
 function text(value: unknown) {
   return typeof value === 'string' || typeof value === 'number' ? String(value).trim() : ''
 }
@@ -12,16 +14,16 @@ function normalized(value: string) {
   return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase().trim().replace(/\s+/g, ' ')
 }
 
-export function placeFromFeature(feature: { id?: string | number; properties?: Record<string, unknown>; geometry?: { type?: string; coordinates?: unknown } }): Place | null {
+export function placeFromFeature(feature: { id?: string | number; properties?: Record<string, unknown> | null; geometry?: { type?: string; coordinates?: unknown } | null }): Place | null {
   if (feature.geometry?.type !== 'Point' || !Array.isArray(feature.geometry.coordinates)) return null
   const coordinates = feature.geometry.coordinates
   if (typeof coordinates[0] !== 'number' || typeof coordinates[1] !== 'number') return null
 
   const properties = feature.properties ?? {}
-  const name = firstText(properties, ['name', 'name_en', 'official_name', 'alt_name'])
+  const name = firstText(properties, ['name', 'name_en', 'name_int', 'name:en', 'name:latin', 'official_name', 'alt_name'])
   if (!name) return null
 
-  const category = firstText(properties, ['class', 'subclass', 'amenity', 'tourism', 'shop'])
+  const category = firstText(properties, PLACE_CATEGORY_KEYS)
   const osmType = firstText(properties, ['osm_type', 'type']) || undefined
   const osmId = firstText(properties, ['osm_id', 'id']) || undefined
   const wikidataId = firstText(properties, ['wikidata', 'wikidata_id']) || undefined
@@ -40,6 +42,10 @@ export function placeFromFeature(feature: { id?: string | number; properties?: R
     coordinates: [coordinates[0], coordinates[1]],
     source: 'map',
   }
+}
+
+export function hasPlaceCategory(properties: Record<string, unknown> | null | undefined) {
+  return Boolean(properties && firstText(properties, PLACE_CATEGORY_KEYS))
 }
 
 export function searchLocalPlaces(places: Place[], query: string) {

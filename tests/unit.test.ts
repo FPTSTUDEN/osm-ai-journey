@@ -15,9 +15,52 @@ import { normalizeMessages } from '../src/storage/messages'
 import { normalizeMotionPreference, normalizePersonaProfiles, normalizeStoryPresentationMode } from '../src/storage/settings'
 import { DEFAULT_PERSONA, DEFAULT_PERSONA_ID } from '../src/providers/config'
 import { parsePersonaSpriteFilename } from '../src/providers/personaSprites'
-import type { ChatEntry, Place } from '../src/types/domain'
+import { defaultZoneFromViewport, followDefaultZone, isInZone, newZoneFromViewport, replaceOfflineZoneBounds, type OfflineZone } from '../src/storage/offlineZones'
+import { offlineIndexKey, searchOfflineIndex, writeOfflineIndex } from '../src/providers/offlineIndex'
+import { enumerateZoneTiles, loadOpenFreeMapTileSource, runCache, tileUrl, type TileJob } from '../src/providers/offlineCache'
+import { MAX_OFFLINE_TILES, selectTileEvictions } from '../src/providers/offlineTileCache'
+import { placesFromVectorTile } from '../src/providers/vectorTilePlaces'
+import { PbfWriter } from 'pbf'
+import type { ChatEntry, JourneyLeg, Place } from '../src/types/domain'
 
 const place = (id: string, name: string, category?: string): Place => ({ id, name, category, coordinates: [2.35, 48.85], source: 'map' })
+
+function pointVectorTile(name: string) {
+  const tile = new PbfWriter()
+  tile.writeMessage(3, (_layer, writer) => {
+    writer.writeStringField(1, 'places')
+    writer.writeMessage(2, (_feature, feature) => {
+      feature.writeVarintField(1, 1)
+      feature.writePackedVarint(2, [0, 0])
+      feature.writeVarintField(3, 1)
+      feature.writePackedVarint(4, [9, 4096, 4096])
+    }, {})
+    writer.writeStringField(3, 'name')
+    writer.writeMessage(4, (_value, value) => value.writeStringField(1, name), {})
+    writer.writeVarintField(5, 4096)
+    writer.writeVarintField(15, 2)
+  }, {})
+  return tile.finish()
+}
+
+function polygonVectorTile(name: string) {
+  const tile = new PbfWriter()
+  tile.writeMessage(3, (_layer, writer) => {
+    writer.writeStringField(1, 'places')
+    writer.writeMessage(2, (_feature, feature) => {
+      feature.writePackedVarint(2, [0, 0, 1, 1])
+      feature.writeVarintField(3, 3)
+      feature.writePackedVarint(4, [9, 3584, 3584, 34, 1024, 0, 0, 1024, 1023, 0, 15])
+    }, {})
+    writer.writeStringField(3, 'name')
+    writer.writeStringField(3, 'class')
+    writer.writeMessage(4, (_value, value) => value.writeStringField(1, name), {})
+    writer.writeMessage(4, (_value, value) => value.writeStringField(1, 'museum'), {})
+    writer.writeVarintField(5, 4096)
+    writer.writeVarintField(15, 2)
+  }, {})
+  return tile.finish()
+}
 
 test('local search ranks prefix matches and requires all terms', () => {
   const results = searchLocalPlaces([place('1', 'Central Station', 'transport'), place('2', 'Station Road', 'road'), place('3', 'Museum')], 'central station')
@@ -43,6 +86,14 @@ test('places preserve opening-hours tags from loaded map features', () => {
     properties: { name: 'Central Library', opening_hours: 'Mo-Fr 09:00-17:00' },
   })
   assert.equal(mapped?.openingHours, 'Mo-Fr 09:00-17:00')
+})
+
+test('places use localized English names when a vector feature has no default name', () => {
+  const mapped = placeFromFeature({
+    geometry: { type: 'Point', coordinates: [2.35, 48.85] },
+    properties: { 'name:en': 'Central Library' },
+  })
+  assert.equal(mapped?.name, 'Central Library')
 })
 
 test('Overpass queries escape place names and return nearby named transit stops in distance order', () => {
@@ -108,7 +159,17 @@ test('photo metadata is included as untrusted text context without image content
   assert.doesNotMatch(messages[0].content, /full\.jpg/)
 })
 
-test('journey export round-trips and rejects malformed data', () => {
+test('journey export round-trips journey legs and rejects malformed data', () => {
+  const leg: JourneyLeg = {
+    id: 'leg-1',
+    from: null,
+    to: place('current', 'Current'),
+    routed: true,
+    geometry: [[2.34, 48.84], [2.35, 48.85]],
+    distanceMeters: 1500,
+    durationSeconds: 1200,
+    createdAt: '2026-01-01T00:05:00.000Z',
+  }
   const journey = {
     id: 'active' as const,
     personaId: 'wayfinder',
@@ -123,20 +184,35 @@ test('journey export round-trips and rejects malformed data', () => {
     narrativeEvents: [],
     conversationSummary: '',
     storyProgress: null,
+    legs: [leg],
     branches: [{
       id: 'branch-1', label: 'Earlier future', createdAt: '2026-01-02T00:00:00.000Z',
       snapshot: {
         personaId: 'wayfinder', currentDestination: place('current', 'Current'), mapViewport: null, destinationHistory: [place('current', 'Current')], currentScene: 2,
         messages: [{ id: 'm1', role: 'user' as const, text: 'hello', createdAt: '2026-01-01T00:00:00.000Z' }],
-        knownPeople: ['Ada'], knownEntities: [], userFacts: ['A fact'], narrativeEvents: [], conversationSummary: '', storyProgress: null,
+        knownPeople: ['Ada'], knownEntities: [], userFacts: ['A fact'], narrativeEvents: [], conversationSummary: '', storyProgress: null, legs: [leg],
       },
     }],
   }
-  assert.deepEqual(parseJourneyJson(JSON.parse(journeyJson(journey))), JSON.parse(JSON.stringify(journey)))
+  const restored = parseJourneyJson(JSON.parse(journeyJson(journey)))
+  assert.deepEqual(restored, JSON.parse(JSON.stringify(journey)))
+  assert.equal(restored.legs?.length, 1)
+  assert.equal(restored.legs?.[0].routed, true)
+  assert.equal(restored.legs?.[0].geometry?.length, 2)
+  assert.equal(restored.branches?.[0].snapshot.legs?.length, 1)
+
   const legacyJourney = { ...journey }
   delete (legacyJourney as Partial<typeof journey>).personaId
   assert.equal(parseJourneyJson(legacyJourney).personaId, 'wayfinder')
+
+  const withoutLegs = { ...journey }
+  delete (withoutLegs as Partial<typeof journey>).legs
+  assert.deepEqual(parseJourneyJson(withoutLegs).legs, [])
+  const branchWithoutLegs = { ...journey, branches: journey.branches.map((branch) => ({ ...branch, snapshot: { ...branch.snapshot, legs: undefined } })) }
+  assert.deepEqual(parseJourneyJson(branchWithoutLegs).branches?.[0].snapshot.legs, [])
+
   assert.throws(() => parseJourneyJson({ id: 'wrong' }), /invalid id/)
+  assert.throws(() => parseJourneyJson({ ...journey, legs: 'not-an-array' }), /invalid legs/)
 })
 
 test('journey export preserves conversation history and validates the active conversation', () => {
@@ -153,6 +229,7 @@ test('journey export preserves conversation history and validates the active con
     narrativeEvents: [],
     conversationSummary: '',
     storyProgress: null,
+    legs: [],
     branches: [],
     activeConversationId: 'thread-1',
     conversations: [{
@@ -375,4 +452,217 @@ test('Wikimedia photo parsing filters unsupported MIME types and sorts by distan
   assert.equal(photos[0].licenseUrl, 'https://creativecommons.org/licenses/by-sa/4.0/')
   assert.equal(photos[0].attributionRequired, true)
   assert.match(photos[0].thumbnailUrl, /640px-Near\.jpg/)
+})
+
+test('offline zone defaults from viewport and contains points inside its bounds', () => {
+  const base = defaultZoneFromViewport([2.35, 48.85], 11, 15)
+  assert.equal(base.viewportDefault, true)
+  assert.equal(base.label, 'Current view')
+  assert.equal(base.maxZoom, 15)
+  assert.equal(base.bounds[0] < 2.35 && base.bounds[2] > 2.35, true)
+  assert.equal(base.bounds[1] < 48.85 && base.bounds[3] > 48.85, true)
+
+  const zone = newZoneFromViewport([2.35, 48.85], 11, 15)
+  assert.equal(zone.viewportDefault, true)
+  assert.equal(typeof zone.id, 'string')
+  assert.equal(zone.status, 'idle')
+  assert.equal(zone.cachedBytes, 0)
+  assert.equal(isInZone(zone, [2.35, 48.85]), true)
+  assert.equal(isInZone(zone, [2.35 + base.bounds[2] - base.bounds[0], 48.85]), false)
+})
+
+test('default cache zone follows distant views without replacing the saved cached zone', () => {
+  const cachedParisZone: OfflineZone = {
+    ...newZoneFromViewport([2.35, 48.85], 11, 15),
+    status: 'ready',
+    cachedBytes: 128,
+    cachedTileCount: 3,
+    cachedTileUrls: ['https://tiles.test/paris'],
+    cacheGeneration: 'paris-generation',
+    indexedFeatureCount: 42,
+  }
+
+  const shibuyaZone = followDefaultZone(cachedParisZone, [139.6503, 35.6762], 14)
+  assert.notEqual(shibuyaZone.id, cachedParisZone.id)
+  assert.equal(shibuyaZone.status, 'idle')
+  assert.equal(shibuyaZone.viewportDefault, true)
+  assert.equal(shibuyaZone.maxZoom, cachedParisZone.maxZoom)
+  assert.equal(isInZone(shibuyaZone, [139.6503, 35.6762]), true)
+  assert.equal(shibuyaZone.cachedTileUrls, undefined)
+  assert.equal(shibuyaZone.cacheGeneration, undefined)
+  assert.deepEqual(cachedParisZone.cachedTileUrls, ['https://tiles.test/paris'])
+  assert.equal(followDefaultZone(shibuyaZone, [139.6503, 35.6762], 14), shibuyaZone)
+
+  const customZone = { ...cachedParisZone, viewportDefault: false }
+  assert.equal(followDefaultZone(customZone, [139.6503, 35.6762], 14), customZone)
+})
+
+test('idle default cache zone follows viewport changes within its previous bounds', () => {
+  const zone = newZoneFromViewport([2.35, 48.85], 11, 15)
+  const panned = followDefaultZone(zone, [2.36, 48.85], 11)
+
+  assert.equal(panned.id, zone.id)
+  assert.deepEqual(panned.bounds, defaultZoneFromViewport([2.36, 48.85], 11, 15).bounds)
+})
+
+test('offline index search reports empty when no zone is provided or storage is unavailable', async () => {
+  const noZone = await searchOfflineIndex(null, 'anything')
+  assert.equal(noZone.source, 'not-indexed')
+  assert.deepEqual(noZone.places, [])
+
+  // In the Node test runner there is no IndexedDB, so offline search reports the storage failure.
+  const zone = newZoneFromViewport([2.35, 48.85], 11, 15)
+  const withZone = await searchOfflineIndex(zone, 'anything')
+  assert.equal(withZone.source, 'unavailable')
+  assert.deepEqual(withZone.places, [])
+  assert.match(withZone.error ?? '', /IndexedDB is unavailable/)
+})
+
+test('offline vector tile extraction indexes named point features only inside the zone', () => {
+  const zone = { ...newZoneFromViewport([0, 0], 11, 0), bounds: [-1, -1, 1, 1] as [number, number, number, number] }
+  const tile = pointVectorTile('Tile Center Place')
+  const places = placesFromVectorTile(tile, { z: 0, x: 0, y: 0 }, zone)
+  assert.deepEqual(places.map((item) => item.name), ['Tile Center Place'])
+
+  const outsideZone = { ...zone, bounds: [10, 10, 11, 11] as [number, number, number, number] }
+  assert.deepEqual(placesFromVectorTile(tile, { z: 0, x: 0, y: 0 }, outsideZone), [])
+})
+
+test('high-zoom polygon places make it into the completed offline search index', async () => {
+  const zone = { ...newZoneFromViewport([0, 0], 11, 16), bounds: [-180, -85, 180, 85] as [number, number, number, number] }
+  let persisted: Place[] = []
+  const result = await runCache(zone, {
+    enumerate: () => [{ z: 16, x: 33192, y: 22500 }],
+    fetchTile: async (tile) => placesFromVectorTile(polygonVectorTile('High-zoom Museum'), tile, zone),
+    persistIndex: async (places) => { persisted = places },
+  })
+
+  assert.equal(result.status, 'ready')
+  assert.equal(result.indexedFeatures, 1)
+  assert.deepEqual(persisted.map((item) => item.name), ['High-zoom Museum'])
+  assert.equal(Number.isFinite(persisted[0].coordinates[0]) && Number.isFinite(persisted[0].coordinates[1]), true)
+})
+
+test('offline zone tile enumeration rejects sampled coverage instead of omitting tiles', () => {
+  const zone = { ...newZoneFromViewport([0, 0], 11, 5), bounds: [-180, -85, 180, 85] as [number, number, number, number] }
+  assert.throws(() => enumerateZoneTiles(zone), /Reduce the zone or maximum zoom/)
+})
+
+test('offline caching uses the current versioned tile template and source maximum zoom', async () => {
+  const source = await loadOpenFreeMapTileSource(async () => new Response(JSON.stringify({
+    tiles: ['https://tiles.openfreemap.org/planet/20261115_080022_pt/{z}/{x}/{y}.pbf'],
+    maxzoom: 14,
+  })))
+  const zone = { ...newZoneFromViewport([2.35, 48.85], 11, 16), bounds: [2.3, 48.8, 2.4, 48.9] as [number, number, number, number] }
+  const jobs = enumerateZoneTiles(zone, source.maxZoom)
+
+  assert.equal(jobs.at(-1)?.z, 14)
+  assert.equal(tileUrl({ z: 14, x: 8299, y: 5636 }, source.tileTemplate), 'https://tiles.openfreemap.org/planet/20261115_080022_pt/14/8299/5636.pbf')
+})
+
+test('offline zone tile enumeration includes every tile at each zoom level', () => {
+  const zone = { ...newZoneFromViewport([0, 0], 11, 1), bounds: [-1, -1, 1, 1] as [number, number, number, number] }
+  const jobs = enumerateZoneTiles(zone)
+  assert.deepEqual(jobs.filter((job) => job.z === 0), [{ z: 0, x: 0, y: 0 }])
+  assert.deepEqual(jobs.filter((job) => job.z === 1), [
+    { z: 1, x: 0, y: 0 },
+    { z: 1, x: 0, y: 1 },
+    { z: 1, x: 1, y: 0 },
+    { z: 1, x: 1, y: 1 },
+  ])
+})
+
+test('offline cache persists the deduplicated index from every enumerated tile before reporting ready', async () => {
+  const zone = newZoneFromViewport([2.35, 48.85], 11, 1)
+  const jobs: TileJob[] = [{ z: 0, x: 0, y: 0 }, { z: 1, x: 1, y: 1 }]
+  let persisted: Place[] | null = null
+  const result = await runCache(zone, {
+    enumerate: () => jobs,
+    fetchTile: async (job) => job.z === 0
+      ? [place('shared', 'Shared Place'), place('first', 'First Tile Place')]
+      : [place('shared', 'Shared Place'), place('second', 'Second Tile Place')],
+    persistIndex: async (places) => { persisted = places },
+    concurrency: 1,
+  })
+
+  assert.equal(result.status, 'ready')
+  assert.equal(result.done, jobs.length)
+  assert.equal(result.featuresFound, 3)
+  assert.equal(result.indexedFeatures, 3)
+  assert.deepEqual(persisted?.map((item) => item.name), ['Shared Place', 'First Tile Place', 'Second Tile Place'])
+})
+
+test('offline cache never reports ready or persists an index when a zone tile fails', async () => {
+  const zone = newZoneFromViewport([2.35, 48.85], 11, 1)
+  const jobs: TileJob[] = [{ z: 0, x: 0, y: 0 }, { z: 1, x: 1, y: 1 }]
+  let persistCalled = false
+  const result = await runCache(zone, {
+    enumerate: () => jobs,
+    fetchTile: async (job) => {
+      if (job.z === 1) throw new Error('tile unavailable')
+      return [place('found', 'Found Place')]
+    },
+    persistIndex: async () => { persistCalled = true },
+    concurrency: 1,
+  })
+
+  assert.equal(result.status, 'partial')
+  assert.equal(result.failed, 1)
+  assert.equal(result.featuresFound, 1)
+  assert.equal(result.indexedFeatures, 0)
+  assert.match(result.error ?? '', /previous complete index was retained/)
+  assert.equal(persistCalled, false)
+})
+
+test('offline cache reports index persistence failures instead of claiming readiness', async () => {
+  const zone = newZoneFromViewport([2.35, 48.85], 11, 0)
+  const result = await runCache(zone, {
+    enumerate: () => [{ z: 0, x: 0, y: 0 }],
+    fetchTile: async () => [place('found', 'Found Place')],
+    persistIndex: async () => { throw new Error('IndexedDB quota exceeded') },
+  })
+
+  assert.equal(result.status, 'failed')
+  assert.equal(result.indexedFeatures, 0)
+  assert.equal(result.error, 'IndexedDB quota exceeded')
+})
+
+test('offline index keys distinguish exact zone bounds and zoom levels', () => {
+  const zone = newZoneFromViewport([2.35, 48.85], 11, 15)
+  assert.notEqual(offlineIndexKey(zone), offlineIndexKey({ ...zone, bounds: [2.35001, ...zone.bounds.slice(1)] as [number, number, number, number] }))
+  assert.notEqual(offlineIndexKey(zone), offlineIndexKey({ ...zone, maxZoom: zone.maxZoom - 1 }))
+})
+
+test('offline index persistence failures are surfaced to the cache workflow', async () => {
+  const zone = newZoneFromViewport([2.35, 48.85], 11, 15)
+  await assert.rejects(writeOfflineIndex(zone, []), /IndexedDB is unavailable/)
+})
+
+test('tile eviction removes only the oldest unpinned tiles and preserves shared zone references', () => {
+  const cached = ['tile-1', 'tile-2', 'tile-3', 'tile-4']
+  const pinned = new Set(['tile-2', 'tile-4'])
+  assert.deepEqual(selectTileEvictions(cached, pinned, 2), ['tile-1', 'tile-3'])
+  assert.throws(() => selectTileEvictions(cached, new Set(cached), 2), /pinned by saved zones/)
+  assert.equal(MAX_OFFLINE_TILES > 0, true)
+})
+
+test('editing offline zone bounds invalidates its cache and rejects invalid coordinates', () => {
+  const zone = {
+    ...newZoneFromViewport([2.35, 48.85], 11, 15),
+    status: 'ready' as const,
+    cachedBytes: 300,
+    cachedTileCount: 6,
+    cachedTileUrls: ['https://tiles.test/old'],
+    cacheGeneration: 'old-generation',
+    indexedFeatureCount: 12,
+  }
+  const updated = replaceOfflineZoneBounds(zone, [2.3, 48.8, 2.4, 48.9])
+  assert.equal(updated?.status, 'idle')
+  assert.equal(updated?.viewportDefault, false)
+  assert.equal(updated?.label, 'Custom zone')
+  assert.equal(updated?.cacheGeneration, undefined)
+  assert.equal(updated?.cachedTileUrls, undefined)
+  assert.equal(updated?.indexedFeatureCount, undefined)
+  assert.deepEqual(updated?.bounds, [2.3, 48.8, 2.4, 48.9])
+  assert.equal(replaceOfflineZoneBounds(zone, [2.4, 48.8, 2.3, 48.9]), null)
 })

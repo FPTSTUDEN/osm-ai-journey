@@ -94,6 +94,18 @@ export type StoryTurn = {
 
 export type StoryProgress = { entryId: string; blockIndex: number }
 
+export type JourneyLeg = {
+  id: string
+  from: Place | null
+  to: Place
+  routed: boolean
+  /** Undefined when the transition did not use a walking route. */
+  geometry?: Coordinates[]
+  distanceMeters?: number
+  durationSeconds?: number
+  createdAt: string
+}
+
 export type JourneyTimeline = {
   personaId?: string
   currentDestination: Place | null
@@ -107,6 +119,7 @@ export type JourneyTimeline = {
   narrativeEvents: NarrativeEvent[]
   conversationSummary?: string
   storyProgress?: StoryProgress | null
+  legs?: JourneyLeg[]
 }
 
 export type StoryCheckpoint = Omit<JourneyTimeline, 'messages' | 'storyProgress'>

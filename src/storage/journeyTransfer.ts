@@ -1,4 +1,4 @@
-import type { JourneyConversation, JourneyState, JourneyTimeline, Place, StoryBranch, StoryProgress } from '../types/domain'
+import type { JourneyConversation, JourneyLeg, JourneyState, JourneyTimeline, Place, StoryBranch, StoryProgress } from '../types/domain'
 import { DEFAULT_PERSONA_ID } from '../providers/config'
 import { normalizeMessages } from './messages'
 
@@ -11,6 +11,27 @@ function isPlace(value: unknown): value is Place {
     && place.coordinates.length === 2
     && place.coordinates.every((coordinate) => typeof coordinate === 'number' && Number.isFinite(coordinate))
     && (place.source === 'map' || place.source === 'online')
+}
+
+function parseLegs(value: unknown): JourneyLeg[] {
+  if (value === undefined) return []
+  if (!Array.isArray(value)) throw new Error('Journey file has invalid legs')
+  return value.map((item) => {
+    if (!item || typeof item !== 'object') throw new Error('Journey file has an invalid leg')
+    const leg = item as Partial<JourneyLeg>
+    if (typeof leg.id !== 'string' || !isPlace(leg.to) || typeof leg.routed !== 'boolean' || typeof leg.createdAt !== 'string') throw new Error('Journey file has an invalid leg')
+    if (leg.from !== null && !isPlace(leg.from)) throw new Error('Journey file has an invalid leg origin')
+    return {
+      id: leg.id,
+      from: leg.from ?? null,
+      to: leg.to,
+      routed: leg.routed,
+      geometry: Array.isArray(leg.geometry) ? leg.geometry as JourneyLeg['geometry'] : undefined,
+      distanceMeters: typeof leg.distanceMeters === 'number' ? leg.distanceMeters : undefined,
+      durationSeconds: typeof leg.durationSeconds === 'number' ? leg.durationSeconds : undefined,
+      createdAt: leg.createdAt,
+    }
+  })
 }
 
 function parseTimeline(value: unknown): JourneyTimeline {
@@ -43,6 +64,7 @@ function parseTimeline(value: unknown): JourneyTimeline {
     narrativeEvents: timeline.narrativeEvents,
     conversationSummary: typeof timeline.conversationSummary === 'string' ? timeline.conversationSummary : '',
     storyProgress,
+    legs: parseLegs(timeline.legs),
   }
 }
 
@@ -122,6 +144,7 @@ export function parseJourneyJson(value: unknown): JourneyState {
     narrativeEvents: journey.narrativeEvents,
     conversationSummary: typeof journey.conversationSummary === 'string' ? journey.conversationSummary : '',
     storyProgress: parseTimeline({ ...journey, storyProgress: journey.storyProgress }).storyProgress ?? null,
+    legs: parseLegs(journey.legs),
     branches: parseBranches(journey.branches),
     ...(conversations ? { conversations, activeConversationId: journey.activeConversationId ?? conversations[0].id } : {}),
   }
