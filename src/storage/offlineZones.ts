@@ -40,6 +40,26 @@ export function newZoneFromViewport(center: [number, number], zoom: number, maxZ
   return { ...base, id: crypto.randomUUID(), createdAt: new Date().toISOString(), cachedBytes: 0, status: 'idle' }
 }
 
+export function followDefaultZone(zone: OfflineZone | null, center: [number, number], zoom: number): OfflineZone {
+  if (!zone) return newZoneFromViewport(center, zoom)
+  if (zone.viewportDefault === false || zone.status === 'caching' || isInZone(zone, center)) return zone
+
+  if (zone.status !== 'idle') return newZoneFromViewport(center, zoom, zone.maxZoom)
+
+  const defaults = defaultZoneFromViewport(center, zoom, zone.maxZoom)
+  return {
+    ...zone,
+    ...defaults,
+    status: 'idle',
+    cachedBytes: 0,
+    cachedTileCount: undefined,
+    cachedTileUrls: undefined,
+    cacheGeneration: undefined,
+    indexedFeatureCount: undefined,
+    cacheError: undefined,
+  }
+}
+
 export async function loadZone(journeyId = 'active'): Promise<OfflineZone | null> {
   try {
     const record = await get<{ key: string; zone: OfflineZone }>(STORE, zoneKey(journeyId))

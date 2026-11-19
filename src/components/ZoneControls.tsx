@@ -6,6 +6,7 @@ type Props = {
   zone: OfflineZone | null
   progress: CacheProgress | null
   editing: boolean
+  cachePrompt: boolean
   onCache: () => void
   onCancel: () => void
   onToggleEditing: (editing: boolean) => void
@@ -19,12 +20,16 @@ function formatBounds(bounds: OfflineZone['bounds']): BoundsDraft {
   return [String(bounds[0]), String(bounds[1]), String(bounds[2]), String(bounds[3])]
 }
 
-export function ZoneControls({ zone, progress, editing, onCache, onCancel, onToggleEditing, onMaxZoomChange, onBoundsChange }: Props) {
+export function ZoneControls({ zone, progress, editing, cachePrompt, onCache, onCancel, onToggleEditing, onMaxZoomChange, onBoundsChange }: Props) {
   const [boundsDraft, setBoundsDraft] = useState<BoundsDraft>(() => zone ? formatBounds(zone.bounds) : ['0', '0', '0', '0'])
   const [boundsError, setBoundsError] = useState('')
+  const [open, setOpen] = useState(false)
   useEffect(() => {
     if (zone) setBoundsDraft(formatBounds(zone.bounds))
   }, [zone?.bounds.join(',')])
+  useEffect(() => {
+    if (cachePrompt) setOpen(true)
+  }, [cachePrompt])
 
   if (!zone) return null
   const busy = zone.status === 'caching'
@@ -49,12 +54,13 @@ export function ZoneControls({ zone, progress, editing, onCache, onCancel, onTog
 
   const boundLabels = ['West longitude', 'South latitude', 'East longitude', 'North latitude']
   return (
-    <details className="zone-controls" open={editing || busy}>
+    <details className="zone-controls" open={open || editing || busy} onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary className="zone-controls-summary"><strong>{zone.label}</strong><span>{centerLng.toFixed(4)}°, {centerLat.toFixed(4)}° · {busy ? 'Caching…' : zone.status === 'ready' ? `${zone.cachedTileCount ?? 0} tiles · ${zone.indexedFeatureCount ?? 0} places` : zone.status === 'partial' ? 'Cache incomplete' : zone.status === 'failed' ? 'Cache failed' : 'Ready to cache'}</span></summary>
       <div className="zone-controls-content">
         <div className="zone-toolbar-row"><strong className="zone-label">Zone selected for caching</strong>
           {!busy && <button type="button" className="zone-button" aria-pressed={editing} onClick={() => onToggleEditing(!editing)}>{editing ? 'Done editing' : 'Edit zone'}</button>}
         </div>
+        {cachePrompt && zone.status === 'idle' && <span className="zone-cache-prompt" role="status">This view is not cached yet. Cache it to search places here offline.</span>}
         <span className="zone-help">Center {centerLng.toFixed(5)}°, {centerLat.toFixed(5)}° · bounds {west.toFixed(5)}°, {south.toFixed(5)}° to {east.toFixed(5)}°, {north.toFixed(5)}°</span>
         {!busy && <label className="zone-zoom-control">Maximum zoom · {zone.maxZoom}
           <input aria-label="Maximum offline map zoom" type="range" min="0" max="16" step="1" value={zone.maxZoom} disabled={editing} onChange={(event) => onMaxZoomChange(Number(event.target.value))} />

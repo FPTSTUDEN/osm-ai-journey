@@ -509,6 +509,48 @@ test('caches and searches real OpenFreeMap places for a high-zoom zone', async (
   await expect(page.locator('.search-results')).toContainText('Louvre')
 })
 
+test('switches from a saved Paris cache to an uncached destination view', async ({ page }) => {
+  await mockSearch(page)
+  await resetBrowser(page)
+  await page.evaluate(async () => {
+    const { newZoneFromViewport, saveZoneStrict } = await import('/src/storage/offlineZones.ts')
+    const { beginOfflineTileCache } = await import('/src/providers/offlineTileCache.ts')
+    const { writeOfflineIndex } = await import('/src/providers/offlineIndex.ts')
+    const parisZone = newZoneFromViewport([2.3522, 48.8566], 11.5)
+    const tileUrl = 'https://tiles.test/paris'
+    const cache = await beginOfflineTileCache(parisZone, [tileUrl])
+    await cache.readOrFetch(tileUrl, new AbortController().signal, async () => new Response('Paris tile'))
+    await writeOfflineIndex(parisZone, [{ id: 'paris-place', name: 'Paris Place', coordinates: [2.3522, 48.8566], source: 'map' }], 'paris-generation')
+    await cache.commit(parisZone, 'paris-generation', 1)
+  })
+  await page.reload()
+  await waitForApplicationReady(page)
+  await chooseOnlinePlace(page)
+
+  const zoneControls = page.locator('.zone-controls')
+  await expect(zoneControls.locator('.zone-controls-summary')).toContainText('139.6503°, 35.6762°', { timeout: 15_000 })
+  await expect(zoneControls.locator('.zone-controls-content')).toBeVisible()
+  await expect(zoneControls.getByRole('status')).toContainText('This view is not cached yet')
+  await expect(zoneControls.getByRole('button', { name: 'Cache this zone' })).toBeVisible()
+
+  const result = await page.evaluate(async () => {
+    const { listZones, loadZone } = await import('/src/storage/offlineZones.ts')
+    const { searchOfflineIndex } = await import('/src/providers/offlineIndex.ts')
+    const activeZone = await loadZone()
+    if (!activeZone) throw new Error('The active cache zone was not saved')
+    const zones = await listZones()
+    return {
+      activeZone,
+      savedParisZone: zones.find((zone) => zone.label === 'Current view' && zone.bounds[0] < 3),
+      currentSearch: await searchOfflineIndex(activeZone, 'Paris Place'),
+    }
+  })
+  expect(result.activeZone.status).toBe('idle')
+  expect(result.activeZone.bounds[0]).toBeGreaterThan(100)
+  expect(result.savedParisZone?.status).toBe('ready')
+  expect(result.currentSearch.source).toBe('not-indexed')
+})
+
 test('map panel is larger and offline-zone tools stay collapsed until opened', async ({ page }) => {
   await resetBrowser(page)
   await page.locator('.story-dock button').first().click()

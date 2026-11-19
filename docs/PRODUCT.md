@@ -2,7 +2,7 @@
 
 ## Offline map zones
 
-The uncached default zone follows the current map viewport. Users can adjust the zone by dragging its map handles or editing its bounds, and choose a maximum tile zoom; the selected zone's label, center, and bounds are visible before caching. Caching a zone downloads all requested OpenFreeMap vector tiles within the tile limit and builds a local search index from named point and classified polygon features.
+The default zone follows the map when the viewport moves outside it. Leaving a cached default zone selects a new uncached zone while keeping the old cache available; manually adjusted zones remain fixed. Users can adjust the zone by dragging its map handles or editing its bounds, and choose a maximum tile zoom. The selected zone's label, center, and bounds are visible, and a new uncached area prompts users to cache it. Caching a zone downloads all requested OpenFreeMap vector tiles within the tile limit and builds a local search index from named point and classified polygon features.
 
 A zone is marked ready only after its tiles, matching search index, and saved zone manifest are committed. Shared tiles are reused across zones, and tiles referenced by saved zones are protected from bounded-cache eviction. Clearing offline map data or detecting missing tiles marks the zone incomplete so it can be refreshed.
 

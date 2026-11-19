@@ -15,7 +15,7 @@ import { normalizeMessages } from '../src/storage/messages'
 import { normalizeMotionPreference, normalizePersonaProfiles, normalizeStoryPresentationMode } from '../src/storage/settings'
 import { DEFAULT_PERSONA, DEFAULT_PERSONA_ID } from '../src/providers/config'
 import { parsePersonaSpriteFilename } from '../src/providers/personaSprites'
-import { defaultZoneFromViewport, isInZone, newZoneFromViewport, replaceOfflineZoneBounds } from '../src/storage/offlineZones'
+import { defaultZoneFromViewport, followDefaultZone, isInZone, newZoneFromViewport, replaceOfflineZoneBounds, type OfflineZone } from '../src/storage/offlineZones'
 import { offlineIndexKey, searchOfflineIndex, writeOfflineIndex } from '../src/providers/offlineIndex'
 import { enumerateZoneTiles, loadOpenFreeMapTileSource, runCache, tileUrl, type TileJob } from '../src/providers/offlineCache'
 import { MAX_OFFLINE_TILES, selectTileEvictions } from '../src/providers/offlineTileCache'
@@ -469,6 +469,32 @@ test('offline zone defaults from viewport and contains points inside its bounds'
   assert.equal(zone.cachedBytes, 0)
   assert.equal(isInZone(zone, [2.35, 48.85]), true)
   assert.equal(isInZone(zone, [2.35 + base.bounds[2] - base.bounds[0], 48.85]), false)
+})
+
+test('default cache zone follows distant views without replacing the saved cached zone', () => {
+  const cachedParisZone: OfflineZone = {
+    ...newZoneFromViewport([2.35, 48.85], 11, 15),
+    status: 'ready',
+    cachedBytes: 128,
+    cachedTileCount: 3,
+    cachedTileUrls: ['https://tiles.test/paris'],
+    cacheGeneration: 'paris-generation',
+    indexedFeatureCount: 42,
+  }
+
+  const shibuyaZone = followDefaultZone(cachedParisZone, [139.6503, 35.6762], 14)
+  assert.notEqual(shibuyaZone.id, cachedParisZone.id)
+  assert.equal(shibuyaZone.status, 'idle')
+  assert.equal(shibuyaZone.viewportDefault, true)
+  assert.equal(shibuyaZone.maxZoom, cachedParisZone.maxZoom)
+  assert.equal(isInZone(shibuyaZone, [139.6503, 35.6762]), true)
+  assert.equal(shibuyaZone.cachedTileUrls, undefined)
+  assert.equal(shibuyaZone.cacheGeneration, undefined)
+  assert.deepEqual(cachedParisZone.cachedTileUrls, ['https://tiles.test/paris'])
+  assert.equal(followDefaultZone(shibuyaZone, [139.6503, 35.6762], 14), shibuyaZone)
+
+  const customZone = { ...cachedParisZone, viewportDefault: false }
+  assert.equal(followDefaultZone(customZone, [139.6503, 35.6762], 14), customZone)
 })
 
 test('offline index search reports empty when no zone is provided or storage is unavailable', async () => {

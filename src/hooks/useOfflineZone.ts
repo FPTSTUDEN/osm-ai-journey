@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { defaultZoneFromViewport, newZoneFromViewport, replaceOfflineZoneBounds, saveZone, saveZoneStrict, loadZone, type OfflineZone } from '../storage/offlineZones'
+import { followDefaultZone, newZoneFromViewport, replaceOfflineZoneBounds, saveZone, saveZoneStrict, loadZone, type OfflineZone } from '../storage/offlineZones'
 import { runCache, type CacheProgress } from '../providers/offlineCache'
 import { hasCompleteOfflineTileCache } from '../providers/offlineTileCache'
 
@@ -7,6 +7,7 @@ export function useOfflineZone(mapCenter: [number, number] | null, mapZoom: numb
   const [zone, setZone] = useState<OfflineZone | null>(null)
   const [progress, setProgress] = useState<CacheProgress | null>(null)
   const [editing, setEditing] = useState(false)
+  const [cachePrompt, setCachePrompt] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const zoneManuallyEdited = useRef(false)
 
@@ -96,16 +97,11 @@ export function useOfflineZone(mapCenter: [number, number] | null, mapZoom: numb
 
   useEffect(() => {
     if (!mapCenter || mapZoom === null || zoneManuallyEdited.current) return
-    setZone((current) => {
-      if (current && current.status !== 'idle') return current
-      const defaults = defaultZoneFromViewport(mapCenter, mapZoom, current?.maxZoom ?? 15)
-      if (current && current.bounds.every((value, index) => value === defaults.bounds[index])) return current
-      const updated: OfflineZone = current
-        ? { ...current, ...defaults, viewportDefault: current.viewportDefault !== false }
-        : newZoneFromViewport(mapCenter, mapZoom)
-      void saveZone(updated)
-      return updated
-    })
+    const updated = followDefaultZone(zone, mapCenter, mapZoom)
+    if (updated === zone) return
+    if (zone && zone.status !== 'idle' && updated.id !== zone.id) setCachePrompt(true)
+    void saveZone(updated)
+    setZone(updated)
   }, [mapCenter, mapZoom, zone])
 
   const cacheZone = useCallback(async (
@@ -115,6 +111,7 @@ export function useOfflineZone(mapCenter: [number, number] | null, mapZoom: numb
     tileUrl?: Parameters<typeof runCache>[1]['tileUrl'],
   ) => {
     if (!zone) return null
+    setCachePrompt(false)
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
@@ -161,6 +158,7 @@ export function useOfflineZone(mapCenter: [number, number] | null, mapZoom: numb
 
   const replaceZone = useCallback(async (next: OfflineZone) => {
     zoneManuallyEdited.current = true
+    setCachePrompt(false)
     const updatedZone = zone && zone.maxZoom === next.maxZoom
       ? replaceOfflineZoneBounds(zone, next.bounds) ?? { ...zone, status: 'failed', cacheError: 'Bounds must be valid longitude and latitude coordinates.' }
       : { ...next, label: 'Custom zone', viewportDefault: false, status: 'idle' as const, cachedTileCount: undefined, cachedTileUrls: undefined, cacheGeneration: undefined, indexedFeatureCount: undefined, cacheError: undefined, cachedBytes: 0 }
@@ -178,5 +176,5 @@ export function useOfflineZone(mapCenter: [number, number] | null, mapZoom: numb
     }
   }, [zone])
 
-  return { zone, progress, cacheZone, cancelCache, replaceZone, editing, setEditing, reportCacheError }
+  return { zone, progress, cacheZone, cancelCache, replaceZone, editing, setEditing, reportCacheError, cachePrompt }
 }

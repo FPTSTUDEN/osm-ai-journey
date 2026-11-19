@@ -231,6 +231,7 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
 .zone-controls-content { display: grid; gap: 7px; padding-top: 8px; }
 .zone-toolbar-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .zone-label, .zone-progress-label, .zone-zoom-control, .zone-help { color: #9bb6a5; font: 9px ui-monospace, monospace; line-height: 1.4; }
+.zone-cache-prompt { padding: 7px; border: 1px solid #73985f; border-radius: 6px; color: #d5ef9a; font: 10px ui-monospace, monospace; line-height: 1.4; }
 .zone-zoom-control { display: grid; gap: 3px; }
 .zone-zoom-control input { width: 100%; accent-color: #d5ef9a; }
 .zone-bounds-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }

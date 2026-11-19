@@ -29,7 +29,7 @@ Run validation with `pnpm test:unit` and `pnpm test:e2e`.
 - Clicking a visible map feature is local and never geocodes automatically.
 - Search checks the local tile-derived index first; online geocoding only happens after an explicit action.
 - Offline zones can be moved and resized on the map or by editing their bounds, and their maximum tile zoom is configurable.
-- An uncached default zone follows the current map view; edited zones remain selected. The map controls show the zone center and bounds before caching.
+- The default zone follows the map when you move outside it. Leaving a cached zone selects a new uncached zone and keeps the old cache; manually edited zones stay fixed. The map controls show the selected zone and prompt you to cache a new area.
 - Caching a zone indexes named point and polygon features from every successfully fetched OpenFreeMap vector tile in its bounds and zoom range; the zone is ready only after all tiles succeed and the index is persisted.
 - Offline tiles use a bounded 1,200-tile cache. Tiles shared by zones are reused, and tiles referenced by saved zones are protected from LRU eviction.
 - Settings manage offline map resources separately from app-shell cache data; clearing the map cache also removes its search indexes and marks affected zones incomplete.
