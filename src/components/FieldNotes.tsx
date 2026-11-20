@@ -25,7 +25,7 @@ type FieldNotesProps = {
   photosCached: boolean
   selectedPhoto: PlacePhoto | null
   scenePhoto: PlacePhoto | null
-  onSelectPhoto: (photo: PlacePhoto | null) => void
+  onSelectPhoto: (photo: PlacePhoto | null, source?: HTMLElement | null) => void
   onClose: () => void
 }
 

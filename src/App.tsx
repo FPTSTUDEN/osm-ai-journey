@@ -16,6 +16,11 @@ import { DEFAULT_PERSONA, DEFAULT_PERSONA_ID } from './providers/config'
 import { PERSONA_SPRITES } from './providers/bundledPersonaSprites'
 import type { JourneyLeg, PersonaProfile, Place, PlacePhoto, WalkingRoute } from './types/domain'
 import './styles/app.css'
+import { Icon } from './components/Icon'
+import { SceneArt } from './components/SceneArt'
+import { transitionIntoScene } from './components/sceneTransition'
+import { ARRIVAL_CARD_MS, ARRIVAL_CARD_WITH_STRIP_MS, type ArrivalCardState } from './components/ArrivalCard'
+import { travelArrivalMs, travelKind } from './components/journeyMotion'
 
 function App() {
   const [systemReducedMotion, setSystemReducedMotion] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches)
@@ -51,7 +56,12 @@ function App() {
   const { context: placeContext, contextState, contextCached, photos: destinationPhotos, photosState, photosCached, weather, weatherState, weatherError, loadWeather } = placeData
   const [photoSelection, setPhotoSelection] = useState<{ place: Place | null; photo: PlacePhoto | null }>({ place: null, photo: null })
   const selectedPhoto = photoSelection.place === selectedPlace ? photoSelection.photo : null
-  const setSelectedPhoto = (photo: PlacePhoto | null) => setPhotoSelection({ place: selectedPlace, photo })
+  // With a source thumbnail, the thumbnail grows into the scene (View Transitions); otherwise SceneArt crossfades.
+  const setSelectedPhoto = (photo: PlacePhoto | null, source?: HTMLElement | null) => {
+    const apply = () => setPhotoSelection({ place: selectedPlace, photo })
+    if (photo && source) void transitionIntoScene(source, photo.sceneUrl ?? photo.imageUrl, motionEnabled, apply)
+    else apply()
+  }
   const scenePhoto = selectedPhoto ?? (photosState === 'ready' ? destinationPhotos[0] ?? null : null)
   const chat = useChat({
     entries: messages,
@@ -78,7 +88,9 @@ function App() {
   const presentationMode = settings.storyPresentationMode ?? 'novel'
   const storyOpening = storyMode && !selectedPlace && !messages.some((entry) => entry.role === 'user')
   const localPmtiles = useLocalPmtiles()
-  const [arrivalCard, setArrivalCard] = useState<string | null>(null)
+  const [arrivalCard, setArrivalCard] = useState<ArrivalCardState | null>(null)
+  // The scene label at the top waits while a move is animating and while the chapter card is up.
+  const [sceneLabelHeld, setSceneLabelHeld] = useState(false)
   const importInputRef = useRef<HTMLInputElement>(null)
   const arrivalTimer = useRef<number | undefined>(undefined)
 
@@ -144,18 +156,7 @@ function App() {
       setRoute(null)
       setRouteState('idle')
     }
-    setSelectedPlace(place)
-    setArrivalCard(place.name)
-    window.clearTimeout(arrivalTimer.current)
-    arrivalTimer.current = window.setTimeout(() => setArrivalCard(null), 2600)
-    mapSearch.clearSearch()
-    setDestinationHistory((current) => current.some((item) => item.id === place.id) ? current : [...current, place])
-    setCurrentScene((current) => current + 1)
-    const arrival = `You arrive at ${place.name}.`
-    const eventType = walkingRoute ? 'routed-transition' : 'unrouted-transition'
-    const eventText = walkingRoute ? `${arrival} Walking route calculated.` : `${arrival} Continuing without a walking route.`
-    appendArrival(eventText, eventType, place.id)
-    appendLeg({
+    const leg: JourneyLeg = {
       id: crypto.randomUUID(),
       from: origin,
       to: place,
@@ -164,7 +165,42 @@ function App() {
       distanceMeters: walkingRoute?.distanceMeters,
       durationSeconds: walkingRoute?.durationSeconds,
       createdAt: new Date().toISOString(),
-    } satisfies JourneyLeg)
+    }
+    setSelectedPlace(place)
+    showArrival(place, leg)
+    mapSearch.clearSearch()
+    setDestinationHistory((current) => current.some((item) => item.id === place.id) ? current : [...current, place])
+    setCurrentScene((current) => current + 1)
+    const arrival = `You arrive at ${place.name}.`
+    const eventType = walkingRoute ? 'routed-transition' : 'unrouted-transition'
+    const eventText = walkingRoute ? `${arrival} Walking route calculated.` : `${arrival} Continuing without a walking route.`
+    appendArrival(eventText, eventType, place.id)
+    appendLeg(leg)
+  }
+
+  /**
+   * Chapter card timing. With the map open (and motion on) the move plays on the map first, so the card waits
+   * until the marker arrives. Otherwise (map closed, or motion off so the map does not animate) the card shows
+   * the move itself as a from → to strip, and stays up a little longer.
+   */
+  function showArrival(place: Place, leg: JourneyLeg) {
+    const kind = travelKind(leg)
+    const mapOpen = storyPanels.includes('map')
+    const showStrip = kind !== 'arrive' && (!mapOpen || !motionEnabled)
+    const durationMs = showStrip && motionEnabled ? ARRIVAL_CARD_WITH_STRIP_MS : ARRIVAL_CARD_MS
+    const delayMs = motionEnabled && mapOpen && kind !== 'arrive' ? travelArrivalMs(kind) : 0
+    const card: ArrivalCardState = { placeName: place.name, leg, showStrip, durationMs }
+    window.clearTimeout(arrivalTimer.current)
+    setSceneLabelHeld(true)
+    const show = () => {
+      setArrivalCard(card)
+      arrivalTimer.current = window.setTimeout(() => { setArrivalCard(null); setSceneLabelHeld(false) }, durationMs)
+    }
+    if (delayMs === 0) show()
+    else {
+      setArrivalCard(null)
+      arrivalTimer.current = window.setTimeout(show, delayMs)
+    }
   }
 
   function choosePlace(place: Place) {
@@ -255,7 +291,7 @@ function App() {
       <main inert={journeyLoadState !== 'ready'} className={`app-shell presentation-${presentationMode} ${storyMode ? 'story-mode' : 'explore-mode'} ${storyOpening ? 'story-opening' : ''} ${storyMode && storyPanels.length === 0 && (Boolean(selectedPlace) || messages.some((entry) => entry.role === 'user')) ? 'story-no-side-panels' : ''} ${storyMode && storyPanels.includes('map') ? 'story-map-open' : ''} ${storyMode && storyPanels.includes('destination') ? 'story-destination-open' : ''} ${storyMode && storyPanels.includes('map') && storyPanels.includes('destination') ? 'story-map-and-destination' : ''} ${storyMode && storyPanels.includes('destination') && storyPanels.includes('travelogue') ? 'story-panels-stacked' : ''}`}>
       <header className="topbar">
         <div className="brand-lockup">
-          <div className="brand-mark" aria-hidden="true">✦</div>
+          <div className="brand-mark" aria-hidden="true"><Icon name="brand" size={16} /></div>
           <div>
             <p className="eyebrow">Open-ended field notes</p>
             <h1>Osm AI Journey</h1>
@@ -274,17 +310,15 @@ function App() {
               <option value="chat">Chat</option>
             </select>
           </label>
-          <button ref={settingsButton} className="icon-button" onClick={() => setShowSettings((visible) => !visible)} aria-label="Toggle settings">⚙</button>
+          <button ref={settingsButton} className="icon-button" onClick={() => setShowSettings((visible) => !visible)} aria-label="Toggle settings"><Icon name="settings" /></button>
         </div>
       </header>
 
       <section className="workspace">
         {storyOpening && <OpeningScreen query={mapSearch.query} onQueryChange={mapSearch.updateQuery} onSearchLoadedPlaces={mapSearch.openMapForSearch} onOnlineShortcut={mapSearch.searchOnlineShortcut} />}
-        {scenePhoto && <div className="scene-art" aria-label="Illustrative destination scene art">
-          <img src={scenePhoto.sceneUrl ?? scenePhoto.imageUrl} alt="" />
-          <div className="scene-art-shade" />
-          <p className="scene-art-note">Illustrative photo · not a live view · {scenePhoto.author && `${scenePhoto.author} · `}{scenePhoto.license && <>{scenePhoto.license} · </>}<a href={scenePhoto.sourceUrl} target="_blank" rel="noreferrer">source</a></p>
-        </div>}
+        <SceneArt photo={scenePhoto} />
+        {storyMode && selectedPlace && !sceneLabelHeld && <div className="scene-label" key={`${currentScene}:${selectedPlace.id}`} aria-hidden="true"><span>Scene {String(currentScene).padStart(2, '0')}</span>{selectedPlace.name}</div>}
+        {storyMode && storyPanels.includes('map') && !scenePhoto && <p className="stage-hint" aria-hidden="true">{selectedPlace ? (photosState === 'loading' ? `Looking for a photo of ${selectedPlace.name}…` : `No nearby photo of ${selectedPlace.name}. The scene stays ambient.`) : 'Pick a place on the map to set the scene.'}</p>}
         <StoryPanels
           panels={storyPanelState}
           search={mapSearch}

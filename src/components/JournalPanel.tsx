@@ -1,3 +1,4 @@
+import { SheetHandle } from './SheetHandle'
 import type { JourneyLeg, NarrativeEvent } from '../types/domain'
 
 type JournalPanelProps = {
@@ -35,6 +36,7 @@ export function JournalPanel({ events, legs, isOpen, onClose, onFitJourney }: Jo
       {events.length === 0
         ? <p className="dock-empty">Arrivals and story beats will appear here.</p>
         : <ol className="travelogue-events">{events.slice().reverse().map((event) => <li key={event.id}><span className="timeline-dot" aria-hidden="true" /><div><strong>{event.type.replaceAll('-', ' ')}</strong><p>{event.text}</p><time dateTime={event.createdAt}>{new Date(event.createdAt).toLocaleString()}</time></div></li>)}</ol>}
+      <SheetHandle onClose={onClose} />
     </aside>
   )
 }

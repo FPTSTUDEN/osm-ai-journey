@@ -23,7 +23,8 @@ type PlaceDetailsProps = {
   photosState: 'idle' | 'loading' | 'ready' | 'error'
   photosCached: boolean
   scenePhoto: PlacePhoto | null
-  onSelectPhoto: (photo: PlacePhoto) => void
+  /** `source` is the clicked thumbnail, used to grow it into the scene. */
+  onSelectPhoto: (photo: PlacePhoto, source?: HTMLElement | null) => void
   onOpenFieldNotes?: () => void
 }
 
@@ -84,7 +85,7 @@ export function PlaceDetails({
           <button className="weather-button" onClick={() => onLoadNearbyData(true)}>Refresh nearby data</button>
         </>}
       </div>}
-      {contextState === 'loading' && <p className="context-state">{compact ? 'Loading destination context…' : 'Loading Wikipedia and Wikidata context…'}</p>}
+      {contextState === 'loading' && <div className="skeleton-block" aria-busy="true"><span className="sr-only">{compact ? 'Loading destination context…' : 'Loading Wikipedia and Wikidata context…'}</span><i /><i /><i /></div>}
       {contextState === 'error' && <p className="context-state">Optional destination context is unavailable.</p>}
       {contextState === 'ready' && context && <div className="place-context">
         <p className="context-label">Source context · {contextCached ? 'cached' : 'live'}</p>
@@ -98,14 +99,14 @@ export function PlaceDetails({
       </div>}
       <div className="place-photos">
         <div className="weather-heading"><p className="context-label">{compact ? 'Nearby photos · scene art' : 'Illustrative photos'}</p>{photosCached && <span className="weather-source weather-cached">cached</span>}</div>
-        {photosState === 'loading' && <p className="context-state">Finding nearby Wikimedia Commons photos…</p>}
+        {photosState === 'loading' && <div className="skeleton-photos" aria-busy="true"><span className="sr-only">Finding nearby Wikimedia Commons photos…</span><i /><i /><i /><i /></div>}
         {photosState === 'error' && <p className="context-state">Photos are unavailable for this destination.</p>}
         {photosState === 'ready' && photos.length === 0 && <p className="context-state">No nearby photos found.</p>}
         {photos.length > 0 && (compact
-          ? <div className="dock-gallery">{photos.map((photo) => <button key={photo.id} type="button" className={scenePhoto?.id === photo.id ? 'selected' : ''} onClick={() => onSelectPhoto(photo)} aria-pressed={scenePhoto?.id === photo.id}><img src={photo.thumbnailUrl} alt={photo.title} /><span>{photo.title}</span></button>)}</div>
+          ? <div className="dock-gallery">{photos.map((photo) => <button key={photo.id} type="button" className={scenePhoto?.id === photo.id ? 'selected' : ''} onClick={(event) => onSelectPhoto(photo, event.currentTarget.querySelector('img'))} aria-pressed={scenePhoto?.id === photo.id}><img src={photo.thumbnailUrl} alt={photo.title} /><span>{photo.title}</span></button>)}</div>
           : <div className="photo-grid">{photos.map((photo) => {
             const distanceLabel = photo.distanceMeters === undefined ? '' : photo.distanceMeters < 50 ? 'At destination' : `${(photo.distanceMeters / 1000).toFixed(1)} km away`
-            return <button key={photo.id} onClick={() => onSelectPhoto(photo)} className="photo-card"><img src={photo.thumbnailUrl} alt={photo.title} loading="lazy" /><div className="photo-info"><span className="photo-title">{photo.title}</span>{distanceLabel && <span className="photo-distance">{distanceLabel}</span>}</div></button>
+            return <button key={photo.id} onClick={(event) => onSelectPhoto(photo, event.currentTarget.querySelector('img'))} className="photo-card"><img src={photo.thumbnailUrl} alt={photo.title} loading="lazy" /><div className="photo-info"><span className="photo-title">{photo.title}</span>{distanceLabel && <span className="photo-distance">{distanceLabel}</span>}</div></button>
           })}</div>)}
         {!compact && photos.length > 0 && <p className="photo-note">Photos within 1 km search radius. Images are for illustration. Photo titles, captions, and source metadata may inform the companion.</p>}
         {compact && scenePhoto && <div className="selected-scene-photo"><span>Scene art · illustrative, not a live view</span><a href={scenePhoto.sourceUrl} target="_blank" rel="noreferrer">Photo source</a></div>}

@@ -1,3 +1,4 @@
+import { Icon } from './Icon'
 type OpeningScreenProps = {
   query: string
   onQueryChange: (value: string) => void
@@ -20,7 +21,7 @@ export function OpeningScreen({ query, onQueryChange, onSearchLoadedPlaces, onOn
       <p className="opening-description">Pick a real location, learn what’s actually there, and roleplay a journey with a companion you create. No fixed path — you can wander anywhere.</p>
       <form className="opening-search" onSubmit={(event) => { event.preventDefault(); onSearchLoadedPlaces() }}>
         <label htmlFor="opening-place-search">Choose where your story begins</label>
-        <div><span className="opening-search-icon" aria-hidden="true">⌕</span><input id="opening-place-search" value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="Search loaded map places, a city, a landmark…" /><button type="submit">Begin <span aria-hidden="true">→</span></button></div>
+        <div><span className="opening-search-icon" aria-hidden="true"><Icon name="search" /></span><input id="opening-place-search" value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="Search loaded map places, a city, a landmark…" /><button type="submit">Begin <span aria-hidden="true">→</span></button></div>
       </form>
       <div className="drop-in-places">
         <span>— or drop in somewhere —</span>

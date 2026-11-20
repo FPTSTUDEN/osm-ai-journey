@@ -117,7 +117,7 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
 .scene-art { position: absolute; z-index: 1; inset: 0; overflow: hidden; pointer-events: none; }
 .scene-art img { width: 100%; height: 100%; object-fit: cover; filter: saturate(.78) contrast(.94); opacity: .66; }
 .scene-art-shade { position: absolute; inset: 0; background: linear-gradient(180deg, #07110d88 0%, #07110d22 34%, #07110dcc 100%); }
-.scene-art-note { position: absolute; right: 24px; bottom: 30px; color: #d3ddcf; font: 9px ui-monospace, monospace; text-shadow: 0 1px 8px #07110dcc; }
+.scene-art-note { position: absolute; right: 24px; bottom: 6px; margin: 0; color: #d3ddcf; font: 9px ui-monospace, monospace; text-shadow: 0 1px 8px #07110dcc; }
 .scene-art-note a { color: #d5ef9a; }
 .map-toolbar { top: 84px; right: 24px; left: 24px; }
 .map-toolbar > div { padding: 12px 15px; border: 1px solid #496b5a; border-radius: 12px; background: #172521b8; backdrop-filter: blur(14px); }
@@ -442,7 +442,7 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
 .dialogue-panel .composer, .dialogue-panel .journey-footer { width: calc(100% - 24px); margin-right: 12px; margin-left: 12px; }
 .opening-screen { position: absolute; z-index: 2; top: 34%; left: 50%; display: grid; justify-items: center; width: min(900px, calc(100vw - 160px)); padding: 0 20px; text-align: center; transform: translate(-50%, -50%); }
 .opening-screen > .eyebrow { color: #c5e3a4; letter-spacing: .18em; }
-.opening-screen h2 { margin-top: 12px; max-width: 780px; color: #f0f4e9; font: 500 clamp(36px, 4.4vw, 58px)/1.05 Georgia, 'Times New Roman', serif; letter-spacing: -.025em; text-shadow: 0 6px 40px #0009; }
+.opening-screen h2 { margin-top: 12px; max-width: 780px; color: #f0f4e9; font: 500 clamp(32px, min(4.4vw, 7vh), 58px)/1.05 Georgia, 'Times New Roman', serif; letter-spacing: -.025em; text-shadow: 0 6px 40px #0009; }
 .opening-screen h2 em { color: #c5e3a4; font-weight: 400; }
 .opening-description { margin-top: 12px; max-width: 540px; color: #cdd8ce; font-size: 14px; line-height: 1.65; }
 .opening-search { display: grid; gap: 10px; width: min(100%, 660px); margin-top: 22px; text-align: left; }
@@ -606,7 +606,8 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
     position: absolute;
     inset: auto auto -16px 50%;
     width: auto;
-    height: min(54vh, 460px);
+    /* 20px less than the frame's min-height, so the portrait's top stays inside the frame (it overflowed by ~3px). */
+    height: calc(min(54vh, 460px) - 20px);
     max-width: none;
     transform: translateX(-50%);
     object-fit: contain;
@@ -730,3 +731,150 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
   .story-mode .workspace:has(.travelogue-panel) .map-layout--compact { bottom: auto; height: 34vh; }
   .story-mode .workspace:has(.map-layout--compact) .travelogue-panel { top: calc(68px + 34vh + 8px); bottom: calc(32vh + 86px); max-height: none; overflow-y: auto; }
 }
+
+/* ── Motion and polish ───────────────────────────────────────────────────────────────────────────────────
+   Only transform and opacity are animated. UI motion is 150–250 ms, scene motion 400–700 ms.
+   Everything here is switched off by the motion setting (Off, or Auto with the system's reduce-motion option). */
+
+/* Icons */
+.icon { display: block; flex: none; }
+.brand-mark .icon { width: 17px; height: 17px; }
+.icon-button { display: inline-grid; place-items: center; width: 34px; height: 34px; }
+.story-dock button .icon { width: 20px; height: 20px; }
+.dock-search .icon, .search-box .icon { color: #87a395; }
+.opening-search-icon .icon { width: 20px; height: 20px; }
+.startup-mark .icon { width: 22px; height: 22px; }
+
+/* Send ↔ stop: the same spot swaps icon with a small spin-in. */
+.send-button { display: inline-grid; flex: none; place-items: center; transition: background-color 180ms ease, transform 160ms ease; }
+.send-button:hover { background: #d8efb9; }
+.send-button:active { transform: scale(.94); }
+.send-button .icon { animation: send-morph 200ms cubic-bezier(.2,.7,.2,1) both; }
+.send-button-stop { border: 1px solid #b88270; background: #472b26; color: #f0c2ae; }
+.send-button-stop:hover { background: #5a352e; }
+@keyframes send-morph { from { opacity: 0; transform: scale(.6) rotate(-45deg); } to { opacity: 1; transform: none; } }
+
+/* Scene art: crossfade on change, then a very slow drift. */
+.scene-art img { transition: opacity 650ms ease; transform-origin: 55% 45%; }
+.scene-art img.scene-img-loading { opacity: 0; }
+.scene-art img.scene-img-ready { animation: scene-drift 24s ease-out both; }
+.scene-art-fade { position: fixed; z-index: 1; inset: 0; overflow: hidden; pointer-events: none; }
+.scene-art-fade img { width: 100%; height: 100%; object-fit: cover; filter: saturate(.78) contrast(.94); opacity: .66; }
+.scene-art-fade-out { animation: scene-fade-out 650ms ease both; }
+@keyframes scene-drift { from { transform: scale(1); } to { transform: scale(1.04); } }
+@keyframes scene-fade-out { to { opacity: 0; } }
+
+/* Thumbnail → scene (View Transitions API). The class is on <html> only while the new scene is captured. */
+:root.vt-scene-new .scene-art img { view-transition-name: scene-photo; animation: none; }
+::view-transition-group(scene-photo) { animation-duration: 460ms; animation-timing-function: cubic-bezier(.2,.7,.2,1); }
+::view-transition-old(scene-photo), ::view-transition-new(scene-photo) { width: 100%; height: 100%; object-fit: cover; animation-duration: 460ms; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 220ms; }
+
+/* Scene label: where the chapter card ends up. */
+.scene-label { position: fixed; z-index: 5; top: 20px; left: 50%; display: grid; justify-items: center; gap: 3px; max-width: min(360px, calc(100vw - 640px)); overflow: hidden; color: #eef4e6; font: 500 14px/1.2 Georgia, 'Times New Roman', serif; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 2px 14px #07110dcc; transform: translateX(-50%); pointer-events: none; animation: scene-label-in 420ms ease-out both; }
+.scene-label span { color: #c5e3a4; font: 500 9px/1.2 ui-monospace, monospace; letter-spacing: .16em; text-transform: uppercase; }
+@keyframes scene-label-in { from { opacity: 0; transform: translate(-50%, 6px) scale(.96); } to { opacity: 1; transform: translateX(-50%); } }
+@media (max-width: 900px) { .scene-label { display: none; } }
+
+/* Chapter card: in, hold, then shrink up into the scene label. */
+.arrival-card { gap: 6px; padding: 22px 30px 20px; animation: arrival-chapter var(--card-ms, 2600ms) cubic-bezier(.2,.7,.2,1) both; }
+.arrival-card-title { display: block; color: #f0f4e9; font: 500 clamp(22px, 2.6vw, 30px)/1.15 Georgia, 'Times New Roman', serif; letter-spacing: -.01em; }
+.arrival-card-title span { display: inline-block; animation: arrival-letter 420ms ease-out both; }
+.arrival-card-meta { color: #a5bcae; font: 10px ui-monospace, monospace; letter-spacing: .04em; }
+@keyframes arrival-chapter {
+  0% { opacity: 0; transform: translate(-50%, -46%) scale(.96); }
+  12%, 74% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, calc(-50vh + 4px)) scale(.34); }
+}
+@keyframes arrival-letter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+/* Move strip (map closed): solid for a calculated route, dashed for a straight-line sketch. */
+.arrival-strip { display: flex; align-items: center; gap: 8px; margin-top: 4px; color: #c8d7ca; font: 10px ui-monospace, monospace; }
+.arrival-strip-place { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arrival-strip-place::before { display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: #88a37b; content: ''; }
+.arrival-strip-to::before { background: #d5ef9a; box-shadow: 0 0 10px #d5ef9a; }
+.arrival-strip-track { position: relative; flex: 1 1 auto; min-width: 70px; height: 2px; }
+.arrival-strip-track i { position: absolute; inset: 0; background: #d5ef9a; animation: arrival-strip-draw 1100ms 300ms cubic-bezier(.4,0,.2,1) both; }
+.arrival-strip-sketch .arrival-strip-track i { background: repeating-linear-gradient(90deg, #d5ef9a 0 5px, transparent 5px 9px); }
+@keyframes arrival-strip-draw { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+
+/* Map: arrival pulse, hidden marker during a move, hover card. */
+.maplibregl-marker.marker-arrive::after { position: absolute; bottom: -9px; left: 50%; width: 18px; height: 18px; margin-left: -9px; border: 2px solid #d5ef9a; border-radius: 50%; content: ''; opacity: 0; pointer-events: none; animation: marker-pulse 900ms ease-out both; }
+.maplibregl-marker.journey-marker-hidden { visibility: hidden; }
+@keyframes marker-pulse { from { opacity: .9; transform: scale(.4); } to { opacity: 0; transform: scale(2.6); } }
+.map-hover-card { animation: hover-card-in 160ms ease-out both; }
+.map-hover-card .maplibregl-popup-content { display: grid; gap: 2px; padding: 7px 10px; border: 1px solid #496b5a; border-radius: 9px; background: #12201cf2; box-shadow: 0 10px 28px #07110dcc; color: #eef4e6; }
+.map-hover-card strong { font-size: 12px; font-weight: 600; }
+.map-hover-card span { color: #91a99a; font: 9px ui-monospace, monospace; text-transform: lowercase; }
+.map-hover-card .maplibregl-popup-tip { border-top-color: #12201cf2; border-bottom-color: #12201cf2; }
+@keyframes hover-card-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* Dock: eased active state, Journal dot, one-off Place unlock glow. */
+.story-dock button { position: relative; transition: border-color 180ms ease, color 180ms ease, box-shadow 220ms ease, transform 180ms ease, background-color 180ms ease; }
+.story-dock button:active:not(:disabled) { transform: scale(.95); }
+.story-dock button.dock-unseen::after { position: absolute; top: 7px; right: 8px; width: 7px; height: 7px; border-radius: 50%; background: #d5ef9a; box-shadow: 0 0 0 2px #12201c, 0 0 10px #d5ef9a; content: ''; animation: dock-dot-pop 420ms cubic-bezier(.2,.7,.2,1.4) both; }
+.story-dock button.dock-unlock { animation: dock-unlock 1400ms ease-out both; }
+@keyframes dock-dot-pop { from { opacity: 0; transform: scale(0); } to { opacity: 1; transform: scale(1); } }
+@keyframes dock-unlock { 0% { box-shadow: 0 0 0 0 #d5ef9a00; } 30% { border-color: #d5ef9a; box-shadow: 0 0 0 4px #d5ef9a33, 0 0 26px #d5ef9a66; } 100% { box-shadow: 0 0 0 0 #d5ef9a00; } }
+
+/* Dialogue: ▼ when a reply is finished, chips appear one after another. */
+.dialogue-continue-row { position: relative; height: 0; margin: 0 12px; pointer-events: none; }
+.dialogue-continue { position: absolute; right: 14px; bottom: 12px; width: 0; height: 0; border-top: 7px solid #c5e3a4; border-right: 5px solid transparent; border-left: 5px solid transparent; animation: continue-blink 1.1s ease-in-out infinite; }
+@keyframes continue-blink { 0%, 100% { opacity: .25; transform: translateY(0); } 50% { opacity: 1; transform: translateY(2px); } }
+.optional-suggestions button { transition: opacity 180ms ease, border-color 180ms ease, color 180ms ease; }
+.optional-suggestions.suggestions-waiting button { opacity: .4; }
+.optional-suggestions.suggestions-ready button { animation: chip-in 260ms cubic-bezier(.2,.7,.2,1) both; }
+.optional-suggestions.suggestions-ready button:nth-of-type(2) { animation-delay: 60ms; }
+.optional-suggestions.suggestions-ready button:nth-of-type(3) { animation-delay: 120ms; }
+.optional-suggestions.suggestions-ready button:nth-of-type(4) { animation-delay: 180ms; }
+@keyframes chip-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+
+/* Shimmer placeholders while place context and photos load. */
+.skeleton-block { display: grid; gap: 7px; margin-top: 12px; }
+.skeleton-block i, .skeleton-photos i { display: block; border-radius: 6px; background: linear-gradient(90deg, #1b2e27 0%, #284238 45%, #1b2e27 90%) 0 0 / 220% 100%; animation: shimmer 1.3s linear infinite; }
+.skeleton-block i { height: 9px; }
+.skeleton-block i:nth-of-type(2) { width: 86%; }
+.skeleton-block i:nth-of-type(3) { width: 62%; }
+.skeleton-photos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 10px; }
+.skeleton-photos i { aspect-ratio: 4 / 3; border-radius: 9px; }
+@keyframes shimmer { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+
+/* Empty stage while the map is open and there is no scene photo. */
+.stage-hint { position: fixed; z-index: 2; top: 36%; left: calc((var(--left-inset, 24px) + 100vw - var(--right-inset, 24px)) / 2); width: min(320px, calc(100vw - var(--left-inset, 24px) - var(--right-inset, 24px) - 48px)); color: #9fb4a4; font: italic 15px/1.5 Georgia, 'Times New Roman', serif; text-align: center; transform: translateX(-50%); pointer-events: none; animation: scene-label-in 420ms ease-out both; }
+@media (max-width: 1100px) { .stage-hint { display: none; } }
+
+/* Phone sheets: drag handle at the bottom edge of top sheets; dragging down snaps taller. */
+.sheet-handle { display: none; }
+@media (max-width: 520px) {
+  .sheet-handle { position: sticky; bottom: -17px; display: grid; place-items: center; height: 22px; margin: 8px -17px -17px; touch-action: none; cursor: grab; }
+  .sheet-handle span { width: 38px; height: 4px; border-radius: 4px; background: #6f8c78; }
+  .story-dock-panel { transition: max-height 220ms ease, transform 220ms ease; }
+  .story-mode .story-dock-panel[data-sheet='tall'] { bottom: auto; max-height: calc(100vh - 68px - 96px); z-index: 9; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-motion-preference='auto'] .scene-art img,
+  :root[data-motion-preference='auto'] .scene-art-fade-out,
+  :root[data-motion-preference='auto'] .scene-label,
+  :root[data-motion-preference='auto'] .arrival-card-title span,
+  :root[data-motion-preference='auto'] .arrival-strip-track i,
+  :root[data-motion-preference='auto'] .maplibregl-marker.marker-arrive::after,
+  :root[data-motion-preference='auto'] .map-hover-card,
+  :root[data-motion-preference='auto'] .story-dock button,
+  :root[data-motion-preference='auto'] .story-dock button::after,
+  :root[data-motion-preference='auto'] .send-button .icon,
+  :root[data-motion-preference='auto'] .dialogue-continue,
+  :root[data-motion-preference='auto'] .optional-suggestions button,
+  :root[data-motion-preference='auto'] .skeleton-block i,
+  :root[data-motion-preference='auto'] .skeleton-photos i,
+  :root[data-motion-preference='auto'] .stage-hint { animation: none !important; transition: none !important; }
+}
+
+/* Short laptop screens: tighter opening spacing so the hero clears the dialogue box (keeps the lookup note). */
+@media (max-height: 800px) and (min-width: 521px) {
+  .opening-screen h2 { margin-top: 8px; }
+  .opening-description { margin-top: 6px; }
+  .opening-search { margin-top: 14px; }
+  .drop-in-places { margin-top: 10px; }
+}
+/* Phones: the dock covers the bottom edge, so the photo credit moves under the top bar. */
+@media (max-width: 520px) { .scene-art-note { top: 104px; right: 14px; bottom: auto; left: 14px; text-align: right; } }

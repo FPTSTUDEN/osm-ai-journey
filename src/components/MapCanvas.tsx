@@ -8,6 +8,7 @@ import type { LocalPmtilesArchive } from '../providers/localPmtiles'
 import { deduplicatePlaces, placeFromFeature } from '../providers/localPlaceIndex'
 import type { OfflineZone } from '../storage/offlineZones'
 import { getInitialMapViewport } from './mapViewport'
+import { easeInOut, partialPath, travelKind, travelPath, travelTimeline } from './journeyMotion'
 import type { JourneyLeg, MapViewport, Place, WalkingRoute } from '../types/domain'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
@@ -84,18 +85,32 @@ function localArchiveStyle(archive: LocalPmtilesArchive): StyleSpecification {
 /**
  * Draw every journey leg. Routed legs are solid; the active leg is highlighted;
  * earlier legs are muted. Unrouted transitions get a dashed faint line so they
- * are visibly not a walking route.
+ * are visibly not a walking route. Places visited earlier get small dim pins.
+ * `hiddenLegId` is left out while its move is being animated.
  */
-function legFeatureCollection(legs: JourneyLeg[]) {
-  const features = legs.flatMap((leg, index) => {
-    const active = index === legs.length - 1
+function legFeatureCollection(legs: JourneyLeg[], hiddenLegId: string | null = null) {
+  const shown = legs.filter((leg) => leg.id !== hiddenLegId)
+  const lines = shown.flatMap((leg) => {
+    const active = leg.id === legs.at(-1)?.id
     if (leg.routed) {
       if (!leg.geometry || leg.geometry.length < 2) return []
       return [{ type: 'Feature' as const, properties: { kind: 'routed', active }, geometry: { type: 'LineString' as const, coordinates: leg.geometry } }]
     }
     return [{ type: 'Feature' as const, properties: { kind: 'unrouted', active }, geometry: { type: 'LineString' as const, coordinates: [leg.from?.coordinates ?? leg.to.coordinates, leg.to.coordinates] } }]
   })
-  return { type: 'FeatureCollection' as const, features }
+  const current = legs.at(-1)?.to.id
+  const visited = new Map<string, Place>()
+  for (const leg of legs) for (const place of [leg.from, leg.to]) if (place && place.id !== current) visited.set(place.id, place)
+  const pins = [...visited.values()].map((place) => ({ type: 'Feature' as const, properties: { kind: 'visited', active: false, name: place.name }, geometry: { type: 'Point' as const, coordinates: place.coordinates } }))
+  return { type: 'FeatureCollection' as const, features: [...lines, ...pins] }
+}
+
+/** Restart the one-shot arrival pulse on a marker element. */
+function pulseMarker(element: HTMLElement | undefined, motionEnabled: boolean) {
+  if (!element || !motionEnabled) return
+  element.classList.remove('marker-arrive')
+  void element.offsetWidth
+  element.classList.add('marker-arrive')
 }
 
 export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelected, onPlacesLoaded, onMapStatusChange, selectedPlace, initialViewport, onViewportChange, route, localArchive, legs, flyToLegsSignal, offlineZone, zoneEditing, onZoneBoundsChange }: MapCanvasProps) {
@@ -111,6 +126,10 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
   const onViewportChangeRef = useRef(onViewportChange)
   const onZoneBoundsChangeRef = useRef(onZoneBoundsChange)
   const motionEnabledRef = useRef(motionEnabled)
+  // Legs restored with the journey are drawn as they are; only a leg added while the map is open is animated.
+  const lastLegIdRef = useRef<string | undefined>(legs?.at(-1)?.id)
+  const travelRef = useRef<{ hiddenLegId: string | null; cancel: (() => void) | null }>({ hiddenLegId: null, cancel: null })
+  const refreshLegsRef = useRef<() => void>(() => {})
 
   onPlaceSelectedRef.current = onPlaceSelected
   onPlacesLoadedRef.current = onPlacesLoaded
@@ -175,7 +194,48 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
 
     const handleClick = (event: MapMouseEvent) => {
       const feature = map.queryRenderedFeatures(event.point).map((item) => placeFromFeature(item)).find(Boolean)
-      if (feature) onPlaceSelectedRef.current(feature)
+      if (feature) { clearHover(); onPlaceSelectedRef.current(feature) }
+    }
+
+    // Hover card: name and category of the place under the pointer, after a short pause. Mouse/trackpad only.
+    const hoverPopup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 14, className: 'map-hover-card', maxWidth: '240px' })
+    let hoverTimer = 0
+    let hoverId: string | null = null
+    let hoverFrame = 0
+    const clearHover = () => {
+      window.clearTimeout(hoverTimer)
+      hoverId = null
+      hoverPopup.remove()
+      map.getCanvas().style.cursor = ''
+    }
+    const handleHover = (event: MapMouseEvent) => {
+      if (hoverFrame) return
+      hoverFrame = requestAnimationFrame(() => {
+        hoverFrame = 0
+        if (mapRef.current !== map) return
+        const place = map.queryRenderedFeatures(event.point).map((item) => placeFromFeature(item)).find(Boolean)
+        if (!place) { clearHover(); return }
+        map.getCanvas().style.cursor = 'pointer'
+        if (place.id === hoverId) return
+        hoverId = place.id
+        window.clearTimeout(hoverTimer)
+        hoverPopup.remove()
+        hoverTimer = window.setTimeout(() => {
+          // Names come from map data: set them as text, never as HTML.
+          const card = document.createElement('div')
+          const name = document.createElement('strong')
+          name.textContent = place.name
+          const meta = document.createElement('span')
+          meta.textContent = `${place.category ?? 'place'} · OpenStreetMap`
+          card.append(name, meta)
+          hoverPopup.setLngLat(place.coordinates).setDOMContent(card).addTo(map)
+        }, 150)
+      })
+    }
+    if (window.matchMedia('(hover: hover)').matches) {
+      map.on('mousemove', handleHover)
+      map.on('mouseout', clearHover)
+      map.on('movestart', clearHover)
     }
 
     map.on('load', () => {
@@ -196,6 +256,9 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
 
     return () => {
       resizeObserver.disconnect()
+      cancelAnimationFrame(hoverFrame)
+      window.clearTimeout(hoverTimer)
+      hoverPopup.remove()
       markerRef.current?.remove()
       map.remove()
       mapRef.current = null
@@ -218,11 +281,103 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
     markerRef.current = new maplibregl.Marker({ color: '#d5ef9a' })
       .setLngLat(selectedPlace.coordinates)
       .addTo(map)
+    pulseMarker(markerRef.current.getElement(), motionEnabledRef.current)
 
     const target = { center: selectedPlace.coordinates, zoom: Math.max(map.getZoom(), 14) }
     map.flyTo({ ...target, duration: motionEnabledRef.current ? 1000 : 0 })
     flyTargetRef.current = target
   }, [selectedPlace])
+
+  // Animate a move to a new place: fit both places, draw the line with a moving head, then reveal the marker.
+  // Declared before the route and legs effects so they can see the move is animating and hold back their lines.
+  useEffect(() => {
+    const map = mapRef.current
+    const leg = legs?.at(-1)
+    if (!map || !leg || leg.id === lastLegIdRef.current) return
+    lastLegIdRef.current = leg.id
+    travelRef.current.cancel?.()
+    const kind = travelKind(leg)
+    if (!motionEnabledRef.current || kind === 'arrive') return
+
+    const { fitMs, drawMs, settleMs } = travelTimeline(kind)
+    const path = travelPath(leg)
+    const sourceId = 'journey-travel'
+    const lineId = 'journey-travel-line'
+    const headId = 'journey-travel-head'
+    const timers: number[] = []
+    let frame = 0
+    let finished = false
+    const markerElement = markerRef.current?.getElement()
+    const travelData = (coordinates: [number, number][]) => ({
+      type: 'FeatureCollection' as const,
+      features: [
+        { type: 'Feature' as const, properties: { part: 'line' }, geometry: { type: 'LineString' as const, coordinates: coordinates.length > 1 ? coordinates : [coordinates[0], coordinates[0]] } },
+        { type: 'Feature' as const, properties: { part: 'head' }, geometry: { type: 'Point' as const, coordinates: coordinates[coordinates.length - 1] } },
+      ],
+    })
+
+    const restore = () => {
+      travelRef.current = { hiddenLegId: null, cancel: null }
+      markerElement?.classList.remove('journey-marker-hidden')
+      if (mapRef.current !== map) return
+      if (map.getLayer(headId)) map.removeLayer(headId)
+      if (map.getLayer(lineId)) map.removeLayer(lineId)
+      if (map.getSource(sourceId)) map.removeSource(sourceId)
+      if (map.getLayer('walking-route-line')) map.setPaintProperty('walking-route-line', 'line-opacity', 0.9)
+      refreshLegsRef.current()
+    }
+    const finish = () => {
+      if (finished) return
+      finished = true
+      restore()
+      pulseMarker(markerElement, motionEnabledRef.current)
+      if (mapRef.current !== map) return
+      const target = { center: leg.to.coordinates, zoom: Math.max(map.getZoom(), 14) }
+      map.flyTo({ ...target, duration: settleMs })
+      flyTargetRef.current = target
+    }
+
+    travelRef.current = {
+      hiddenLegId: leg.id,
+      cancel: () => {
+        cancelAnimationFrame(frame)
+        timers.forEach((timer) => window.clearTimeout(timer))
+        if (!finished) { finished = true; restore() }
+      },
+    }
+    try {
+      // Throws if the style itself is not loaded yet (isStyleLoaded() is also false while tiles load, so not used).
+      map.addSource(sourceId, { type: 'geojson', data: travelData([path[0]]) })
+    } catch {
+      travelRef.current = { hiddenLegId: null, cancel: null }
+      return
+    }
+    markerElement?.classList.add('journey-marker-hidden')
+    refreshLegsRef.current()
+    if (map.getLayer('walking-route-line')) map.setPaintProperty('walking-route-line', 'line-opacity', 0)
+    map.addLayer({ id: lineId, type: 'line', source: sourceId, filter: ['==', ['get', 'part'], 'line'], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#d5ef9a', 'line-width': kind === 'routed' ? 4.5 : 3, 'line-opacity': 0.95, ...(kind === 'routed' ? {} : { 'line-dasharray': [1.2, 1.6] }) } })
+    map.addLayer({ id: headId, type: 'circle', source: sourceId, filter: ['==', ['get', 'part'], 'head'], paint: { 'circle-radius': 6, 'circle-color': '#d5ef9a', 'circle-stroke-color': '#12201c', 'circle-stroke-width': 2 } })
+
+    map.stop()
+    flyTargetRef.current = null
+    const container = map.getContainer()
+    const padding = Math.max(16, Math.min(70, Math.round(Math.min(container.clientWidth, container.clientHeight) * 0.15)))
+    const bounds = path.reduce((result, coordinate) => result.extend(coordinate), new maplibregl.LngLatBounds(path[0], path[0]))
+    map.fitBounds(bounds, { padding, maxZoom: 16, duration: fitMs })
+    timers.push(window.setTimeout(() => {
+      const start = performance.now()
+      const step = (now: number) => {
+        if (mapRef.current !== map) return
+        const t = Math.min(1, (now - start) / drawMs)
+        ;(map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined)?.setData(travelData(partialPath(path, easeInOut(t))))
+        if (t < 1) frame = requestAnimationFrame(step)
+        else finish()
+      }
+      frame = requestAnimationFrame(step)
+    }, fitMs))
+  }, [legs])
+
+  useEffect(() => () => travelRef.current.cancel?.(), [])
 
   useEffect(() => {
     const map = mapRef.current
@@ -346,8 +501,10 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
         type: 'geojson',
         data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: route.coordinates } },
       })
-      map.addLayer({ id: layerId, type: 'line', source: sourceId, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#d5ef9a', 'line-width': 4, 'line-opacity': 0.9 } })
-      if (route.coordinates.length > 1) {
+      const animating = travelRef.current.hiddenLegId !== null
+      map.addLayer({ id: layerId, type: 'line', source: sourceId, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#d5ef9a', 'line-width': 4, 'line-opacity': animating ? 0 : 0.9 } })
+      // While a move is animating, the travel effect owns the camera and reveals this line at the end.
+      if (route.coordinates.length > 1 && !animating) {
         const bounds = route.coordinates.reduce((result, coordinate) => result.extend(coordinate), new maplibregl.LngLatBounds(route.coordinates[0], route.coordinates[0]))
         map.fitBounds(bounds, { padding: 48, maxZoom: 14, duration: motionEnabledRef.current ? 1000 : 0 })
       }
@@ -366,7 +523,7 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
     if (!map) return
     const sourceId = 'journey-legs'
     const apply = () => {
-      const data = legFeatureCollection(legs ?? [])
+      const data = legFeatureCollection(legs ?? [], travelRef.current.hiddenLegId)
       const existing = map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined
       if (existing) existing.setData(data)
       else map.addSource(sourceId, { type: 'geojson', data })
@@ -374,13 +531,18 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
         { id: 'journey-legs-muted', type: 'line', source: sourceId, filter: ['all', ['==', ['get', 'kind'], 'routed'], ['==', ['get', 'active'], false]], paint: { 'line-color': '#88a37b', 'line-width': 2.5, 'line-opacity': 0.55 } },
         { id: 'journey-legs-active', type: 'line', source: sourceId, filter: ['all', ['==', ['get', 'kind'], 'routed'], ['==', ['get', 'active'], true]], paint: { 'line-color': '#d5ef9a', 'line-width': 4.5, 'line-opacity': 0.95 } },
         { id: 'journey-legs-unrouted', type: 'line', source: sourceId, filter: ['==', ['get', 'kind'], 'unrouted'], paint: { 'line-color': '#a5b6aa', 'line-width': 2, 'line-opacity': 0.6, 'line-dasharray': [1, 2] } },
+        { id: 'journey-legs-visited', type: 'circle', source: sourceId, filter: ['==', ['get', 'kind'], 'visited'], paint: { 'circle-radius': 4, 'circle-color': '#88a37b', 'circle-opacity': 0.85, 'circle-stroke-color': '#12201c', 'circle-stroke-width': 1.5 } },
       ] as const
       for (const layer of layers) if (!map.getLayer(layer.id)) map.addLayer(layer)
+    }
+    refreshLegsRef.current = () => {
+      const source = map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined
+      source?.setData(legFeatureCollection(legs ?? [], travelRef.current.hiddenLegId))
     }
     if (map.isStyleLoaded()) apply()
     else map.once('load', apply)
     return () => {
-      for (const id of ['journey-legs-muted', 'journey-legs-active', 'journey-legs-unrouted']) if (map.getLayer(id)) map.removeLayer(id)
+      for (const id of ['journey-legs-muted', 'journey-legs-active', 'journey-legs-unrouted', 'journey-legs-visited']) if (map.getLayer(id)) map.removeLayer(id)
       if (map.getSource(sourceId)) map.removeSource(sourceId)
     }
   }, [legs, localArchive])
