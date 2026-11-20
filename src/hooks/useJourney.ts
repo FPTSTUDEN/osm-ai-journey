@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { deleteActiveJourney, loadActiveJourney, saveActiveJourney } from '../storage/journey'
 import { newEntry, starterEntries, STARTER_MESSAGE } from '../storage/messages'
 import type { ChatEntry, JourneyConversation, JourneyLeg, JourneyState, JourneyTimeline, MapViewport, NarrativeEvent, Place, StoryBranch, StoryCheckpoint, StoryProgress } from '../types/domain'
@@ -149,31 +149,49 @@ export function useJourney() {
     return () => { active = false }
   }, [journeyLoadAttempt])
 
+  // Latest state for deferred and pagehide saves (snapshot() is the function declared below).
+  const latestSnapshot = useRef<JourneyState | null>(null)
+  latestSnapshot.current = journeyReady ? snapshot() : null
+  const pendingSave = useRef<number | undefined>(undefined)
+
+  function flushSave() {
+    window.clearTimeout(pendingSave.current)
+    pendingSave.current = undefined
+    if (latestSnapshot.current) void saveActiveJourney(latestSnapshot.current)
+  }
+
+  // Discrete changes (destination, scene, memory, events, conversations) are saved at once, so a reload right after
+  // choosing a place keeps it. The old single 400 ms debounce was pushed back by every map move and could be lost on reload.
+  // The render where loading finishes is skipped: loading is not a change, and the stored record stays as it was.
+  const skipDiscreteSave = useRef(true)
   useEffect(() => {
     if (!journeyReady) return
-    const timer = window.setTimeout(() => {
-      void saveActiveJourney({
-        id: 'active',
-        personaId,
-        currentDestination: selectedPlace,
-        mapViewport,
-        destinationHistory,
-        currentScene,
-        messages,
-        knownPeople,
-        knownEntities,
-        userFacts,
-        narrativeEvents,
-        conversationSummary,
-        storyProgress,
-        legs,
-        branches,
-        conversations: conversationList(),
-        activeConversationId: activeConversationId || conversations[0]?.id,
-      })
-    }, 400)
-    return () => window.clearTimeout(timer)
-  }, [activeConversationId, branches, conversationSummary, conversations, currentScene, destinationHistory, journeyReady, knownEntities, knownPeople, legs, mapViewport, messages, narrativeEvents, personaId, selectedPlace, storyProgress, userFacts])
+    if (skipDiscreteSave.current) { skipDiscreteSave.current = false; return }
+    flushSave()
+  }, [activeConversationId, branches, conversationSummary, conversations, currentScene, destinationHistory, journeyReady, knownEntities, knownPeople, legs, narrativeEvents, personaId, selectedPlace, storyProgress, userFacts])
+
+  // Streamed replies change `messages` per token and the map reports every move: debounce only those.
+  const skipDebouncedSave = useRef(true)
+  useEffect(() => {
+    if (!journeyReady) return
+    if (skipDebouncedSave.current) { skipDebouncedSave.current = false; return }
+    window.clearTimeout(pendingSave.current)
+    pendingSave.current = window.setTimeout(flushSave, 400)
+  }, [journeyReady, mapViewport, messages])
+
+  // Do not lose a pending debounced save when the tab is hidden, closed or the hook unmounts.
+  useEffect(() => {
+    if (!journeyReady) return
+    const flushPending = () => { if (pendingSave.current !== undefined) flushSave() }
+    const onVisibility = () => { if (document.visibilityState === 'hidden') flushPending() }
+    window.addEventListener('pagehide', flushPending)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('pagehide', flushPending)
+      document.removeEventListener('visibilitychange', onVisibility)
+      flushPending()
+    }
+  }, [journeyReady])
 
   function applyJourney(journey: JourneyState) {
     setPersonaId(journey.personaId ?? DEFAULT_PERSONA_ID)

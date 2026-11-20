@@ -6,6 +6,8 @@ export function useStoryPanels() {
   const [storyMode, setStoryMode] = useState(true)
   const [storyPanels, setStoryPanels] = useState<StoryPanel[]>([])
   const [fieldNotesOpen, setFieldNotesOpen] = useState(false)
+  // Session-only: the map panel can widen over the right-hand panels when the user asks for more room.
+  const [mapExpanded, setMapExpanded] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const dockButtons = useRef<Partial<Record<StoryPanel, HTMLButtonElement | null>>>({})
   const settingsButton = useRef<HTMLButtonElement | null>(null)
@@ -55,6 +57,8 @@ export function useStoryPanels() {
     storyMode,
     storyPanels,
     fieldNotesOpen,
+    mapExpanded,
+    setMapExpanded,
     settingsOpen,
     setSettingsOpen,
     setFieldNotesOpen,

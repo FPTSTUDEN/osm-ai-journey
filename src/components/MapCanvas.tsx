@@ -102,6 +102,7 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
   const markerRef = useRef<Marker | null>(null)
+  const flyTargetRef = useRef<{ center: [number, number]; zoom: number } | null>(null)
   const zoneMarkersRef = useRef<Marker[]>([])
   const activeArchiveKeyRef = useRef<string | null>(null)
   const onPlaceSelectedRef = useRef(onPlaceSelected)
@@ -128,10 +129,21 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
       style: OPENFREEMAP_STYLE,
       center: viewport.center,
       zoom: viewport.zoom,
+      // Collapsed to the (i) button: expanded, the attribution box covered a third of the panel. The caption still credits OSM.
+      attributionControl: { compact: true },
     })
     let mapLoaded = false
     mapRef.current = map
-    const resizeObserver = new ResizeObserver(() => map.resize())
+    // Opening a panel can resize the map while a fly-to is running, and MapLibre then lands off-centre by half the size change.
+    // If a flight was interrupted, fly to the same target again.
+    const resizeObserver = new ResizeObserver(() => {
+      const target = flyTargetRef.current
+      map.resize()
+      if (target && map.isMoving()) {
+        map.flyTo({ ...target, duration: motionEnabledRef.current ? 400 : 0 })
+        flyTargetRef.current = target
+      }
+    })
     resizeObserver.observe(containerRef.current)
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
 
@@ -168,12 +180,14 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
 
     map.on('load', () => {
       mapLoaded = true
+      // MapLibre opens the compact attribution expanded on first load; start it collapsed (the (i) button still opens it).
+      containerRef.current?.querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show')
       onMapStatusChangeRef.current('ready')
       saveViewport()
       collectLoadedPlaces()
     })
     // `moveend`, not `move`: `move` fires every frame and re-rendered the whole app while panning.
-    map.on('moveend', saveViewport)
+    map.on('moveend', () => { flyTargetRef.current = null; saveViewport() })
     map.on('idle', collectLoadedPlaces)
     map.on('click', handleClick)
     map.on('error', () => {
@@ -205,7 +219,9 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
       .setLngLat(selectedPlace.coordinates)
       .addTo(map)
 
-    map.flyTo({ center: selectedPlace.coordinates, zoom: Math.max(map.getZoom(), 14), duration: motionEnabledRef.current ? 1000 : 0 })
+    const target = { center: selectedPlace.coordinates, zoom: Math.max(map.getZoom(), 14) }
+    map.flyTo({ ...target, duration: motionEnabledRef.current ? 1000 : 0 })
+    flyTargetRef.current = target
   }, [selectedPlace])
 
   useEffect(() => {
