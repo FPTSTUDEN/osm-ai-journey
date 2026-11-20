@@ -931,3 +931,6 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
   .map-filters { top: 8px; right: 8px; bottom: 62px; left: 8px; }
   .map-highlight-panel { width: 100%; }
 }
+/* The companion's suggested kind of place: first in the suggestions row. */
+.optional-suggestions button.suggestion-map { display: inline-flex; align-items: center; gap: 5px; border-color: #9cbd83; background: #22382c; color: #d5ef9a; }
+.optional-suggestions button.suggestion-map .icon { flex: none; }

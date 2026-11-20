@@ -6,6 +6,7 @@ import { revealedTextLength } from './typewriter'
 import { StoryMessageList } from './StoryMessageList'
 import { Icon } from './Icon'
 import type { SpeakerResolver } from '../hooks/useEntrySpeakers'
+import { placeFilterById } from '../providers/placeFilters'
 
 type DialogueBoxProps = {
   entries: ChatEntry[]
@@ -33,6 +34,8 @@ type DialogueBoxProps = {
   onDeleteConversation: (conversationId: string) => void
   animatedEntryId: string | null
   motionEnabled: boolean
+  /** Show the companion's suggested kind of place on the map. */
+  onShowSuggestedPlaces: (filterId: string, suggestedBy: string) => void
 }
 
 const suggestions = ['Look around', 'Ask a local', 'Walk somewhere else']
@@ -88,6 +91,7 @@ export function DialogueBox({
   onDeleteConversation,
   animatedEntryId,
   motionEnabled,
+  onShowSuggestedPlaces,
 }: DialogueBoxProps) {
   const [expanded, setExpanded] = useState(false)
   const [showConversationManager, setShowConversationManager] = useState(false)
@@ -108,6 +112,7 @@ export function DialogueBox({
   const canMovePrevious = activeStopIndex > 0
   const canMoveNext = activeStopIndex >= 0 && activeStopIndex < allStops.length - 1
   const skipped = skippedContent(entries, progress)
+  const suggestedFilter = latestEntry?.role === 'assistant' && latestEntry.storyTurn?.highlight ? placeFilterById(latestEntry.storyTurn.highlight) : null
   const reduceMotion = !motionEnabled
   const isTyping = llmState === 'loading' && !entries.some((entry) => entry.id === animatedEntryId && entry.text)
   // A reply is finished once streaming stopped and the typewriter has shown all of it.
@@ -221,6 +226,7 @@ export function DialogueBox({
       {/* Re-keyed when a reply finishes, so the chips appear one after another instead of jumping while text streams. */}
       <div key={replyFinished ? `ready:${latestEntry?.id}` : 'waiting'} className={`optional-suggestions ${replyFinished ? 'suggestions-ready' : ''} ${llmState === 'loading' ? 'suggestions-waiting' : ''}`} aria-label="Suggestions, optional">
         <span>Suggestions · optional</span>
+        {replyFinished && suggestedFilter && latestEntry && <button type="button" className="suggestion-map" onClick={() => onShowSuggestedPlaces(suggestedFilter.id, speakerFor(latestEntry).name)}><Icon name="map" size={13} />Show {suggestedFilter.noun} on the map</button>}
         {suggestions.map((suggestion) => <button key={suggestion} type="button" disabled={llmState === 'loading'} onClick={() => onMessageChange(suggestion)}>{suggestion}</button>)}
       </div>
       <form className="composer" onSubmit={(event) => onSubmit(event, presentationMode === 'visual-novel' ? progress : null)}>

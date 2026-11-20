@@ -1,4 +1,12 @@
 import type { ChatEntry, StoryBlock, StoryProgress, StoryTurn } from '../types/domain'
+import { PLACE_FILTERS } from './placeFilters'
+
+/** Only these ids are accepted from the model; anything else (including free text) is ignored. */
+export const SUGGESTIBLE_HIGHLIGHTS: readonly string[] = PLACE_FILTERS.map((filter) => filter.id)
+
+function highlightFrom(value: unknown) {
+  return typeof value === 'string' && SUGGESTIBLE_HIGHLIGHTS.includes(value.trim()) ? { highlight: value.trim() } : {}
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value))
@@ -41,7 +49,7 @@ export function parseStoryResponse(content: string, turnId: string): StoryTurn {
     const parsed: unknown = JSON.parse(candidate)
     if (isRecord(parsed) && Array.isArray(parsed.blocks) && parsed.blocks.length > 0) {
       const blocks = blocksFromValues(parsed.blocks, turnId)
-      if (blocks) return { format: 'structured', blocks }
+      if (blocks) return { format: 'structured', blocks, ...highlightFrom(parsed.highlight) }
     }
   } catch {
     // Non-JSON and malformed output is kept as readable prose.
@@ -57,7 +65,7 @@ export function normalizeStoredStoryTurn(value: unknown, fallbackText: string, t
     })
     if (blocks.length > 0 && blocks.every((block): block is StoryBlock => block !== null)) {
       const normalized = blocks as StoryBlock[]
-      if (value.format === 'structured') return { format: 'structured', blocks: normalized }
+      if (value.format === 'structured') return { format: 'structured', blocks: normalized, ...highlightFrom(value.highlight) }
       if (normalized.length === 1 && normalized[0].type === 'prose') return { format: 'plain-text', blocks: normalized }
     }
   }

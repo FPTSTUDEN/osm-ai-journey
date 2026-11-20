@@ -1,6 +1,7 @@
 import type { ChatMessage } from './llm'
 import type { PlaceContext } from './enrichment'
 import { STARTER_MESSAGE } from '../storage/messages'
+import { SUGGESTIBLE_HIGHLIGHTS } from './storyFormat'
 import type { ChatEntry, JourneyState, Place, PlacePhoto, UserSettings } from '../types/domain'
 
 /** With a summary available, only this many recent entries are sent verbatim. */
@@ -31,6 +32,7 @@ export function buildJourneyContext(input: ContextInput): ChatMessage[] {
     settings.personaInstructions || 'Be helpful, imaginative, and concise.',
     'Stay in character and treat the user as the traveler. Never invent the traveler’s words, thoughts, choices, or actions; respond to what they actually say and preserve scene continuity. Keep narration, spoken dialogue, and explicit scene changes in their matching blocks; avoid out-of-character commentary unless asked, and leave the next action open.',
     'Return each response as one JSON object with a "blocks" array and no markdown. Preserve content order. Blocks use type "narration" or "scene" with a "text" string, or type "dialogue" with a "speaker" and "text" string. Use narration for descriptive prose, dialogue for spoken words, and scene only for an explicit scene transition. Keep all response wording inside block text.',
+    `If the traveler asks for, or would clearly be helped by, a kind of nearby place, you may add a top-level "highlight" field with one of: ${SUGGESTIBLE_HIGHLIGHTS.join(', ')}. The app then highlights real places of that kind from map data. Do not name specific nearby businesses or give addresses you were not given.`,
     `Current scene: ${journey.currentScene}. Current destination: ${location}.`,
     `Visited destinations: ${journey.destinationHistory.map((place) => place.name).join(', ') || 'none'}.`,
     `User-created memory — known people: ${journey.knownPeople.join(', ') || 'none'}. Known entities: ${journey.knownEntities.join(', ') || 'none'}. User-created facts: ${journey.userFacts.join('; ') || 'none'}. Do not present user-created memory as source-backed fact.`,

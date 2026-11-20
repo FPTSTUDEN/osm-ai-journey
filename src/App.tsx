@@ -15,6 +15,7 @@ import { useJourney, newJourneyEvent } from './hooks/useJourney'
 import { useChat } from './hooks/useChat'
 import { useEntrySpeakers } from './hooks/useEntrySpeakers'
 import { usePlaceHighlight } from './hooks/usePlaceHighlight'
+import { placeFilterById } from './providers/placeFilters'
 import { DEFAULT_PERSONA, DEFAULT_PERSONA_ID } from './providers/config'
 import { PERSONA_SPRITES } from './providers/bundledPersonaSprites'
 import type { JourneyLeg, PersonaProfile, Place, PlacePhoto, WalkingRoute } from './types/domain'
@@ -117,6 +118,23 @@ function App() {
     onQueryChanged: () => setPendingDestination(null),
   })
   const placeHighlight = usePlaceHighlight({ loadedPlaces: mapSearch.places, origin: selectedPlace?.coordinates ?? mapViewport?.center ?? null, settings })
+  function showSuggestedPlaces(filterId: string, suggestedBy: string) {
+    const filter = placeFilterById(filterId)
+    if (!filter) return
+    placeHighlight.select(filter, suggestedBy)
+    if (storyMode && !storyPanels.includes('map')) toggleStoryPanel('map')
+  }
+  // The reply just generated in this session (not restored or switched-to history) highlights its suggested kind
+  // of place straight away when the map is open; otherwise the dialogue box offers a "Show … on the map" chip.
+  const latestEntry = messages.at(-1)
+  const handledSuggestionId = useRef<string | null>(null)
+  useEffect(() => {
+    if (chat.llmState === 'loading' || !latestEntry || latestEntry.id !== chat.animatedEntryId || latestEntry.id === handledSuggestionId.current) return
+    handledSuggestionId.current = latestEntry.id
+    const filterId = latestEntry.role === 'assistant' ? latestEntry.storyTurn?.highlight : undefined
+    const filter = filterId ? placeFilterById(filterId) : null
+    if (filter && storyPanels.includes('map')) placeHighlight.select(filter, speakerFor(latestEntry).name)
+  }, [chat.animatedEntryId, chat.llmState, latestEntry, placeHighlight, speakerFor, storyPanels])
   const journeyActions = useJourneyManagement({
     resetChat: chat.reset,
     resetJourneyState,
@@ -357,6 +375,7 @@ function App() {
         <DialogueBox
           entries={messages}
           speakerFor={speakerFor}
+          onShowSuggestedPlaces={showSuggestedPlaces}
           message={message}
           onMessageChange={setMessage}
           onSubmit={sendMessage}

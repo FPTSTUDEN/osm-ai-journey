@@ -94,6 +94,8 @@ export type StoryBlock =
 export type StoryTurn = {
   format: 'structured' | 'plain-text'
   blocks: StoryBlock[]
+  /** A kind of nearby place the companion suggests, as a `PLACE_FILTERS` id. The map highlights real places of that kind. */
+  highlight?: string
 }
 
 export type StoryProgress = { entryId: string; blockIndex: number }
