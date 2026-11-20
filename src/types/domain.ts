@@ -59,6 +59,8 @@ export type PersonaProfile = {
 export type UserSettings = {
   storyPresentationMode?: StoryPresentationMode
   motionPreference?: MotionPreference
+  /** Map column width in px set with the divider; undefined uses the layout default. */
+  mapPanelWidth?: number
   personaProfiles?: PersonaProfile[]
   llmProvider: 'ollama' | 'openai' | 'lmstudio' | 'vllm' | 'custom'
   llmBaseUrl: string

@@ -15,6 +15,7 @@ import type { JourneyLeg, MapViewport, Place, PlacePhoto, UserSettings, WalkingR
 import type { NarrativeEvent } from '../types/domain'
 import type { LocalPmtilesArchive } from '../providers/localPmtiles'
 import { Icon } from './Icon'
+import { MapResizeHandle } from './MapResizeHandle'
 import { SheetHandle } from './SheetHandle'
 import type { ArrivalCardState } from './ArrivalCard'
 
@@ -66,6 +67,7 @@ type Props = {
   arrivalCard: ArrivalCardState | null
   currentScene: number
   localArchive: LocalPmtilesArchive | null
+  onMapWidthChange: (width: number | undefined) => void
 }
 
 function photoToPlace(photo: PlacePhoto, fallback: Place): Place {
@@ -105,6 +107,7 @@ export function StoryPanels({
   arrivalCard,
   currentScene,
   localArchive,
+  onMapWidthChange,
 }: Props) {
   const { storyMode, storyPanels, fieldNotesOpen, setFieldNotesOpen, mapExpanded, setMapExpanded, toggleStoryPanel, closeStoryPanel, toggleMode, dockButtons } = panels
   const mapOpen = storyPanels.includes('map')
@@ -191,6 +194,7 @@ export function StoryPanels({
     <>
       <div id="story-map-panel" aria-hidden={!mapOpen} inert={!mapOpen} className={`map-layout ${mapPresent ? `map-layout--compact ${mapOpen ? 'story-panel-open' : 'story-panel-closing'}` : ''} ${mapPresent && mapExpanded ? 'map-layout--expanded' : ''}`}>
         {mapPresent && <>
+          {storyMode && !mapExpanded && <MapResizeHandle onCommit={onMapWidthChange} />}
           <aside className="map-history-panel panel" role="complementary" aria-labelledby="map-panel-label">
             <span id="map-panel-label" className="sr-only">Map navigation panel</span>
             {/* One header for the whole map panel: title, search and size/close controls on one row, so the map itself gets the space. */}

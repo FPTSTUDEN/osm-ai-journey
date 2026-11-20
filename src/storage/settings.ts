@@ -11,6 +11,10 @@ export function normalizeMotionPreference(value: unknown): NonNullable<UserSetti
   return value === 'on' || value === 'off' ? value : 'auto'
 }
 
+export function normalizeMapPanelWidth(value: unknown): UserSettings['mapPanelWidth'] {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 200 && value <= 4000 ? Math.round(value) : undefined
+}
+
 export function normalizePersonaProfiles(value: unknown, legacy?: Partial<Pick<UserSettings, 'personaName' | 'personaInstructions'>>, availableSpriteIds: readonly string[] = [DEFAULT_PERSONA.spriteId]): PersonaProfile[] {
   if (!Array.isArray(value)) {
     if (legacy?.personaName || legacy?.personaInstructions) return [{
@@ -41,6 +45,7 @@ export function loadSettings(availableSpriteIds: readonly string[] = [DEFAULT_PE
       ...saved,
       storyPresentationMode: normalizeStoryPresentationMode(saved.storyPresentationMode),
       motionPreference: normalizeMotionPreference(saved.motionPreference),
+      mapPanelWidth: normalizeMapPanelWidth(saved.mapPanelWidth),
       personaProfiles: normalizePersonaProfiles(saved.personaProfiles, saved, availableSpriteIds),
     }
   } catch {

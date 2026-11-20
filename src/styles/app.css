@@ -878,3 +878,20 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
 }
 /* Phones: the dock covers the bottom edge, so the photo credit moves under the top bar. */
 @media (max-width: 520px) { .scene-art-note { top: 104px; right: 14px; bottom: auto; left: 14px; text-align: right; } }
+
+/* Map width divider (story mode, wider than 900px; below that the map sits above the dialogue).
+   `--map-width` is on the app shell only once the user has resized the map. The clamp keeps the dialogue box
+   at least 480px wide whatever else is open. Keep the numbers in sync with MapResizeHandle.tsx. */
+.map-resize-handle { display: none; }
+@media (min-width: 901px) {
+  .story-mode .map-resize-handle { position: absolute; z-index: 2; top: 0; right: -18px; bottom: 0; display: grid; place-items: center; width: 18px; cursor: col-resize; pointer-events: auto; touch-action: none; outline: none; }
+  .map-resize-handle span { width: 4px; height: 64px; border-radius: 2px; background: #6f8f7d; opacity: 0; transform: scaleY(.7); transition: opacity 160ms ease, transform 160ms ease; }
+  .story-mode .map-layout--compact:hover .map-resize-handle span { opacity: .6; }
+  .story-mode .map-resize-handle:hover span, .story-mode .map-resize-handle:focus-visible span, :root.map-resizing .map-resize-handle span { background: #d5ef9a; opacity: 1; transform: none; }
+  .map-resize-handle:focus-visible span { box-shadow: 0 0 0 2px #0d1714, 0 0 0 4px #c5e3a4; }
+  .app-shell[style*='--map-width'].story-mode .workspace { --map-w: clamp(320px, var(--map-width), max(320px, min(60vw, calc(100vw - var(--right-inset) - 622px)))); }
+  .app-shell[style*='--map-width'].story-mode.story-map-open .workspace { --left-inset: calc(94px + var(--map-w) + 24px); }
+  .app-shell[style*='--map-width'].story-mode .workspace .map-layout--compact:not(.map-layout--expanded) { width: var(--map-w); }
+}
+:root.map-resizing, :root.map-resizing * { cursor: col-resize !important; user-select: none; }
+:root.map-resizing .story-mode .dialogue-panel, :root.map-resizing .story-mode .journey-panel { transition: none; }
