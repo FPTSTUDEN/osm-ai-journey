@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef } from 'react'
 import * as maplibregl from 'maplibre-gl'
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
-import type { GeoJSONFeature, Map as MapLibreMap, MapMouseEvent, Marker, StyleSpecification } from 'maplibre-gl'
+import type { DataDrivenPropertyValueSpecification, ExpressionSpecification, GeoJSONFeature, Map as MapLibreMap, MapMouseEvent, Marker, StyleSpecification } from 'maplibre-gl'
 import { Protocol, TileType } from 'pmtiles'
 import { OPENFREEMAP_STYLE } from '../providers/config'
 import type { LocalPmtilesArchive } from '../providers/localPmtiles'
@@ -10,6 +10,7 @@ import type { OfflineZone } from '../storage/offlineZones'
 import { getInitialMapViewport } from './mapViewport'
 import { easeInOut, partialPath, travelKind, travelPath, travelTimeline } from './journeyMotion'
 import type { JourneyLeg, MapViewport, Place, WalkingRoute } from '../types/domain'
+import type { MapBounds } from '../providers/placeFilters'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
 maplibregl.setWorkerUrl(maplibreWorkerUrl)
@@ -32,6 +33,26 @@ type MapCanvasProps = {
   legs?: JourneyLeg[]
   /** Increment to trigger a fit-to-journey animation. */
   flyToLegsSignal?: number
+  /** Places to highlight (a category the user or companion picked). `undefined` means no highlight is active. */
+  highlights?: Place[]
+  highlightFocusId?: string | null
+  onHighlightHover?: (placeId: string | null) => void
+  /** Visible area after each move, as [west, south, east, north]. */
+  onBoundsChange?: (bounds: MapBounds) => void
+}
+
+/** Overlay layers whose features stand for a known `Place` (looked up by the feature's `placeId`), not raw map data. */
+type OverlayKind = 'highlight'
+const HIGHLIGHT_SOURCE = 'place-highlights'
+const HIGHLIGHT_LAYERS = ['place-highlights-halo', 'place-highlights-dot', 'place-highlights-label'] as const
+/** The style's own POI icons are faded while a highlight is active, so the matches stand out. */
+const DIMMED_OPACITY = 0.3
+
+function overlayCollection(places: Place[], kind: OverlayKind, focusId: string | null) {
+  return {
+    type: 'FeatureCollection' as const,
+    features: places.map((place) => ({ type: 'Feature' as const, properties: { overlay: kind, placeId: place.id, name: place.name, focus: place.id === focusId }, geometry: { type: 'Point' as const, coordinates: place.coordinates } })),
+  }
 }
 
 function localArchiveStyle(archive: LocalPmtilesArchive): StyleSpecification {
@@ -113,7 +134,7 @@ function pulseMarker(element: HTMLElement | undefined, motionEnabled: boolean) {
   element.classList.add('marker-arrive')
 }
 
-export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelected, onPlacesLoaded, onMapStatusChange, selectedPlace, initialViewport, onViewportChange, route, localArchive, legs, flyToLegsSignal, offlineZone, zoneEditing, onZoneBoundsChange }: MapCanvasProps) {
+export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelected, onPlacesLoaded, onMapStatusChange, selectedPlace, initialViewport, onViewportChange, route, localArchive, legs, flyToLegsSignal, offlineZone, zoneEditing, onZoneBoundsChange, highlights, highlightFocusId = null, onHighlightHover, onBoundsChange }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
   const markerRef = useRef<Marker | null>(null)
@@ -130,6 +151,10 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
   const lastLegIdRef = useRef<string | undefined>(legs?.at(-1)?.id)
   const travelRef = useRef<{ hiddenLegId: string | null; cancel: (() => void) | null }>({ hiddenLegId: null, cancel: null })
   const refreshLegsRef = useRef<() => void>(() => {})
+  const overlayPlacesRef = useRef<Record<OverlayKind, Map<string, Place>>>({ highlight: new Map() })
+  const onHighlightHoverRef = useRef(onHighlightHover)
+  const onBoundsChangeRef = useRef(onBoundsChange)
+  const highlightFocusRef = useRef(highlightFocusId)
 
   onPlaceSelectedRef.current = onPlaceSelected
   onPlacesLoadedRef.current = onPlacesLoaded
@@ -137,6 +162,9 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
   onViewportChangeRef.current = onViewportChange
   onZoneBoundsChangeRef.current = onZoneBoundsChange
   motionEnabledRef.current = motionEnabled
+  onHighlightHoverRef.current = onHighlightHover
+  onBoundsChangeRef.current = onBoundsChange
+  highlightFocusRef.current = highlightFocusId
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -169,22 +197,29 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
     const saveViewport = () => {
       const center = map.getCenter()
       onViewportChangeRef.current({ center: [center.lng, center.lat], zoom: map.getZoom() })
+      const bounds = map.getBounds()
+      onBoundsChangeRef.current?.([bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()])
     }
 
     const collectLoadedPlaces = () => {
       const places: Place[] = []
-      const sources = Object.entries(map.getStyle().sources)
+      const style = map.getStyle()
+      const sources = Object.entries(style.sources)
         .filter(([, source]) => (source as { type?: string }).type === 'vector')
         .map(([sourceId]) => sourceId)
 
       for (const sourceId of sources) {
-        try {
-          map.querySourceFeatures(sourceId).forEach((feature: GeoJSONFeature) => {
-            const place = placeFromFeature(feature)
-            if (place) places.push(place)
-          })
-        } catch {
-          // A source can be declared before its first tile is available.
+        // Vector sources return nothing from querySourceFeatures without a source layer, so ask each layer the style draws.
+        const sourceLayers = new Set(style.layers.flatMap((layer) => 'source' in layer && layer.source === sourceId && 'source-layer' in layer && layer['source-layer'] ? [layer['source-layer']] : []))
+        for (const sourceLayer of sourceLayers) {
+          try {
+            map.querySourceFeatures(sourceId, { sourceLayer }).forEach((feature: GeoJSONFeature) => {
+              const place = placeFromFeature(feature)
+              if (place) places.push(place)
+            })
+          } catch {
+            // A source can be declared before its first tile is available.
+          }
         }
       }
 
@@ -192,9 +227,21 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
       onPlacesLoadedRef.current(deduped)
     }
 
+    // The topmost place under a point. Overlay features map back to the full `Place` they were drawn from.
+    const placeAt = (point: MapMouseEvent['point']): { place: Place; overlay: OverlayKind | null } | null => {
+      for (const feature of map.queryRenderedFeatures(point)) {
+        const overlay = feature.properties?.overlay as OverlayKind | undefined
+        const known = overlay && overlayPlacesRef.current[overlay]?.get(String(feature.properties?.placeId))
+        if (known && overlay) return { place: known, overlay }
+        const place = placeFromFeature(feature)
+        if (place) return { place, overlay: null }
+      }
+      return null
+    }
+
     const handleClick = (event: MapMouseEvent) => {
-      const feature = map.queryRenderedFeatures(event.point).map((item) => placeFromFeature(item)).find(Boolean)
-      if (feature) { clearHover(); onPlaceSelectedRef.current(feature) }
+      const hit = placeAt(event.point)
+      if (hit) { clearHover(); onPlaceSelectedRef.current(hit.place) }
     }
 
     // Hover card: name and category of the place under the pointer, after a short pause. Mouse/trackpad only.
@@ -202,19 +249,28 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
     let hoverTimer = 0
     let hoverId: string | null = null
     let hoverFrame = 0
+    let hoverHighlightId: string | null = null
+    const setHoverHighlight = (id: string | null) => {
+      if (id === hoverHighlightId) return
+      hoverHighlightId = id
+      onHighlightHoverRef.current?.(id)
+    }
     const clearHover = () => {
       window.clearTimeout(hoverTimer)
       hoverId = null
       hoverPopup.remove()
       map.getCanvas().style.cursor = ''
+      setHoverHighlight(null)
     }
     const handleHover = (event: MapMouseEvent) => {
       if (hoverFrame) return
       hoverFrame = requestAnimationFrame(() => {
         hoverFrame = 0
         if (mapRef.current !== map) return
-        const place = map.queryRenderedFeatures(event.point).map((item) => placeFromFeature(item)).find(Boolean)
-        if (!place) { clearHover(); return }
+        const hit = placeAt(event.point)
+        if (!hit) { clearHover(); return }
+        const { place } = hit
+        setHoverHighlight(hit.overlay === 'highlight' ? place.id : null)
         map.getCanvas().style.cursor = 'pointer'
         if (place.id === hoverId) return
         hoverId = place.id
@@ -546,6 +602,57 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
       if (map.getSource(sourceId)) map.removeSource(sourceId)
     }
   }, [legs, localArchive])
+
+  // Category highlights: a soft ring and dot per match, its name from zoom 13, and the style's other POI icons faded.
+  useEffect(() => {
+    const map = mapRef.current
+    overlayPlacesRef.current.highlight = new Map((highlights ?? []).map((place) => [place.id, place]))
+    if (!map || !highlights) return
+    const dimmed = new Map<string, { icon: DataDrivenPropertyValueSpecification<number> | undefined; text: DataDrivenPropertyValueSpecification<number> | undefined }>()
+    const apply = () => {
+      if (mapRef.current !== map) return
+      const data = overlayCollection(highlights, 'highlight', highlightFocusRef.current)
+      const existing = map.getSource(HIGHLIGHT_SOURCE) as maplibregl.GeoJSONSource | undefined
+      if (existing) existing.setData(data)
+      else map.addSource(HIGHLIGHT_SOURCE, { type: 'geojson', data })
+      const style = map.getStyle()
+      // Labels need the style's glyphs; local archive styles have none, so they get rings only.
+      const font = style.glyphs ? style.layers.flatMap((layer) => layer.type === 'symbol' && Array.isArray(layer.layout?.['text-font']) ? [layer.layout['text-font'] as string[]] : [])[0] : undefined
+      const focus: ExpressionSpecification = ['==', ['get', 'focus'], true]
+      const layers: Array<Parameters<MapLibreMap['addLayer']>[0] & { id: string }> = [
+        { id: 'place-highlights-halo', type: 'circle', source: HIGHLIGHT_SOURCE, paint: { 'circle-radius': ['case', focus, 16, 10], 'circle-color': '#d5ef9a', 'circle-opacity': ['case', focus, 0.32, 0.16], 'circle-stroke-color': '#d5ef9a', 'circle-stroke-width': 1.5, 'circle-stroke-opacity': 0.75 } },
+        { id: 'place-highlights-dot', type: 'circle', source: HIGHLIGHT_SOURCE, paint: { 'circle-radius': ['case', focus, 6, 4.5], 'circle-color': '#d5ef9a', 'circle-stroke-color': '#12201c', 'circle-stroke-width': 2 } },
+      ]
+      if (font) layers.push({ id: 'place-highlights-label', type: 'symbol', source: HIGHLIGHT_SOURCE, minzoom: 13, layout: { 'text-field': ['get', 'name'], 'text-font': font, 'text-size': ['case', focus, 12.5, 11], 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true, 'text-max-width': 9 }, paint: { 'text-color': '#eef4e6', 'text-halo-color': '#12201c', 'text-halo-width': 1.4 } } as Parameters<MapLibreMap['addLayer']>[0] & { id: string })
+      for (const layer of layers) if (!map.getLayer(layer.id)) map.addLayer(layer)
+      for (const layer of style.layers) {
+        if (layer.type !== 'symbol' || !('source-layer' in layer) || layer['source-layer'] !== 'poi' || dimmed.has(layer.id)) continue
+        dimmed.set(layer.id, { icon: map.getPaintProperty(layer.id, 'icon-opacity'), text: map.getPaintProperty(layer.id, 'text-opacity') })
+        map.setPaintProperty(layer.id, 'icon-opacity', DIMMED_OPACITY)
+        map.setPaintProperty(layer.id, 'text-opacity', DIMMED_OPACITY)
+      }
+    }
+    if (map.isStyleLoaded()) apply()
+    else map.once('style.load', apply)
+    return () => {
+      map.off('style.load', apply)
+      if (mapRef.current !== map || !map.getStyle()) return
+      for (const id of HIGHLIGHT_LAYERS) if (map.getLayer(id)) map.removeLayer(id)
+      if (map.getSource(HIGHLIGHT_SOURCE)) map.removeSource(HIGHLIGHT_SOURCE)
+      for (const [id, original] of dimmed) {
+        if (!map.getLayer(id)) continue
+        map.setPaintProperty(id, 'icon-opacity', original.icon ?? 1)
+        map.setPaintProperty(id, 'text-opacity', original.text ?? 1)
+      }
+    }
+  }, [highlights, localArchive])
+
+  // Focus (hovered list item) only changes feature properties, so redraw the data without touching the layers.
+  useEffect(() => {
+    const map = mapRef.current
+    const source = map?.getSource(HIGHLIGHT_SOURCE) as maplibregl.GeoJSONSource | undefined
+    if (source && highlights) source.setData(overlayCollection(highlights, 'highlight', highlightFocusId))
+  }, [highlightFocusId, highlights])
 
   // Fit-to-journey: recompute bounds from the routed geometry when the signal changes.
   useEffect(() => {

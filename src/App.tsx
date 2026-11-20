@@ -14,6 +14,7 @@ import { useJourneyManagement } from './hooks/useJourneyManagement'
 import { useJourney, newJourneyEvent } from './hooks/useJourney'
 import { useChat } from './hooks/useChat'
 import { useEntrySpeakers } from './hooks/useEntrySpeakers'
+import { usePlaceHighlight } from './hooks/usePlaceHighlight'
 import { DEFAULT_PERSONA, DEFAULT_PERSONA_ID } from './providers/config'
 import { PERSONA_SPRITES } from './providers/bundledPersonaSprites'
 import type { JourneyLeg, PersonaProfile, Place, PlacePhoto, WalkingRoute } from './types/domain'
@@ -115,6 +116,7 @@ function App() {
     onChoosePlace: choosePlace,
     onQueryChanged: () => setPendingDestination(null),
   })
+  const placeHighlight = usePlaceHighlight({ loadedPlaces: mapSearch.places, origin: selectedPlace?.coordinates ?? mapViewport?.center ?? null, settings })
   const journeyActions = useJourneyManagement({
     resetChat: chat.reset,
     resetJourneyState,
@@ -348,6 +350,7 @@ function App() {
           legs={legs}
           arrivalCard={arrivalCard}
           currentScene={currentScene}
+          highlight={placeHighlight}
           onMapWidthChange={(mapPanelWidth) => setSettings((current) => ({ ...current, mapPanelWidth }))}
           localArchive={localPmtiles.archive}
         />

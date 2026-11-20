@@ -895,3 +895,39 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
 }
 :root.map-resizing, :root.map-resizing * { cursor: col-resize !important; user-select: none; }
 :root.map-resizing .story-mode .dialogue-panel, :root.map-resizing .story-mode .journey-panel { transition: none; }
+
+/* Place highlights: chips over the map and the list of matches in view (PlaceHighlightPanel.tsx). */
+.map-filters { position: absolute; z-index: 3; top: 10px; right: 10px; bottom: 56px; left: 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; pointer-events: none; }
+.explore-mode .map-filters { top: 146px; right: 24px; bottom: 120px; left: 24px; }
+.map-filter-chips { display: flex; flex: none; gap: 6px; padding-bottom: 1px; max-width: 100%; overflow-x: auto; scrollbar-width: none; pointer-events: auto; }
+.map-filter-chips::-webkit-scrollbar { display: none; }
+.map-filter-chips button { flex: none; padding: 6px 11px; border: 1px solid #496b5a; border-radius: 999px; background: #172521e8; color: #c8d7ca; font-size: 11px; box-shadow: 0 6px 16px #07110d80; backdrop-filter: blur(10px); }
+.map-filter-chips button:hover { border-color: #9cbd83; color: #e6efe1; }
+.map-filter-chips button[aria-pressed='true'] { border-color: #c5e3a4; background: #c5e3a4; color: #132119; }
+.map-filter-chips button:focus-visible, .map-highlight-panel button:focus-visible { outline: 2px solid #c5e3a4; outline-offset: 2px; }
+.map-highlight-panel { display: flex; flex-direction: column; width: min(300px, 100%); min-height: 0; max-height: 100%; overflow: hidden; border: 1px solid #496c5b; border-radius: 11px; background: #172521f2; box-shadow: 0 18px 40px #07110dcc; backdrop-filter: blur(12px); pointer-events: auto; animation: hover-card-in 160ms ease-out both; }
+.map-highlight-panel header { display: flex; align-items: flex-start; gap: 6px; padding: 10px 10px 8px 12px; border-bottom: 1px solid #294139; }
+.map-highlight-panel header > div { display: grid; flex: 1; gap: 3px; min-width: 0; }
+.map-highlight-panel header strong { color: #eef4e6; font-size: 12px; }
+.map-highlight-panel header span { overflow: hidden; color: #8fa99a; font: 9.5px ui-monospace, monospace; text-overflow: ellipsis; white-space: nowrap; }
+.map-highlight-toggle { flex: none; padding: 4px 8px; border: 1px solid #496b5a; border-radius: 7px; background: #172921; color: #c8d7ca; font: 10px ui-monospace, monospace; }
+.map-highlight-panel .close-button { flex: none; }
+.map-highlight-panel ol { min-height: 0; margin: 0; padding: 4px; overflow-y: auto; list-style: none; }
+.map-highlight-panel li button { display: grid; gap: 3px; width: 100%; padding: 8px; border: 0; border-radius: 7px; background: transparent; color: #e6efe1; text-align: left; font-size: 12px; }
+.map-highlight-panel li button:hover, .map-highlight-panel li button.is-focus { background: #21382f; }
+.map-highlight-panel li button.is-focus strong { color: #d5ef9a; }
+.map-highlight-panel li button span { color: #7e9e8d; font: 10px ui-monospace, monospace; }
+.map-highlight-more, .map-highlight-empty { padding: 8px 12px; color: #8fa99a; font-size: 11px; line-height: 1.4; }
+.map-highlight-panel footer { display: grid; gap: 6px; padding: 8px 12px 10px; border-top: 1px solid #294139; }
+.map-highlight-panel footer:empty { display: none; }
+.map-highlight-panel footer p { color: #8fa99a; font-size: 10.5px; line-height: 1.4; }
+.map-highlight-panel footer p button { border: 0; background: transparent; color: #d5ef9a; text-decoration: underline; }
+.map-highlight-search { justify-self: start; padding: 6px 10px; border: 1px solid #698a71; border-radius: 7px; background: #263d34; color: #d8e8cf; font-size: 10.5px; }
+.map-highlight-search:disabled { opacity: .55; cursor: default; }
+.search-results .search-highlight-option { margin-bottom: 4px; border: 1px solid #496b5a; border-radius: 8px; background: #1f3229; color: #d5ef9a; }
+.search-results .search-highlight-option:last-child { border: 1px solid #496b5a; }
+@media (max-width: 520px) {
+  /* Stops above the offline-zone box in the bottom corner. */
+  .map-filters { top: 8px; right: 8px; bottom: 62px; left: 8px; }
+  .map-highlight-panel { width: 100%; }
+}

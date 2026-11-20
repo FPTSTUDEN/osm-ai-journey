@@ -16,6 +16,9 @@ import type { NarrativeEvent } from '../types/domain'
 import type { LocalPmtilesArchive } from '../providers/localPmtiles'
 import { Icon } from './Icon'
 import { MapResizeHandle } from './MapResizeHandle'
+import { PlaceHighlightPanel } from './PlaceHighlightPanel'
+import { filterForQuery } from '../providers/placeFilters'
+import type { PlaceHighlight } from '../hooks/usePlaceHighlight'
 import { SheetHandle } from './SheetHandle'
 import type { ArrivalCardState } from './ArrivalCard'
 
@@ -68,6 +71,7 @@ type Props = {
   currentScene: number
   localArchive: LocalPmtilesArchive | null
   onMapWidthChange: (width: number | undefined) => void
+  highlight: PlaceHighlight
 }
 
 function photoToPlace(photo: PlacePhoto, fallback: Place): Place {
@@ -108,9 +112,13 @@ export function StoryPanels({
   currentScene,
   localArchive,
   onMapWidthChange,
+  highlight,
 }: Props) {
   const { storyMode, storyPanels, fieldNotesOpen, setFieldNotesOpen, mapExpanded, setMapExpanded, toggleStoryPanel, closeStoryPanel, toggleMode, dockButtons } = panels
   const mapOpen = storyPanels.includes('map')
+  // A search like "restaurants" or "mall" can also highlight every match on the map.
+  const keywordFilter = useMemo(() => filterForQuery(search.query, search.places), [search.places, search.query])
+  const noLocalMatches = search.localResults.length === 0 && !keywordFilter
   const destinationOpen = storyMode && storyPanels.includes('destination')
   const travelogueOpen = storyMode && storyPanels.includes('travelogue')
   const mapPresent = usePanelPresence(mapOpen, motionEnabled)
@@ -216,21 +224,22 @@ export function StoryPanels({
               </label>
             </div>
             {search.query && search.mapStatus === 'loading' && <div className="search-state">Loading places from the visible map…</div>}
-            {search.query && search.mapStatus === 'ready' && search.localResults.length > 0 && <div className="search-results">
-              <p className="result-label">From loaded map data</p>
+            {search.query && search.mapStatus === 'ready' && (search.localResults.length > 0 || keywordFilter) && <div className="search-results">
+              {keywordFilter && <button className="search-highlight-option" onClick={() => { highlight.select(keywordFilter); search.clearSearch() }}>Highlight {keywordFilter.noun} on the map<span>Every match in the loaded map data</span></button>}
+              {search.localResults.length > 0 && <p className="result-label">From loaded map data</p>}
               {search.localResults.map((place) => <button key={place.id} onClick={() => onChoosePlace(place)}>{place.name}<span>{place.category ?? 'Place'}</span></button>)}
             </div>}
-            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.offlineResults.length > 0 && <div className="search-results">
+            {search.query && search.mapStatus === 'ready' && noLocalMatches && search.offlineResults.length > 0 && <div className="search-results">
               <p className="result-label">From offline index{search.offlineIndexState === 'ready' ? '' : ' · preparing'}</p>
               {search.offlineResults.map((place) => <button key={place.id} onClick={() => onChoosePlace(place)}>{place.name}<span>{place.category ?? 'Place'}</span></button>)}
             </div>}
-            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.offlineResults.length === 0 && search.offlineIndexState === 'empty' && search.onlineState === 'idle' && <div className="online-search">No named places are available in the offline zone. <button onClick={() => void search.searchOnline()}>Search online</button></div>}
-            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.offlineResults.length === 0 && search.offlineIndexState === 'not-indexed' && search.onlineState === 'idle' && <div className="online-search">This zone has no saved offline search index. Cache the zone or <button onClick={() => void search.searchOnline()}>search online</button>.</div>}
-            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.offlineResults.length === 0 && search.offlineIndexState === 'ready' && search.onlineState === 'idle' && <div className="online-search">No indexed places match. <button onClick={() => void search.searchOnline()}>Search online</button></div>}
-            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.offlineResults.length === 0 && search.offlineIndexState === 'unavailable' && search.onlineState === 'idle' && <div className="online-search">Offline search is unavailable{search.offlineIndexError ? `: ${search.offlineIndexError}` : '.'} <button onClick={() => void search.searchOnline()}>Search online</button></div>}
-            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.offlineResults.length === 0 && search.offlineIndexState === 'idle' && search.onlineState === 'idle' && <div className="online-search">No loaded places match. <button onClick={() => void search.searchOnline()}>Search online</button></div>}
-            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.offlineResults.length === 0 && search.offlineIndexState !== 'empty' && search.onlineState === 'loading' && <div className="search-state">Searching {settings.onlineGeocoder === 'nominatim' ? 'Nominatim' : 'Photon'} for “{search.onlineQuery}”…</div>}
-            {search.query && search.mapStatus === 'ready' && search.localResults.length === 0 && search.offlineResults.length === 0 && search.offlineIndexState !== 'empty' && search.onlineState === 'error' && <div className="online-search">{search.onlineError} <button onClick={() => void search.searchOnline()}>Try again</button></div>}
+            {search.query && search.mapStatus === 'ready' && noLocalMatches && search.offlineResults.length === 0 && search.offlineIndexState === 'empty' && search.onlineState === 'idle' && <div className="online-search">No named places are available in the offline zone. <button onClick={() => void search.searchOnline()}>Search online</button></div>}
+            {search.query && search.mapStatus === 'ready' && noLocalMatches && search.offlineResults.length === 0 && search.offlineIndexState === 'not-indexed' && search.onlineState === 'idle' && <div className="online-search">This zone has no saved offline search index. Cache the zone or <button onClick={() => void search.searchOnline()}>search online</button>.</div>}
+            {search.query && search.mapStatus === 'ready' && noLocalMatches && search.offlineResults.length === 0 && search.offlineIndexState === 'ready' && search.onlineState === 'idle' && <div className="online-search">No indexed places match. <button onClick={() => void search.searchOnline()}>Search online</button></div>}
+            {search.query && search.mapStatus === 'ready' && noLocalMatches && search.offlineResults.length === 0 && search.offlineIndexState === 'unavailable' && search.onlineState === 'idle' && <div className="online-search">Offline search is unavailable{search.offlineIndexError ? `: ${search.offlineIndexError}` : '.'} <button onClick={() => void search.searchOnline()}>Search online</button></div>}
+            {search.query && search.mapStatus === 'ready' && noLocalMatches && search.offlineResults.length === 0 && search.offlineIndexState === 'idle' && search.onlineState === 'idle' && <div className="online-search">No loaded places match. <button onClick={() => void search.searchOnline()}>Search online</button></div>}
+            {search.query && search.mapStatus === 'ready' && noLocalMatches && search.offlineResults.length === 0 && search.offlineIndexState !== 'empty' && search.onlineState === 'loading' && <div className="search-state">Searching {settings.onlineGeocoder === 'nominatim' ? 'Nominatim' : 'Photon'} for “{search.onlineQuery}”…</div>}
+            {search.query && search.mapStatus === 'ready' && noLocalMatches && search.offlineResults.length === 0 && search.offlineIndexState !== 'empty' && search.onlineState === 'error' && <div className="online-search">{search.onlineError} <button onClick={() => void search.searchOnline()}>Try again</button></div>}
             {search.query && search.onlineQuery === search.query.trim() && search.onlineState === 'ready' && search.onlineResults.length > 0 && <div className="search-results">
               <p className="result-label">Online results{search.onlineCached ? ' · cached' : ' · live'}</p>
               {search.onlineResults.map((place) => <button key={place.id} onClick={() => onChoosePlace(place)}>{place.name}<span>{place.category ?? place.description ?? 'Place'}</span></button>)}
@@ -238,8 +247,9 @@ export function StoryPanels({
             {search.query && search.onlineQuery === search.query.trim() && search.onlineState === 'ready' && search.onlineResults.length === 0 && <div className="online-search">No online places matched. <button onClick={() => void search.searchOnline()}>Try another search</button></div>}
             {search.query && search.mapStatus === 'unavailable' && <div className="search-state">Loaded map data is unavailable. <button onClick={() => void search.searchOnline()}>Search online</button></div>}
             {journeyReady
-              ? <Suspense fallback={<div className="map-loading">Loading map…</div>}><MapCanvas motionEnabled={motionEnabled} selectedPlace={mapPlace} initialViewport={mapViewport} onViewportChange={setMapViewport} route={route} localArchive={localArchive} legs={legs} flyToLegsSignal={flyToLegsSignal} offlineZone={offlineZone.zone} zoneEditing={offlineZone.editing} onZoneBoundsChange={(bounds) => { if (offlineZone.zone) void offlineZone.replaceZone({ ...offlineZone.zone, bounds }) }} onPlaceSelected={onChoosePlace} onPlacesLoaded={search.setPlaces} onMapStatusChange={search.setMapStatus} /></Suspense>
+              ? <Suspense fallback={<div className="map-loading">Loading map…</div>}><MapCanvas motionEnabled={motionEnabled} selectedPlace={mapPlace} initialViewport={mapViewport} onViewportChange={setMapViewport} route={route} localArchive={localArchive} legs={legs} flyToLegsSignal={flyToLegsSignal} offlineZone={offlineZone.zone} zoneEditing={offlineZone.editing} onZoneBoundsChange={(bounds) => { if (offlineZone.zone) void offlineZone.replaceZone({ ...offlineZone.zone, bounds }) }} onPlaceSelected={onChoosePlace} onPlacesLoaded={search.setPlaces} onMapStatusChange={search.setMapStatus} highlights={highlight.filter ? highlight.allMatches : undefined} highlightFocusId={highlight.focusId} onHighlightHover={highlight.setFocusId} onBoundsChange={highlight.setBounds} /></Suspense>
               : <div className="map-loading">Restoring journey…</div>}
+            {journeyReady && search.mapStatus === 'ready' && !search.query && <PlaceHighlightPanel highlight={highlight} originName={selectedPlace?.name ?? null} liveDataEnabled={settings.liveDataEnabled} onChoosePlace={onChoosePlace} />}
             <ZoneControls zone={offlineZone.zone} progress={offlineZone.progress} editing={offlineZone.editing} cachePrompt={offlineZone.cachePrompt} onCache={() => void cacheZone()} onCancel={offlineZone.cancelCache} onToggleEditing={offlineZone.setEditing} onMaxZoomChange={(maxZoom) => { if (offlineZone.zone) void offlineZone.replaceZone({ ...offlineZone.zone, maxZoom }) }} onBoundsChange={(bounds) => { if (offlineZone.zone) void offlineZone.replaceZone({ ...offlineZone.zone, bounds }) }} />
             {pendingDestination && <div className="route-choice"><p className="eyebrow">Begin transition</p><strong>Walk from {selectedPlace?.name} to {pendingDestination.name}?</strong><p>Calculate an optional walking route before arriving.</p><div><button onClick={() => onCompleteTransition(pendingDestination, true)}>Walk there</button><button onClick={() => onCompleteTransition(pendingDestination, false)}>Arrive without route</button></div></div>}
             {routeState === 'loading' && <div className="route-status">Calculating walking route…</div>}

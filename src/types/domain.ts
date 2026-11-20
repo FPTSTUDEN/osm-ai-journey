@@ -16,6 +16,8 @@ export type Place = {
   id: string
   name: string
   category?: string
+  /** OSM tag value when `category` is a broader class, e.g. category `shop`, subcategory `mall` (OpenMapTiles `subclass`). */
+  subcategory?: string
   osmType?: string
   osmId?: string
   wikidataId?: string
