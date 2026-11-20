@@ -673,3 +673,60 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
 :root[data-motion-preference='off'] *,
 :root[data-motion-preference='off'] *::before,
 :root[data-motion-preference='off'] *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+
+/* Map panel sizing (side-by-side contract: map column on the left, dialogue to its right via --left-inset).
+   The column now runs the full stage height instead of stopping at 44vh, with one header instead of two boxes. */
+.map-layout--compact { grid-template-rows: auto minmax(0, 1fr); gap: 8px; }
+.map-layout--compact .map-history-panel { order: -1; max-height: none; overflow: visible; padding: 9px 10px 9px 14px; }
+.map-panel--compact .map-toolbar > div { display: none; }
+.map-panel--compact .map-toolbar { height: 0; padding: 0; }
+.map-panel--compact .map-canvas, .map-panel--compact .map-canvas.maplibregl-map, .map-panel--compact .map-loading { inset: 0; }
+.map-panel--compact .search-results, .map-panel--compact .online-search, .map-panel--compact .search-state { top: 8px; }
+.map-header { display: flex; align-items: center; gap: 10px; }
+.map-header-title { min-width: 0; flex: 0 1 auto; }
+.map-header-title .eyebrow { font-size: 9px; }
+.map-header-title h3 { overflow: hidden; max-width: 160px; margin-top: 2px; color: #f0f4e9; font-size: 14px; white-space: nowrap; text-overflow: ellipsis; }
+.map-layout--compact .map-header .dock-search { flex: 1 1 160px; min-width: 0; margin: 0; }
+.map-size-button { display: inline-grid; flex: none; place-items: center; width: 30px; height: 30px; border: 1px solid #496b5a; border-radius: 8px; background: #172921; color: #c8d7ca; }
+.map-size-button:hover, .map-size-button[aria-pressed='true'] { border-color: #9cbd83; color: #d5ef9a; }
+.map-layout--compact .map-header .close-button { flex: none; }
+/* Visited places: one sideways-scrolling row, the same height as the empty hint so choosing a place does not resize the map. */
+.map-layout--compact .dock-history { display: flex; align-items: center; gap: 6px; height: 28px; margin-top: 8px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.map-layout--compact .dock-history .result-label { flex: none; margin: 0 4px 0 0; }
+.map-layout--compact .dock-history button { flex: none; width: auto; margin: 0; padding: 5px 9px; white-space: nowrap; }
+.map-layout--compact .dock-history button span { display: none; }
+.map-layout--compact .dock-empty { display: flex; align-items: center; height: 28px; margin: 8px 0 0; font-size: 11px; }
+/* The opening hero sat under the map; the map header has the same search. */
+.workspace:has(.map-layout--compact) .opening-screen { display: none; }
+
+/* The grid row sizes the map; drop the fixed heights from earlier breakpoints. */
+.story-mode .workspace .map-layout--compact .map-panel--compact { height: auto; min-height: 0; }
+@media (min-width: 1281px) {
+  /* Wider than before (500px); the dialogue box keeps at least ~700px at 1440. */
+  .story-mode .workspace .map-layout--compact { width: min(640px, calc(48vw - 118px)); }
+  .story-mode.story-map-open .workspace { --left-inset: calc(94px + min(640px, calc(48vw - 118px)) + 24px); }
+}
+@media (min-width: 521px) {
+  .story-mode .workspace .map-layout--compact { top: 84px; bottom: 20px; height: auto; }
+  /* Expanded: the map takes the whole stage, over the dialogue and side panels, until the user shrinks it again. */
+  .story-mode .workspace .map-layout--compact.map-layout--expanded { z-index: 9; width: calc(100vw - 94px - 24px); gap: 0; }
+  .map-layout--expanded .map-history-panel { border-bottom-right-radius: 0; border-bottom-left-radius: 0; background: #12201c; }
+  .map-layout--expanded .map-panel--compact { border-top-left-radius: 0; border-top-right-radius: 0; }
+}
+@media (min-width: 1101px) and (max-width: 1280px) {
+  .story-mode.story-map-open .workspace { --left-inset: 518px; }
+  .map-layout--compact { width: min(400px, calc(100vw - 130px)); }
+}
+@media (min-width: 521px) and (max-width: 1100px) {
+  .story-mode .workspace .map-layout--compact { bottom: 18px; }
+  .story-mode .workspace .map-layout--compact.map-layout--expanded { width: calc(100vw - 82px - 14px); }
+}
+@media (max-width: 520px) {
+  /* The dialogue box is capped at 32vh and sits 74px up, so this is the tightest gap that cannot overlap it. */
+  .story-mode .workspace .map-layout--compact { bottom: calc(32vh + 86px); }
+  .map-size-button { display: none; }
+  .map-header-title { display: none; }
+  /* Map + Journal: stack them (the Journal used to cover the map). */
+  .story-mode .workspace:has(.travelogue-panel) .map-layout--compact { bottom: auto; height: 34vh; }
+  .story-mode .workspace:has(.map-layout--compact) .travelogue-panel { top: calc(68px + 34vh + 8px); bottom: calc(32vh + 86px); max-height: none; overflow-y: auto; }
+}

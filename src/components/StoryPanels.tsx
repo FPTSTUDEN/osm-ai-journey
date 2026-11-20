@@ -103,7 +103,7 @@ export function StoryPanels({
   currentScene,
   localArchive,
 }: Props) {
-  const { storyMode, storyPanels, fieldNotesOpen, setFieldNotesOpen, toggleStoryPanel, closeStoryPanel, toggleMode, dockButtons } = panels
+  const { storyMode, storyPanels, fieldNotesOpen, setFieldNotesOpen, mapExpanded, setMapExpanded, toggleStoryPanel, closeStoryPanel, toggleMode, dockButtons } = panels
   const mapOpen = storyPanels.includes('map')
   const destinationOpen = storyMode && storyPanels.includes('destination')
   const travelogueOpen = storyMode && storyPanels.includes('travelogue')
@@ -159,8 +159,20 @@ export function StoryPanels({
 
   return (
     <>
-      <div id="story-map-panel" aria-hidden={!mapOpen} inert={!mapOpen} className={`map-layout ${mapPresent ? `map-layout--compact ${mapOpen ? 'story-panel-open' : 'story-panel-closing'}` : ''}`}>
+      <div id="story-map-panel" aria-hidden={!mapOpen} inert={!mapOpen} className={`map-layout ${mapPresent ? `map-layout--compact ${mapOpen ? 'story-panel-open' : 'story-panel-closing'}` : ''} ${mapPresent && mapExpanded ? 'map-layout--expanded' : ''}`}>
         {mapPresent && <>
+          <aside className="map-history-panel panel" role="complementary" aria-labelledby="map-panel-label">
+            <span id="map-panel-label" className="sr-only">Map navigation panel</span>
+            {/* One header for the whole map panel: title, search and size/close controls on one row, so the map itself gets the space. */}
+            <div className="map-header">
+              <div className="map-header-title"><p className="eyebrow">Map</p><h3 id="map-panel-heading">{selectedPlace?.name ?? 'Explore'}</h3></div>
+              <label className="dock-search"><span aria-hidden="true">⌕</span><input value={search.query} onChange={(event) => search.updateQuery(event.target.value)} placeholder="Search places" /></label>
+              <button className="map-size-button" type="button" onClick={() => setMapExpanded(!mapExpanded)} aria-pressed={mapExpanded} aria-label={mapExpanded ? 'Shrink map' : 'Expand map'} title={mapExpanded ? 'Shrink map' : 'Expand map'}><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">{mapExpanded ? <path d="M6.5 2.5v4h-4M9.5 13.5v-4h4M6.5 6.5 2 2M9.5 9.5 14 14" /> : <path d="M2.5 6.5v-4h4M13.5 9.5v4h-4M2.5 2.5 7 7M13.5 13.5 9 9" />}</svg></button>
+              <button className="close-button" type="button" onClick={() => { if (storyMode) closeStoryPanel('map'); else toggleMode() }} aria-label={storyMode ? 'Close map panel' : 'Return to story'}>×</button>
+            </div>
+            {destinationHistory.length > 0 && <div className="dock-history"><p className="result-label">Visited</p>{destinationHistory.slice().reverse().map((place) => <button key={place.id} type="button" onClick={() => onChoosePlace(place)}>{place.name}<span>{place.category ?? 'Place'}</span></button>)}</div>}
+            {!selectedPlace && destinationHistory.length === 0 && <p className="dock-empty">Pan the map and click a place, or search for one.</p>}
+          </aside>
           <section className="map-panel panel map-panel--compact">
             <div className="map-toolbar">
               <div><p className="eyebrow">Explore a place</p><h2>{selectedPlace?.name ?? 'Explore map'}</h2></div>
@@ -209,17 +221,6 @@ export function StoryPanels({
             </aside>}
             <div className="map-caption"><span>{localArchive?.attribution ?? 'Map data © OpenStreetMap contributors'}</span><span>{localArchive ? 'Local PMTiles archive' : 'OpenFreeMap'}</span></div>
           </section>
-          <aside className="map-history-panel panel" role="complementary" aria-labelledby="map-panel-label">
-            <span id="map-panel-label" className="sr-only">Map navigation panel</span>
-            <div className="story-dock-header">
-              <div><p className="eyebrow">Navigate</p><h3 id="map-panel-heading">Map</h3></div>
-              <button className="close-button" type="button" onClick={() => { if (storyMode) closeStoryPanel('map'); else toggleMode() }} aria-label={storyMode ? 'Close map panel' : 'Return to story'}>×</button>
-            </div>
-            <label className="dock-search"><span aria-hidden="true">⌕</span><input value={search.query} onChange={(event) => search.updateQuery(event.target.value)} placeholder="Search places" /></label>
-            {destinationHistory.length > 0 && <div className="dock-history"><p className="result-label">Visited places</p>{destinationHistory.slice().reverse().map((place) => <button key={place.id} type="button" onClick={() => onChoosePlace(place)}>{place.name}<span>{place.category ?? 'Place'}</span></button>)}</div>}
-            {!selectedPlace && destinationHistory.length === 0 && <p className="dock-empty">Search the map or click a place to begin.</p>}
-            <p className="dock-hint">Free map panning and search remain available.</p>
-          </aside>
         </>}
       </div>
       {storyMode && <nav className="story-dock" aria-label="Story navigation">
