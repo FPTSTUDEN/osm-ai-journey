@@ -5,10 +5,11 @@ import { latestStoryStop, storyStopIndex, storyStops } from '../providers/storyF
 import { revealedTextLength } from './typewriter'
 import { StoryMessageList } from './StoryMessageList'
 import { Icon } from './Icon'
+import type { SpeakerResolver } from '../hooks/useEntrySpeakers'
 
 type DialogueBoxProps = {
   entries: ChatEntry[]
-  personaName: string
+  speakerFor: SpeakerResolver
   message: string
   onMessageChange: (value: string) => void
   onSubmit: (event: FormEvent<HTMLFormElement>, rewindTo?: StoryProgress | null) => void
@@ -31,7 +32,6 @@ type DialogueBoxProps = {
   onSwitchConversation: (conversationId: string) => void
   onDeleteConversation: (conversationId: string) => void
   animatedEntryId: string | null
-  companionImageUrl: string | null
   motionEnabled: boolean
 }
 
@@ -64,7 +64,7 @@ function skippedContent(entries: ChatEntry[], progress: StoryProgress | null): S
 
 export function DialogueBox({
   entries,
-  personaName,
+  speakerFor,
   message,
   onMessageChange,
   onSubmit,
@@ -87,7 +87,6 @@ export function DialogueBox({
   onSwitchConversation,
   onDeleteConversation,
   animatedEntryId,
-  companionImageUrl,
   motionEnabled,
 }: DialogueBoxProps) {
   const [expanded, setExpanded] = useState(false)
@@ -185,7 +184,7 @@ export function DialogueBox({
     <section className="journey-panel dialogue-panel">
       <header className="dialogue-heading">
         <div className="dialogue-nameplate">
-          {activeEntry?.role !== 'event' && <><strong>{activeEntry?.role === 'user' ? 'You' : personaName}</strong><span className={activeEntry?.role === 'user' ? 'listener-tag' : 'companion-tag'}>{activeEntry?.role === 'user' ? 'LISTENER' : 'COMPANION'}</span></>}
+          {activeEntry?.role !== 'event' && <><strong>{activeEntry?.role === 'user' ? 'You' : speakerFor(activeEntry).name}</strong><span className={activeEntry?.role === 'user' ? 'listener-tag' : 'companion-tag'}>{activeEntry?.role === 'user' ? 'LISTENER' : 'COMPANION'}</span></>}
         </div>
         <div className="dialogue-heading-actions">
           <span className="scene-tag">Scene {String(sceneNumber).padStart(2, '0')}</span>
@@ -208,8 +207,7 @@ export function DialogueBox({
       <StoryMessageList
         entries={visibleEntries}
         mode={presentationMode}
-        personaName={personaName}
-        companionImageUrl={companionImageUrl}
+        speakerFor={speakerFor}
         animatedEntryId={revealCompleteId === latestEntry?.id ? null : animatedEntryId}
         revealedLength={revealedLength}
         reduceMotion={reduceMotion}

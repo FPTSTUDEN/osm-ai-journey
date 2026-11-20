@@ -133,6 +133,14 @@ export type StoryBranch = {
   snapshot: JourneyTimeline
 }
 
+/** Who wrote an assistant entry, recorded when it was created so switching persona later keeps the original speaker. */
+export type EntryPersona = {
+  id: string
+  /** Name at the time of writing; shown if the persona has since been deleted. */
+  name: string
+  spriteId?: PersonaSpriteId
+}
+
 export type ChatEntry = {
   id: string
   /** `event` entries are app-generated narration (e.g. arrivals); they are never sent to the model as a user turn. */
@@ -140,6 +148,8 @@ export type ChatEntry = {
   text: string
   storyTurn?: StoryTurn
   checkpoint?: StoryCheckpoint
+  /** Assistant entries only. Missing on entries saved before this field existed: those fall back to the active persona. */
+  persona?: EntryPersona
   createdAt: string
 }
 

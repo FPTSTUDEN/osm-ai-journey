@@ -1,10 +1,11 @@
 import type { ChatEntry, StoryBlock, StoryPresentationMode, StoryProgress } from '../types/domain'
+import type { SpeakerResolver } from '../hooks/useEntrySpeakers'
 
 type Props = {
   entries: ChatEntry[]
   mode: StoryPresentationMode
-  personaName: string
-  companionImageUrl: string | null
+  /** Who wrote an entry: its own persona, or the active one for older entries. */
+  speakerFor: SpeakerResolver
   animatedEntryId: string | null
   revealedLength: number
   reduceMotion: boolean
@@ -19,6 +20,13 @@ function visibleText(entry: ChatEntry, props: Props) {
     return entry.text.slice(0, props.revealedLength)
   }
   return entry.text
+}
+
+const sameName = (a: string, b: string | undefined) => Boolean(b) && a.trim().toLocaleLowerCase() === b!.trim().toLocaleLowerCase()
+
+/** A dialogue speaker is the entry's author if it matches the author's current name or the name used when it was written. */
+function isAuthor(speaker: string, entry: ChatEntry, authorName: string) {
+  return sameName(speaker, authorName) || sameName(speaker, entry.persona?.name)
 }
 
 function CharacterAvatar({ imageUrl, side }: { name: string; imageUrl?: string | null; side?: string }) {
@@ -46,8 +54,9 @@ function ChatEntryView({ entry, props }: { entry: ChatEntry; props: Props }) {
       if (block.type === 'narration' || block.type === 'scene') return <div className={`chat-narration ${block.type === 'scene' ? `chat-narration-scene ${entry.id === props.animatedEntryId ? 'scene-transition' : ''}` : ''}`} key={block.id}>
         <span>{block.type === 'scene' ? 'Scene' : 'Narration'}</span><p>{block.text}</p>
       </div>
-      const speaker = block.type === 'dialogue' ? block.speaker : props.personaName
-      const imageUrl = speaker.trim().toLocaleLowerCase() === props.personaName.trim().toLocaleLowerCase() ? props.companionImageUrl : null
+      const author = props.speakerFor(entry)
+      const speaker = block.type === 'dialogue' ? block.speaker : author.name
+      const imageUrl = isAuthor(speaker, entry, author.name) ? author.imageUrl : null
       return <article className={`chat-line ${entry.id === props.animatedEntryId && block.id === finalDialogueId ? 'speaker-focus' : ''}`} key={block.id}>
         <CharacterAvatar name={speaker} imageUrl={imageUrl} />
         <div className="chat-bubble"><span className="chat-speaker">{speaker}</span><p>{block.text}</p></div>
@@ -72,7 +81,7 @@ function VisualNovelEntry({ entry, props }: { entry: ChatEntry; props: Props }) 
       const isActiveBlock = block.id === activeBlockId
       if (block.type === 'scene') return <div className={`vn-event ${entry.id === props.animatedEntryId ? 'scene-transition' : ''} ${isActiveBlock ? 'story-block-arrive' : ''}`} key={block.id}><span>Scene</span><p>{block.text}</p></div>
       if (block.type === 'narration') return <p className={`vn-narration ${isActiveBlock ? 'story-block-arrive' : ''}`} key={block.id}>{block.text}</p>
-      const speaker = block.type === 'dialogue' ? block.speaker : props.personaName
+      const speaker = block.type === 'dialogue' ? block.speaker : props.speakerFor(entry).name
       return <div className={`vn-dialogue ${entry.id === props.animatedEntryId && block.id === finalDialogueId ? 'speaker-focus' : ''} ${isActiveBlock ? 'story-block-arrive' : ''}`} key={block.id}>
         <span className="vn-nameplate">{speaker}</span>
         <p>{block.text}</p>
@@ -82,10 +91,12 @@ function VisualNovelEntry({ entry, props }: { entry: ChatEntry; props: Props }) 
 }
 
 export function StoryMessageList(props: Props) {
+  // The stage shows whoever wrote the reply on screen.
+  const stageSpeaker = props.speakerFor([...props.entries].reverse().find((entry) => entry.role === 'assistant'))
   const conversationDepth = props.expanded || props.mode === 'chat' ? 'conversation-expanded' : 'conversation-latest'
   return <div className={`conversation ${conversationDepth} story-conversation story-conversation-${props.mode}`} role="log" aria-live="polite" aria-label="Journey story">
     {props.mode === 'visual-novel' && <div className="vn-character-stage" aria-label="Story character">
-      <div className="vn-character vn-character-left"><CharacterAvatar name={props.personaName} imageUrl={props.companionImageUrl} side="left" /><span>{props.personaName}</span></div>
+      <div className="vn-character vn-character-left"><CharacterAvatar name={stageSpeaker.name} imageUrl={stageSpeaker.imageUrl} side="left" /><span>{stageSpeaker.name}</span></div>
     </div>}
     <div className={`story-entry-list ${props.mode === 'visual-novel' ? 'story-entry-list-vn' : ''}`}>
       {props.entries.map((entry) => props.mode === 'chat'

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { shouldSummarize } from './chat'
 import { newEntry } from '../storage/messages'
+import { DEFAULT_PERSONA, DEFAULT_PERSONA_ID } from '../providers/config'
 import { parseStoryResponse, storyStopIndex, storyStops, storyTurnToText, trimHistoryAtStoryStop } from '../providers/storyFormat'
 import type { PlaceContext } from '../providers/enrichment'
 import type { WeatherResult } from '../providers/weather'
@@ -90,13 +91,21 @@ export function useChat({
     const userEntry = retryEntry && retrying
       ? { ...retryEntry, id: crypto.randomUUID(), text, checkpoint: checkpointAtTurn, createdAt: new Date().toISOString() }
       : newEntry('user', text, checkpointAtTurn)
-    const reply = newEntry('assistant', '')
     const requestHistory = retrying ? history : activeHistory
     const requestJourney = shouldFork
       ? { ...journey, personaId: checkpointAtTurn.personaId ?? journey.personaId, destinationHistory: checkpointAtTurn.destinationHistory, currentScene: checkpointAtTurn.currentScene, knownPeople: checkpointAtTurn.knownPeople, knownEntities: checkpointAtTurn.knownEntities, userFacts: checkpointAtTurn.userFacts, conversationSummary: checkpointAtTurn.conversationSummary ?? '' }
       : journey
     const requestPersona = settings.personaProfiles?.find((profile) => profile.id === requestJourney.personaId)
     const requestSettings = requestPersona ? { ...settings, personaName: requestPersona.name, personaInstructions: requestPersona.instructions } : settings
+    // Record the speaker now: the user may switch persona while the reply streams or any time later.
+    const reply: ChatEntry = {
+      ...newEntry('assistant', ''),
+      persona: {
+        id: requestPersona?.id ?? requestJourney.personaId ?? DEFAULT_PERSONA_ID,
+        name: requestSettings.personaName || DEFAULT_PERSONA.name,
+        ...(requestPersona?.spriteId ? { spriteId: requestPersona.spriteId } : {}),
+      },
+    }
     const requestPlace = shouldFork ? checkpointAtTurn.currentDestination : place
     const placeIsAtCheckpoint = !shouldFork || requestPlace?.id === place?.id
     const requestPhoto = placeIsAtCheckpoint ? selectedPhoto : null

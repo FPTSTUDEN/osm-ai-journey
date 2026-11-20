@@ -13,6 +13,7 @@ import { useLocalPmtiles } from './hooks/useLocalPmtiles'
 import { useJourneyManagement } from './hooks/useJourneyManagement'
 import { useJourney, newJourneyEvent } from './hooks/useJourney'
 import { useChat } from './hooks/useChat'
+import { useEntrySpeakers } from './hooks/useEntrySpeakers'
 import { DEFAULT_PERSONA, DEFAULT_PERSONA_ID } from './providers/config'
 import { PERSONA_SPRITES } from './providers/bundledPersonaSprites'
 import type { JourneyLeg, PersonaProfile, Place, PlacePhoto, WalkingRoute } from './types/domain'
@@ -48,6 +49,7 @@ function App() {
   const activePersona = personaProfiles.find((profile) => profile.id === personaId) ?? personaProfiles[0] ?? DEFAULT_PERSONA
   const activePersonaId = personaProfiles.some((profile) => profile.id === personaId) ? personaId : DEFAULT_PERSONA_ID
   const personaImageUrl = companionImageUrl ?? PERSONA_SPRITES[activePersona.spriteId]?.src ?? PERSONA_SPRITES[DEFAULT_PERSONA.spriteId].src
+  const speakerFor = useEntrySpeakers({ entries: messages, activePersona, activeImageUrl: personaImageUrl, personaProfiles })
   const chatSettings = useMemo(() => ({ ...settings, personaName: activePersona.name, personaInstructions: activePersona.instructions }), [activePersona.instructions, activePersona.name, settings])
   useEffect(() => {
     if (personaId !== activePersonaId) setPersonaId(activePersonaId)
@@ -351,7 +353,7 @@ function App() {
         />
         <DialogueBox
           entries={messages}
-          personaName={activePersona.name}
+          speakerFor={speakerFor}
           message={message}
           onMessageChange={setMessage}
           onSubmit={sendMessage}
@@ -374,7 +376,6 @@ function App() {
           onSwitchConversation={selectConversation}
           onDeleteConversation={removeConversation}
           animatedEntryId={animatedEntryId}
-          companionImageUrl={personaImageUrl}
           motionEnabled={motionEnabled}
         />
       </section>
