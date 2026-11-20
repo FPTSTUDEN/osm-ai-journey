@@ -33,6 +33,8 @@ type MapCanvasProps = {
   legs?: JourneyLeg[]
   /** Increment to trigger a fit-to-journey animation. */
   flyToLegsSignal?: number
+  /** "Want to go" places, drawn as amber rings. */
+  savedPlaces?: Place[]
   /** Places to highlight (a category the user or companion picked). `undefined` means no highlight is active. */
   highlights?: Place[]
   highlightFocusId?: string | null
@@ -42,11 +44,21 @@ type MapCanvasProps = {
 }
 
 /** Overlay layers whose features stand for a known `Place` (looked up by the feature's `placeId`), not raw map data. */
-type OverlayKind = 'highlight'
+type OverlayKind = 'highlight' | 'saved'
 const HIGHLIGHT_SOURCE = 'place-highlights'
 const HIGHLIGHT_LAYERS = ['place-highlights-halo', 'place-highlights-dot', 'place-highlights-label'] as const
 /** The style's own POI icons are faded while a highlight is active, so the matches stand out. */
 const DIMMED_OPACITY = 0.3
+const SAVED_SOURCE = 'saved-places'
+const SAVED_LAYERS = ['saved-places-ring', 'saved-places-dot', 'saved-places-label'] as const
+const SAVED_COLOR = '#f2c46d'
+
+/** The style's label font, if it has glyphs. Local archive styles have none, so overlays there get no labels. */
+function styleFont(map: MapLibreMap) {
+  const style = map.getStyle()
+  if (!style.glyphs) return undefined
+  return style.layers.flatMap((layer) => layer.type === 'symbol' && Array.isArray(layer.layout?.['text-font']) ? [layer.layout['text-font'] as string[]] : [])[0]
+}
 
 function overlayCollection(places: Place[], kind: OverlayKind, focusId: string | null) {
   return {
@@ -134,7 +146,7 @@ function pulseMarker(element: HTMLElement | undefined, motionEnabled: boolean) {
   element.classList.add('marker-arrive')
 }
 
-export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelected, onPlacesLoaded, onMapStatusChange, selectedPlace, initialViewport, onViewportChange, route, localArchive, legs, flyToLegsSignal, offlineZone, zoneEditing, onZoneBoundsChange, highlights, highlightFocusId = null, onHighlightHover, onBoundsChange }: MapCanvasProps) {
+export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelected, onPlacesLoaded, onMapStatusChange, selectedPlace, initialViewport, onViewportChange, route, localArchive, legs, flyToLegsSignal, offlineZone, zoneEditing, onZoneBoundsChange, savedPlaces, highlights, highlightFocusId = null, onHighlightHover, onBoundsChange }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
   const markerRef = useRef<Marker | null>(null)
@@ -151,7 +163,7 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
   const lastLegIdRef = useRef<string | undefined>(legs?.at(-1)?.id)
   const travelRef = useRef<{ hiddenLegId: string | null; cancel: (() => void) | null }>({ hiddenLegId: null, cancel: null })
   const refreshLegsRef = useRef<() => void>(() => {})
-  const overlayPlacesRef = useRef<Record<OverlayKind, Map<string, Place>>>({ highlight: new Map() })
+  const overlayPlacesRef = useRef<Record<OverlayKind, Map<string, Place>>>({ highlight: new Map(), saved: new Map() })
   const onHighlightHoverRef = useRef(onHighlightHover)
   const onBoundsChangeRef = useRef(onBoundsChange)
   const highlightFocusRef = useRef(highlightFocusId)
@@ -282,7 +294,7 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
           const name = document.createElement('strong')
           name.textContent = place.name
           const meta = document.createElement('span')
-          meta.textContent = `${place.category ?? 'place'} · OpenStreetMap`
+          meta.textContent = `${hit.overlay === 'saved' ? 'Want to go · ' : ''}${(place.subcategory ?? place.category ?? 'place').replace(/_/g, ' ')} · OpenStreetMap`
           card.append(name, meta)
           hoverPopup.setLngLat(place.coordinates).setDOMContent(card).addTo(map)
         }, 150)
@@ -603,6 +615,35 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
     }
   }, [legs, localArchive])
 
+  // "Want to go" places: amber ring with a dot, and the name from zoom 13.
+  useEffect(() => {
+    const map = mapRef.current
+    overlayPlacesRef.current.saved = new Map((savedPlaces ?? []).map((place) => [place.id, place]))
+    if (!map || !savedPlaces?.length) return
+    const apply = () => {
+      if (mapRef.current !== map) return
+      const data = overlayCollection(savedPlaces, 'saved', null)
+      const existing = map.getSource(SAVED_SOURCE) as maplibregl.GeoJSONSource | undefined
+      if (existing) existing.setData(data)
+      else map.addSource(SAVED_SOURCE, { type: 'geojson', data })
+      const font = styleFont(map)
+      const layers: Array<Parameters<MapLibreMap['addLayer']>[0] & { id: string }> = [
+        { id: 'saved-places-ring', type: 'circle', source: SAVED_SOURCE, paint: { 'circle-radius': 7, 'circle-color': '#12201c', 'circle-opacity': 0.85, 'circle-stroke-color': SAVED_COLOR, 'circle-stroke-width': 2.5 } },
+        { id: 'saved-places-dot', type: 'circle', source: SAVED_SOURCE, paint: { 'circle-radius': 2.5, 'circle-color': SAVED_COLOR } },
+      ]
+      if (font) layers.push({ id: 'saved-places-label', type: 'symbol', source: SAVED_SOURCE, minzoom: 13, layout: { 'text-field': ['get', 'name'], 'text-font': font, 'text-size': 11, 'text-offset': [0, 1.2], 'text-anchor': 'top', 'text-optional': true, 'text-max-width': 9 }, paint: { 'text-color': SAVED_COLOR, 'text-halo-color': '#12201c', 'text-halo-width': 1.4 } })
+      for (const layer of layers) if (!map.getLayer(layer.id)) map.addLayer(layer)
+    }
+    if (map.isStyleLoaded()) apply()
+    else map.once('style.load', apply)
+    return () => {
+      map.off('style.load', apply)
+      if (mapRef.current !== map || !map.getStyle()) return
+      for (const id of SAVED_LAYERS) if (map.getLayer(id)) map.removeLayer(id)
+      if (map.getSource(SAVED_SOURCE)) map.removeSource(SAVED_SOURCE)
+    }
+  }, [savedPlaces, localArchive])
+
   // Category highlights: a soft ring and dot per match, its name from zoom 13, and the style's other POI icons faded.
   useEffect(() => {
     const map = mapRef.current
@@ -616,8 +657,7 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
       if (existing) existing.setData(data)
       else map.addSource(HIGHLIGHT_SOURCE, { type: 'geojson', data })
       const style = map.getStyle()
-      // Labels need the style's glyphs; local archive styles have none, so they get rings only.
-      const font = style.glyphs ? style.layers.flatMap((layer) => layer.type === 'symbol' && Array.isArray(layer.layout?.['text-font']) ? [layer.layout['text-font'] as string[]] : [])[0] : undefined
+      const font = styleFont(map)
       const focus: ExpressionSpecification = ['==', ['get', 'focus'], true]
       const layers: Array<Parameters<MapLibreMap['addLayer']>[0] & { id: string }> = [
         { id: 'place-highlights-halo', type: 'circle', source: HIGHLIGHT_SOURCE, paint: { 'circle-radius': ['case', focus, 16, 10], 'circle-color': '#d5ef9a', 'circle-opacity': ['case', focus, 0.32, 0.16], 'circle-stroke-color': '#d5ef9a', 'circle-stroke-width': 1.5, 'circle-stroke-opacity': 0.75 } },

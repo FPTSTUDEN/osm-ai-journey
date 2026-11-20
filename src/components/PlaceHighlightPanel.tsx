@@ -3,6 +3,7 @@ import { CHIP_FILTER_IDS, distanceLabel, placeFilterById, type PlaceFilter } fro
 import { areaTooLarge } from '../providers/overpassArea'
 import type { PlaceHighlight } from '../hooks/usePlaceHighlight'
 import type { Place } from '../types/domain'
+import { Icon } from './Icon'
 
 const CHIPS = CHIP_FILTER_IDS.map((id) => placeFilterById(id)).filter((filter): filter is PlaceFilter => Boolean(filter))
 const LIST_LIMIT = 40
@@ -13,6 +14,8 @@ type Props = {
   originName: string | null
   liveDataEnabled: boolean
   onChoosePlace: (place: Place) => void
+  savedIds: ReadonlySet<string>
+  onToggleSaved: (place: Place) => void
 }
 
 function categoryText(place: Place) {
@@ -20,7 +23,7 @@ function categoryText(place: Place) {
 }
 
 /** Chips over the map to highlight a kind of place, and the list of matches in view, nearest first. */
-export function PlaceHighlightPanel({ highlight, originName, liveDataEnabled, onChoosePlace }: Props) {
+export function PlaceHighlightPanel({ highlight, originName, liveDataEnabled, onChoosePlace, savedIds, onToggleSaved }: Props) {
   const { filter, suggestedBy, inView, area, focusId } = highlight
   // Phones have little map height: start with the list folded.
   const [listOpen, setListOpen] = useState(() => !window.matchMedia('(max-width: 520px)').matches)
@@ -64,6 +67,7 @@ export function PlaceHighlightPanel({ highlight, originName, liveDataEnabled, on
             onBlur={() => highlight.setFocusId(null)}
             onClick={() => onChoosePlace(place)}
           ><strong>{place.name}</strong><span>{categoryText(place)}{originName || meters ? ` · ${distanceLabel(meters)}` : ''}</span></button>
+          <button type="button" className="map-highlight-save" aria-pressed={savedIds.has(place.id)} aria-label={savedIds.has(place.id) ? `Remove ${place.name} from Want to go` : `Save ${place.name} to Want to go`} title={savedIds.has(place.id) ? 'Saved to Want to go' : 'Save to Want to go'} onClick={() => onToggleSaved(place)}><Icon name="bookmark" size={14} /></button>
         </li>)}
         {inView.length > shown.length && <li className="map-highlight-more">{inView.length - shown.length} more in view. Zoom in to narrow the list.</li>}
       </ol>}

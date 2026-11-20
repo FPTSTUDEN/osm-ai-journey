@@ -72,6 +72,8 @@ type Props = {
   localArchive: LocalPmtilesArchive | null
   onMapWidthChange: (width: number | undefined) => void
   highlight: PlaceHighlight
+  savedPlaces: Place[]
+  onToggleSavedPlace: (place: Place) => void
 }
 
 function photoToPlace(photo: PlacePhoto, fallback: Place): Place {
@@ -113,12 +115,22 @@ export function StoryPanels({
   localArchive,
   onMapWidthChange,
   highlight,
+  savedPlaces,
+  onToggleSavedPlace,
 }: Props) {
   const { storyMode, storyPanels, fieldNotesOpen, setFieldNotesOpen, mapExpanded, setMapExpanded, toggleStoryPanel, closeStoryPanel, toggleMode, dockButtons } = panels
   const mapOpen = storyPanels.includes('map')
   // A search like "restaurants" or "mall" can also highlight every match on the map.
   const keywordFilter = useMemo(() => filterForQuery(search.query, search.places), [search.places, search.query])
   const noLocalMatches = search.localResults.length === 0 && !keywordFilter
+  const savedIds = useMemo(() => new Set(savedPlaces.map((place) => place.id)), [savedPlaces])
+  const visitedIds = useMemo(() => new Set(destinationHistory.map((place) => place.id)), [destinationHistory])
+  const selectedSaved = Boolean(selectedPlace && savedIds.has(selectedPlace.id))
+  // Travelling may ask "Walk there?", and that prompt lives in the map panel, so open the map first.
+  function goToPlace(place: Place) {
+    if (storyMode && !storyPanels.includes('map')) toggleStoryPanel('map')
+    onChoosePlace(place)
+  }
   const destinationOpen = storyMode && storyPanels.includes('destination')
   const travelogueOpen = storyMode && storyPanels.includes('travelogue')
   const mapPresent = usePanelPresence(mapOpen, motionEnabled)
@@ -247,9 +259,9 @@ export function StoryPanels({
             {search.query && search.onlineQuery === search.query.trim() && search.onlineState === 'ready' && search.onlineResults.length === 0 && <div className="online-search">No online places matched. <button onClick={() => void search.searchOnline()}>Try another search</button></div>}
             {search.query && search.mapStatus === 'unavailable' && <div className="search-state">Loaded map data is unavailable. <button onClick={() => void search.searchOnline()}>Search online</button></div>}
             {journeyReady
-              ? <Suspense fallback={<div className="map-loading">Loading map…</div>}><MapCanvas motionEnabled={motionEnabled} selectedPlace={mapPlace} initialViewport={mapViewport} onViewportChange={setMapViewport} route={route} localArchive={localArchive} legs={legs} flyToLegsSignal={flyToLegsSignal} offlineZone={offlineZone.zone} zoneEditing={offlineZone.editing} onZoneBoundsChange={(bounds) => { if (offlineZone.zone) void offlineZone.replaceZone({ ...offlineZone.zone, bounds }) }} onPlaceSelected={onChoosePlace} onPlacesLoaded={search.setPlaces} onMapStatusChange={search.setMapStatus} highlights={highlight.filter ? highlight.allMatches : undefined} highlightFocusId={highlight.focusId} onHighlightHover={highlight.setFocusId} onBoundsChange={highlight.setBounds} /></Suspense>
+              ? <Suspense fallback={<div className="map-loading">Loading map…</div>}><MapCanvas motionEnabled={motionEnabled} selectedPlace={mapPlace} initialViewport={mapViewport} onViewportChange={setMapViewport} route={route} localArchive={localArchive} legs={legs} flyToLegsSignal={flyToLegsSignal} offlineZone={offlineZone.zone} zoneEditing={offlineZone.editing} onZoneBoundsChange={(bounds) => { if (offlineZone.zone) void offlineZone.replaceZone({ ...offlineZone.zone, bounds }) }} onPlaceSelected={onChoosePlace} onPlacesLoaded={search.setPlaces} onMapStatusChange={search.setMapStatus} savedPlaces={savedPlaces} highlights={highlight.filter ? highlight.allMatches : undefined} highlightFocusId={highlight.focusId} onHighlightHover={highlight.setFocusId} onBoundsChange={highlight.setBounds} /></Suspense>
               : <div className="map-loading">Restoring journey…</div>}
-            {journeyReady && search.mapStatus === 'ready' && !search.query && <PlaceHighlightPanel highlight={highlight} originName={selectedPlace?.name ?? null} liveDataEnabled={settings.liveDataEnabled} onChoosePlace={onChoosePlace} />}
+            {journeyReady && search.mapStatus === 'ready' && !search.query && <PlaceHighlightPanel highlight={highlight} savedIds={savedIds} onToggleSaved={onToggleSavedPlace} originName={selectedPlace?.name ?? null} liveDataEnabled={settings.liveDataEnabled} onChoosePlace={onChoosePlace} />}
             <ZoneControls zone={offlineZone.zone} progress={offlineZone.progress} editing={offlineZone.editing} cachePrompt={offlineZone.cachePrompt} onCache={() => void cacheZone()} onCancel={offlineZone.cancelCache} onToggleEditing={offlineZone.setEditing} onMaxZoomChange={(maxZoom) => { if (offlineZone.zone) void offlineZone.replaceZone({ ...offlineZone.zone, maxZoom }) }} onBoundsChange={(bounds) => { if (offlineZone.zone) void offlineZone.replaceZone({ ...offlineZone.zone, bounds }) }} />
             {pendingDestination && <div className="route-choice"><p className="eyebrow">Begin transition</p><strong>Walk from {selectedPlace?.name} to {pendingDestination.name}?</strong><p>Calculate an optional walking route before arriving.</p><div><button onClick={() => onCompleteTransition(pendingDestination, true)}>Walk there</button><button onClick={() => onCompleteTransition(pendingDestination, false)}>Arrive without route</button></div></div>}
             {routeState === 'loading' && <div className="route-status">Calculating walking route…</div>}
@@ -276,6 +288,7 @@ export function StoryPanels({
         <span id="destination-panel-label" className="sr-only">Destination panel</span>
         <div className="story-dock-header">
           <div><p className="eyebrow">Examine</p><h3 id="destination-panel-heading">{selectedPlace?.name ?? 'Destination'}</h3></div>
+          {selectedPlace && <button className="save-place-button" type="button" aria-pressed={selectedSaved} onClick={() => onToggleSavedPlace(selectedPlace)} title={selectedSaved ? 'Remove from Want to go' : 'Save to Want to go'}><Icon name="bookmark" size={14} />{selectedSaved ? 'Saved' : 'Save'}</button>}
           <button className="close-button" type="button" onClick={() => closeStoryPanel('destination')} aria-label="Close destination panel">×</button>
         </div>
         {selectedPlace
@@ -285,7 +298,7 @@ export function StoryPanels({
           : <p className="dock-empty">Choose a place first, then return here to examine it.</p>}
         <SheetHandle onClose={() => closeStoryPanel('destination')} />
       </aside>}
-      {storyMode && traveloguePresent && <JournalPanel events={narrativeEvents} legs={legs} isOpen={travelogueOpen} onClose={() => closeStoryPanel('travelogue')} onFitJourney={legs.length > 0 ? () => setFlyToLegsSignal((value) => value + 1) : undefined} />}
+      {storyMode && traveloguePresent && <JournalPanel events={narrativeEvents} legs={legs} isOpen={travelogueOpen} onClose={() => closeStoryPanel('travelogue')} onFitJourney={legs.length > 0 ? () => setFlyToLegsSignal((value) => value + 1) : undefined} savedPlaces={savedPlaces} visitedIds={visitedIds} onGoToPlace={goToPlace} onRemoveSavedPlace={onToggleSavedPlace} />}
       {arrivalCard && <ArrivalCard {...arrivalCard} sceneNumber={currentScene} />}
       {fieldNotesOpen && selectedPlace && <FieldNotes place={selectedPlace} geocoder={settings.onlineGeocoder} liveDataEnabled={settings.liveDataEnabled} {...placeData} selectedPhoto={selectedPhoto} scenePhoto={scenePhoto} onLoadWeather={(force) => void placeData.loadWeather(force)} onLoadNearbyData={(force) => void placeData.loadNearbyData(force)} onSelectPhoto={setSelectedPhoto} onClose={() => setFieldNotesOpen(false)} />}
     </>

@@ -173,4 +173,6 @@ export type JourneyState = JourneyTimeline & {
   branches?: StoryBranch[]
   conversations?: JourneyConversation[]
   activeConversationId?: string
+  /** "Want to go" places. Journey-wide: not part of timelines or checkpoints, so rewinding the story keeps them. */
+  savedPlaces?: Place[]
 }

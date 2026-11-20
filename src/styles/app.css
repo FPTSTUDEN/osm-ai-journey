@@ -934,3 +934,23 @@ h1 { font-size: 18px; letter-spacing: -.03em; } h2 { font-size: 19px; letter-spa
 /* The companion's suggested kind of place: first in the suggestions row. */
 .optional-suggestions button.suggestion-map { display: inline-flex; align-items: center; gap: 5px; border-color: #9cbd83; background: #22382c; color: #d5ef9a; }
 .optional-suggestions button.suggestion-map .icon { flex: none; }
+
+/* "Want to go": save buttons, the Journal list, and the amber colour shared with the map pins. */
+.map-highlight-panel li { display: flex; align-items: center; gap: 2px; }
+.map-highlight-panel li button:first-child { flex: 1; min-width: 0; }
+.map-highlight-panel li .map-highlight-save { display: grid; flex: none; place-items: center; width: 30px; height: 30px; padding: 0; color: #6f8f7d; }
+.map-highlight-panel li .map-highlight-save:hover { color: #f2c46d; }
+.map-highlight-panel li .map-highlight-save[aria-pressed='true'] { color: #f2c46d; }
+.map-highlight-save[aria-pressed='true'] .icon path, .save-place-button[aria-pressed='true'] .icon path { fill: currentColor; }
+.story-dock-header .save-place-button { display: inline-flex; flex: none; align-items: center; gap: 5px; margin-left: auto; margin-right: 6px; padding: 5px 9px; border: 1px solid #496b5a; border-radius: 8px; background: #172921; color: #c8d7ca; font: 10px ui-monospace, monospace; }
+.story-dock-header .save-place-button:hover { border-color: #f2c46d; color: #f2c46d; }
+.story-dock-header .save-place-button[aria-pressed='true'] { border-color: #f2c46d88; color: #f2c46d; }
+.want-to-go { margin: 4px 0 14px; }
+.want-to-go .eyebrow { color: #f2c46d; }
+.want-to-go ul { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+.want-to-go li { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 10px; border: 1px solid #3e5a4c; border-left: 3px solid #f2c46d; border-radius: 8px; background: #12201c99; }
+.want-to-go li > div { flex: 1; min-width: 0; }
+.want-to-go strong { display: block; overflow: hidden; color: #eef4e6; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.want-to-go p { margin-top: 2px; color: #8fa99a; font: 10px ui-monospace, monospace; }
+.want-to-go-go { flex: none; padding: 5px 10px; border: 1px solid #698a71; border-radius: 7px; background: #263d34; color: #d8e8cf; font-size: 10.5px; }
+.want-to-go-go:hover { border-color: #c5e3a4; }

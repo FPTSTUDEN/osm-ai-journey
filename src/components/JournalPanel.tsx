@@ -1,5 +1,5 @@
 import { SheetHandle } from './SheetHandle'
-import type { JourneyLeg, NarrativeEvent } from '../types/domain'
+import type { JourneyLeg, NarrativeEvent, Place } from '../types/domain'
 
 type JournalPanelProps = {
   events: NarrativeEvent[]
@@ -7,9 +7,13 @@ type JournalPanelProps = {
   isOpen: boolean
   onClose: () => void
   onFitJourney?: () => void
+  savedPlaces: Place[]
+  visitedIds: ReadonlySet<string>
+  onGoToPlace: (place: Place) => void
+  onRemoveSavedPlace: (place: Place) => void
 }
 
-export function JournalPanel({ events, legs, isOpen, onClose, onFitJourney }: JournalPanelProps) {
+export function JournalPanel({ events, legs, isOpen, onClose, onFitJourney, savedPlaces, visitedIds, onGoToPlace, onRemoveSavedPlace }: JournalPanelProps) {
   return (
     <aside id="story-travelogue-panel" aria-hidden={!isOpen} inert={!isOpen} className={`story-dock-panel travelogue-panel ${isOpen ? 'story-panel-open' : 'story-panel-closing'}`} role="complementary" aria-labelledby="journal-panel-label">
       <span id="journal-panel-label" className="sr-only">Journal panel</span>
@@ -17,6 +21,19 @@ export function JournalPanel({ events, legs, isOpen, onClose, onFitJourney }: Jo
         <div><p className="eyebrow">Journey journal</p><h3 id="journal-panel-heading">Journal</h3></div>
         <button className="close-button" type="button" onClick={onClose} aria-label="Close journal panel">×</button>
       </div>
+      {savedPlaces.length > 0 && <section className="want-to-go" aria-labelledby="want-to-go-heading">
+        <p className="eyebrow" id="want-to-go-heading">Want to go · {savedPlaces.length}</p>
+        <ul>
+          {savedPlaces.map((place) => <li key={place.id}>
+            <div>
+              <strong>{place.name}</strong>
+              <p>{(place.subcategory ?? place.category ?? 'place').replace(/_/g, ' ')}{visitedIds.has(place.id) ? ' · visited' : ''}</p>
+            </div>
+            <button type="button" className="want-to-go-go" onClick={() => onGoToPlace(place)} aria-label={`Go to ${place.name}`}>Go</button>
+            <button type="button" className="close-button" onClick={() => onRemoveSavedPlace(place)} aria-label={`Remove ${place.name} from Want to go`}>×</button>
+          </li>)}
+        </ul>
+      </section>}
       {legs.length > 0 && <section className="journey-legs" aria-label="Journey legs">
         <div className="journey-legs-heading">
           <p className="eyebrow">Journey so far</p>

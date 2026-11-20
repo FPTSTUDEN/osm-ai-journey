@@ -41,7 +41,7 @@ function App() {
     conversations, activeConversationId, createConversation, switchConversation, deleteConversation,
     checkpoint, forkAt, switchBranch, applyJourney: applyJourneyState,
     resetJourney: resetJourneyState, snapshot: journeySnapshot, deleteJourney: deleteSavedJourney,
-    appendArrival, appendLeg, legs,
+    appendArrival, appendLeg, legs, savedPlaces, toggleSavedPlace,
   } = useJourney()
   const appSettings = useAppSettings(showSettings, companionArtInputRef, personaId)
   const { settings, setSettings, connectionState, connectionMessage, checkLlmConnection, changeProvider, companionImageUrl, companionArtError, uploadCompanionArt, removeCompanionArt } = appSettings
@@ -369,6 +369,8 @@ function App() {
           arrivalCard={arrivalCard}
           currentScene={currentScene}
           highlight={placeHighlight}
+          savedPlaces={savedPlaces}
+          onToggleSavedPlace={toggleSavedPlace}
           onMapWidthChange={(mapPanelWidth) => setSettings((current) => ({ ...current, mapPanelWidth }))}
           localArchive={localPmtiles.archive}
         />
