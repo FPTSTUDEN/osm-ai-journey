@@ -4,10 +4,13 @@ import type { ChatEntry, JourneyConversation, StoryBranch, StoryPresentationMode
 import { latestStoryStop, storyStopIndex, storyStops } from '../providers/storyFormat'
 import { revealedTextLength } from './typewriter'
 import { StoryMessageList } from './StoryMessageList'
+import { Icon } from './Icon'
+import type { SpeakerResolver } from '../hooks/useEntrySpeakers'
+import { placeFilterById } from '../providers/placeFilters'
 
 type DialogueBoxProps = {
   entries: ChatEntry[]
-  personaName: string
+  speakerFor: SpeakerResolver
   message: string
   onMessageChange: (value: string) => void
   onSubmit: (event: FormEvent<HTMLFormElement>, rewindTo?: StoryProgress | null) => void
@@ -30,8 +33,9 @@ type DialogueBoxProps = {
   onSwitchConversation: (conversationId: string) => void
   onDeleteConversation: (conversationId: string) => void
   animatedEntryId: string | null
-  companionImageUrl: string | null
   motionEnabled: boolean
+  /** Show the companion's suggested kind of place on the map. */
+  onShowSuggestedPlaces: (filterId: string, suggestedBy: string) => void
 }
 
 const suggestions = ['Look around', 'Ask a local', 'Walk somewhere else']
@@ -63,7 +67,7 @@ function skippedContent(entries: ChatEntry[], progress: StoryProgress | null): S
 
 export function DialogueBox({
   entries,
-  personaName,
+  speakerFor,
   message,
   onMessageChange,
   onSubmit,
@@ -86,8 +90,8 @@ export function DialogueBox({
   onSwitchConversation,
   onDeleteConversation,
   animatedEntryId,
-  companionImageUrl,
   motionEnabled,
+  onShowSuggestedPlaces,
 }: DialogueBoxProps) {
   const [expanded, setExpanded] = useState(false)
   const [showConversationManager, setShowConversationManager] = useState(false)
@@ -108,8 +112,12 @@ export function DialogueBox({
   const canMovePrevious = activeStopIndex > 0
   const canMoveNext = activeStopIndex >= 0 && activeStopIndex < allStops.length - 1
   const skipped = skippedContent(entries, progress)
+  const suggestedFilter = latestEntry?.role === 'assistant' && latestEntry.storyTurn?.highlight ? placeFilterById(latestEntry.storyTurn.highlight) : null
   const reduceMotion = !motionEnabled
   const isTyping = llmState === 'loading' && !entries.some((entry) => entry.id === animatedEntryId && entry.text)
+  // A reply is finished once streaming stopped and the typewriter has shown all of it.
+  const replyFinished = llmState !== 'loading' && latestEntry?.role === 'assistant'
+    && (reduceMotion || latestEntry.id !== animatedEntryId || revealCompleteId === latestEntry.id || revealedLength >= latestEntry.text.length)
 
   useEffect(() => {
     if (!latestEntry || latestEntry.role !== 'assistant' || latestEntry.id !== animatedEntryId || reduceMotion || revealCompleteId === latestEntry.id) {
@@ -181,7 +189,7 @@ export function DialogueBox({
     <section className="journey-panel dialogue-panel">
       <header className="dialogue-heading">
         <div className="dialogue-nameplate">
-          {activeEntry?.role !== 'event' && <><strong>{activeEntry?.role === 'user' ? 'You' : personaName}</strong><span className={activeEntry?.role === 'user' ? 'listener-tag' : 'companion-tag'}>{activeEntry?.role === 'user' ? 'LISTENER' : 'COMPANION'}</span></>}
+          {activeEntry?.role !== 'event' && <><strong>{activeEntry?.role === 'user' ? 'You' : speakerFor(activeEntry).name}</strong><span className={activeEntry?.role === 'user' ? 'listener-tag' : 'companion-tag'}>{activeEntry?.role === 'user' ? 'LISTENER' : 'COMPANION'}</span></>}
         </div>
         <div className="dialogue-heading-actions">
           <span className="scene-tag">Scene {String(sceneNumber).padStart(2, '0')}</span>
@@ -204,8 +212,7 @@ export function DialogueBox({
       <StoryMessageList
         entries={visibleEntries}
         mode={presentationMode}
-        personaName={personaName}
-        companionImageUrl={companionImageUrl}
+        speakerFor={speakerFor}
         animatedEntryId={revealCompleteId === latestEntry?.id ? null : animatedEntryId}
         revealedLength={revealedLength}
         reduceMotion={reduceMotion}
@@ -215,15 +222,18 @@ export function DialogueBox({
         onAdvance={() => { if (!expanded) moveProgress(1) }}
       />
       {llmState === 'error' && <div className="dialogue-error" role="alert"><p className="provider-error">{llmError}</p><button type="button" onClick={onRetry}>Retry</button></div>}
-      <div className="optional-suggestions" aria-label="Suggestions, optional">
+      {replyFinished && presentationMode !== 'chat' && <div className="dialogue-continue-row" aria-hidden="true"><span className="dialogue-continue" /></div>}
+      {/* Re-keyed when a reply finishes, so the chips appear one after another instead of jumping while text streams. */}
+      <div key={replyFinished ? `ready:${latestEntry?.id}` : 'waiting'} className={`optional-suggestions ${replyFinished ? 'suggestions-ready' : ''} ${llmState === 'loading' ? 'suggestions-waiting' : ''}`} aria-label="Suggestions, optional">
         <span>Suggestions · optional</span>
-        {suggestions.map((suggestion) => <button key={suggestion} type="button" onClick={() => onMessageChange(suggestion)}>{suggestion}</button>)}
+        {replyFinished && suggestedFilter && latestEntry && <button type="button" className="suggestion-map" onClick={() => onShowSuggestedPlaces(suggestedFilter.id, speakerFor(latestEntry).name)}><Icon name="map" size={13} />Show {suggestedFilter.noun} on the map</button>}
+        {suggestions.map((suggestion) => <button key={suggestion} type="button" disabled={llmState === 'loading'} onClick={() => onMessageChange(suggestion)}>{suggestion}</button>)}
       </div>
       <form className="composer" onSubmit={(event) => onSubmit(event, presentationMode === 'visual-novel' ? progress : null)}>
         <textarea disabled={llmState === 'loading'} value={message} onChange={(event) => onMessageChange(event.target.value)} placeholder={llmState === 'loading' ? 'The companion is thinking…' : 'Speak freely. Ask for a scene, a direction, or a different world.'} rows={2} />
         {llmState === 'loading'
-          ? <button className="stop-button" type="button" onClick={onCancel}>Stop</button>
-          : <button className="send-button" type="submit" aria-label="Send message">↗</button>}
+          ? <button key="stop" className="send-button send-button-stop" type="button" onClick={onCancel} aria-label="Stop" title="Stop"><Icon name="stop" size={16} /></button>
+          : <button key="send" className="send-button" type="submit" aria-label="Send message" title="Send"><Icon name="send" /></button>}
       </form>
       <div className="journey-footer"><span>{destinationName ? `At ${destinationName}` : 'No destination selected'}</span><span>{destinationCount} destination{destinationCount === 1 ? '' : 's'} · {routesEnabled ? 'Walking routes on' : 'Routes optional'}</span></div>
       {showConversationManager && createPortal(<div className="skip-summary-backdrop conversation-manager-backdrop" onClick={(event) => { if (event.target === event.currentTarget) setShowConversationManager(false) }}>

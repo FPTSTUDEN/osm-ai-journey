@@ -2,6 +2,7 @@ import type { JourneyConversation, JourneyLeg, JourneyState, JourneyTimeline, St
 import { DEFAULT_PERSONA_ID } from '../providers/config'
 import { get, put, remove } from './db'
 import { normalizeMessages } from './messages'
+import { normalizeSavedPlaces } from './journeyTransfer'
 
 const JOURNEY_STORE = 'journeys'
 
@@ -116,6 +117,7 @@ export async function loadActiveJourney(onRestore?: () => void): Promise<Journey
     storyProgress,
     conversations: migratedConversations,
     activeConversationId,
+    savedPlaces: normalizeSavedPlaces(journey.savedPlaces),
   }
 }
 

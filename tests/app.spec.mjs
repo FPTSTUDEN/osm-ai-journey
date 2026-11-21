@@ -505,7 +505,8 @@ test('caches and searches real OpenFreeMap places for a high-zoom zone', async (
 
   const searchBox = page.getByPlaceholder('Search places')
   await searchBox.fill('Louvre')
-  await expect(page.locator('.result-label')).toHaveText('From offline index')
+  // Loaded map tiles are searched first and also contain the Louvre; the offline index itself is checked above.
+  await expect(page.locator('.result-label').first()).toHaveText(/^From (loaded map data|offline index)$/)
   await expect(page.locator('.search-results')).toContainText('Louvre')
 })
 

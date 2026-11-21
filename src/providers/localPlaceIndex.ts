@@ -24,6 +24,9 @@ export function placeFromFeature(feature: { id?: string | number; properties?: R
   if (!name) return null
 
   const category = firstText(properties, PLACE_CATEGORY_KEYS)
+  // OpenMapTiles puts the broad class in `class` and the OSM value in `subclass` (shop/mall, grocery/department_store).
+  const subclass = text(properties.subclass)
+  const subcategory = subclass && subclass !== category ? subclass : undefined
   const osmType = firstText(properties, ['osm_type', 'type']) || undefined
   const osmId = firstText(properties, ['osm_id', 'id']) || undefined
   const wikidataId = firstText(properties, ['wikidata', 'wikidata_id']) || undefined
@@ -34,6 +37,7 @@ export function placeFromFeature(feature: { id?: string | number; properties?: R
     id: `${normalized(name)}:${coordinates[0].toFixed(5)}:${coordinates[1].toFixed(5)}`,
     name,
     category: category || undefined,
+    ...(subcategory ? { subcategory } : {}),
     osmType,
     osmId,
     wikidataId,
@@ -54,7 +58,7 @@ export function searchLocalPlaces(places: Place[], query: string) {
 
   return places
     .map((place) => {
-      const haystack = normalized(`${place.name} ${place.category ?? ''}`)
+      const haystack = normalized(`${place.name} ${place.category ?? ''} ${place.subcategory ?? ''}`.replace(/_/g, ' '))
       const score = terms.reduce((total, term) => {
         const normalizedTerm = normalized(term)
         if (normalized(place.name).startsWith(normalizedTerm)) return total + 3

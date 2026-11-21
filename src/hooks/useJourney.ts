@@ -4,6 +4,7 @@ import { newEntry, starterEntries, STARTER_MESSAGE } from '../storage/messages'
 import type { ChatEntry, JourneyConversation, JourneyLeg, JourneyState, JourneyTimeline, MapViewport, NarrativeEvent, Place, StoryBranch, StoryCheckpoint, StoryProgress } from '../types/domain'
 import { latestStoryStop } from '../providers/storyFormat'
 import { DEFAULT_PERSONA_ID } from '../providers/config'
+import { SAVED_PLACES_LIMIT } from '../storage/journeyTransfer'
 
 function conversationTitle(messages: ChatEntry[]): string {
   const firstMessage = messages.find((entry) => entry.role === 'user')?.text.trim()
@@ -38,6 +39,7 @@ export function useJourney() {
   const [conversationSummary, setConversationSummary] = useState('')
   const [storyProgress, setStoryProgress] = useState<StoryProgress | null>(null)
   const [legs, setLegs] = useState<JourneyLeg[]>([])
+  const [savedPlaces, setSavedPlaces] = useState<Place[]>([])
   const [branches, setBranches] = useState<StoryBranch[]>([])
   const [initialConversation] = useState(() => newConversation())
   const [conversations, setConversations] = useState<JourneyConversation[]>([initialConversation])
@@ -130,6 +132,7 @@ export function useJourney() {
       setKnownEntities(restored.knownEntities)
       setUserFacts(restored.userFacts)
       setLegs(restored.legs ?? [])
+      setSavedPlaces(restored.savedPlaces ?? [])
       const records = restored.conversations?.length ? restored.conversations : [{
         id: crypto.randomUUID(), title: conversationTitle(restored.messages), createdAt: new Date().toISOString(),
         messages: restored.messages.length ? restored.messages : starterEntries(), narrativeEvents: restored.narrativeEvents,
@@ -168,7 +171,7 @@ export function useJourney() {
     if (!journeyReady) return
     if (skipDiscreteSave.current) { skipDiscreteSave.current = false; return }
     flushSave()
-  }, [activeConversationId, branches, conversationSummary, conversations, currentScene, destinationHistory, journeyReady, knownEntities, knownPeople, legs, narrativeEvents, personaId, selectedPlace, storyProgress, userFacts])
+  }, [activeConversationId, branches, conversationSummary, conversations, currentScene, destinationHistory, journeyReady, knownEntities, knownPeople, legs, narrativeEvents, personaId, savedPlaces, selectedPlace, storyProgress, userFacts])
 
   // Streamed replies change `messages` per token and the map reports every move: debounce only those.
   const skipDebouncedSave = useRef(true)
@@ -203,6 +206,7 @@ export function useJourney() {
     setKnownEntities(journey.knownEntities)
     setUserFacts(journey.userFacts)
     setLegs(journey.legs ?? [])
+    setSavedPlaces(journey.savedPlaces ?? [])
     const records = journey.conversations?.length ? journey.conversations : [{
       id: crypto.randomUUID(), title: conversationTitle(journey.messages), createdAt: new Date().toISOString(),
       messages: journey.messages, narrativeEvents: journey.narrativeEvents, conversationSummary: journey.conversationSummary ?? '',
@@ -225,6 +229,7 @@ export function useJourney() {
     setKnownEntities(journey.knownEntities)
     setUserFacts(journey.userFacts)
     setLegs(journey.legs ?? [])
+    setSavedPlaces([])
     setConversations(journey.conversations ?? [])
     setActiveConversationId(journey.activeConversationId ?? '')
     restoreConversation(journey.conversations?.[0] ?? newConversation())
@@ -242,7 +247,7 @@ export function useJourney() {
   }
 
   function snapshot(): JourneyState {
-    return { id: 'active', ...timeline(), branches, conversations: conversationList(), activeConversationId: activeConversationId || conversations[0]?.id }
+    return { id: 'active', ...timeline(), branches, conversations: conversationList(), activeConversationId: activeConversationId || conversations[0]?.id, savedPlaces }
   }
 
   function createConversation() {
@@ -315,6 +320,13 @@ export function useJourney() {
     setLegs((current) => [...current, leg])
   }
 
+  /** Add a place to "Want to go", or remove it if it is already there. Newest first. */
+  function toggleSavedPlace(place: Place) {
+    setSavedPlaces((current) => current.some((item) => item.id === place.id)
+      ? current.filter((item) => item.id !== place.id)
+      : [place, ...current].slice(0, SAVED_PLACES_LIMIT))
+  }
+
   return {
     selectedPlace, setSelectedPlace,
     personaId, setPersonaId,
@@ -352,5 +364,7 @@ export function useJourney() {
     deleteJourney,
     appendArrival,
     appendLeg,
+    savedPlaces,
+    toggleSavedPlace,
   }
 }

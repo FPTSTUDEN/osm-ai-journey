@@ -1,3 +1,4 @@
+import { Icon } from './Icon'
 interface StartupScreenProps {
   state: 'loading' | 'ready' | 'error'
   stage: 'storage' | 'restore'
@@ -24,7 +25,7 @@ export function StartupScreen({ state, stage, error, onRetry, onContinue }: Star
   return (
     <div className="startup-overlay">
       <section className="startup-card" role="dialog" aria-modal="true" aria-labelledby="startup-title">
-        <span className="startup-mark" aria-hidden="true">✦</span>
+        <span className="startup-mark" aria-hidden="true"><Icon name="brand" size={20} /></span>
         <h2 id="startup-title">Osm AI Journey</h2>
         {failed ? (
           <div className="startup-failure" role="alert">

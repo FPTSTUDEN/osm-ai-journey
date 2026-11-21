@@ -1,5 +1,5 @@
 import { normalizeStoredStoryTurn, storyTurnToText } from '../providers/storyFormat'
-import type { ChatEntry, StoryCheckpoint } from '../types/domain'
+import type { ChatEntry, EntryPersona, StoryCheckpoint } from '../types/domain'
 
 export const STARTER_MESSAGE = 'Choose a place on the map, or tell me what kind of journey you want to begin.'
 
@@ -31,6 +31,13 @@ function isStoryCheckpoint(value: unknown): value is StoryCheckpoint {
     && Array.isArray(checkpoint.narrativeEvents)
 }
 
+export function normalizeEntryPersona(value: unknown): EntryPersona | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const persona = value as Partial<EntryPersona>
+  if (typeof persona.id !== 'string' || !persona.id || typeof persona.name !== 'string') return undefined
+  return { id: persona.id, name: persona.name, ...(typeof persona.spriteId === 'string' && persona.spriteId ? { spriteId: persona.spriteId } : {}) }
+}
+
 function normalizeEntry(entry: ChatEntry): ChatEntry {
   if (entry.role !== 'assistant') return {
     id: entry.id,
@@ -40,7 +47,8 @@ function normalizeEntry(entry: ChatEntry): ChatEntry {
     createdAt: entry.createdAt,
   }
   const storyTurn = normalizeStoredStoryTurn(entry.storyTurn, entry.text, entry.id)
-  return { id: entry.id, role: entry.role, text: storyTurnToText(storyTurn), storyTurn, createdAt: entry.createdAt }
+  const persona = normalizeEntryPersona(entry.persona)
+  return { id: entry.id, role: entry.role, text: storyTurnToText(storyTurn), storyTurn, ...(persona ? { persona } : {}), createdAt: entry.createdAt }
 }
 
 /**

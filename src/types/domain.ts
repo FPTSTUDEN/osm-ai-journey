@@ -16,6 +16,8 @@ export type Place = {
   id: string
   name: string
   category?: string
+  /** OSM tag value when `category` is a broader class, e.g. category `shop`, subcategory `mall` (OpenMapTiles `subclass`). */
+  subcategory?: string
   osmType?: string
   osmId?: string
   wikidataId?: string
@@ -59,6 +61,8 @@ export type PersonaProfile = {
 export type UserSettings = {
   storyPresentationMode?: StoryPresentationMode
   motionPreference?: MotionPreference
+  /** Map column width in px set with the divider; undefined uses the layout default. */
+  mapPanelWidth?: number
   personaProfiles?: PersonaProfile[]
   llmProvider: 'ollama' | 'openai' | 'lmstudio' | 'vllm' | 'custom'
   llmBaseUrl: string
@@ -90,6 +94,8 @@ export type StoryBlock =
 export type StoryTurn = {
   format: 'structured' | 'plain-text'
   blocks: StoryBlock[]
+  /** A kind of nearby place the companion suggests, as a `PLACE_FILTERS` id. The map highlights real places of that kind. */
+  highlight?: string
 }
 
 export type StoryProgress = { entryId: string; blockIndex: number }
@@ -131,6 +137,14 @@ export type StoryBranch = {
   snapshot: JourneyTimeline
 }
 
+/** Who wrote an assistant entry, recorded when it was created so switching persona later keeps the original speaker. */
+export type EntryPersona = {
+  id: string
+  /** Name at the time of writing; shown if the persona has since been deleted. */
+  name: string
+  spriteId?: PersonaSpriteId
+}
+
 export type ChatEntry = {
   id: string
   /** `event` entries are app-generated narration (e.g. arrivals); they are never sent to the model as a user turn. */
@@ -138,6 +152,8 @@ export type ChatEntry = {
   text: string
   storyTurn?: StoryTurn
   checkpoint?: StoryCheckpoint
+  /** Assistant entries only. Missing on entries saved before this field existed: those fall back to the active persona. */
+  persona?: EntryPersona
   createdAt: string
 }
 
@@ -157,4 +173,6 @@ export type JourneyState = JourneyTimeline & {
   branches?: StoryBranch[]
   conversations?: JourneyConversation[]
   activeConversationId?: string
+  /** "Want to go" places. Journey-wide: not part of timelines or checkpoints, so rewinding the story keeps them. */
+  savedPlaces?: Place[]
 }

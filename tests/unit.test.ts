@@ -9,6 +9,7 @@ import { createOverpassQuery, parseOverpassResponse } from '../src/providers/ove
 import { enrichPlace } from '../src/providers/enrichment'
 import { parseWikimediaPhotos } from '../src/providers/photos'
 import { revealedTextLength } from '../src/components/typewriter'
+import { partialPath, travelArrivalMs, travelKind, travelLabel, travelPath } from '../src/components/journeyMotion'
 import { shouldSummarize } from '../src/hooks/chat'
 import { journeyJson, parseJourneyJson } from '../src/storage/journeyTransfer'
 import { normalizeMessages } from '../src/storage/messages'
@@ -665,4 +666,42 @@ test('editing offline zone bounds invalidates its cache and rejects invalid coor
   assert.equal(updated?.indexedFeatureCount, undefined)
   assert.deepEqual(updated?.bounds, [2.3, 48.8, 2.4, 48.9])
   assert.equal(replaceOfflineZoneBounds(zone, [2.4, 48.8, 2.3, 48.9]), null)
+})
+
+const journeyPlace = (id: string, coordinates: [number, number]) => ({ id, name: id, coordinates, source: 'map' as const })
+const journeyLeg = (from: ReturnType<typeof journeyPlace> | null, to: ReturnType<typeof journeyPlace>, extra: Record<string, unknown> = {}) => ({ id: `${from?.id}-${to.id}`, from, to, routed: false, createdAt: '2026-01-01T00:00:00.000Z', ...extra })
+
+test('journey moves pick the animation that matches their data', () => {
+  const pantheon = journeyPlace('Pantheon', [12.4768, 41.8986])
+  const trevi = journeyPlace('Trevi', [12.4833, 41.9009])
+  const tokyo = journeyPlace('Tokyo', [139.69, 35.68])
+  assert.equal(travelKind(journeyLeg(null, trevi)), 'arrive')
+  assert.equal(travelKind(journeyLeg(trevi, trevi)), 'arrive')
+  assert.equal(travelKind(journeyLeg(pantheon, trevi)), 'unrouted')
+  assert.equal(travelKind(journeyLeg(trevi, tokyo)), 'far')
+  assert.equal(travelKind(journeyLeg(pantheon, trevi, { routed: true, geometry: [pantheon.coordinates, trevi.coordinates], distanceMeters: 640, durationSeconds: 480 })), 'routed')
+  // A routed flag without geometry cannot be drawn as a route.
+  assert.equal(travelKind(journeyLeg(pantheon, trevi, { routed: true })), 'unrouted')
+  assert.equal(travelLabel(journeyLeg(pantheon, trevi, { routed: true, geometry: [pantheon.coordinates, trevi.coordinates], distanceMeters: 640, durationSeconds: 480 })), 'Walking route · 0.6 km · 8 min')
+  assert.equal(travelLabel(journeyLeg(pantheon, trevi)), 'No route calculated')
+  assert.match(travelLabel(journeyLeg(trevi, tokyo)), /km away · no route calculated$/)
+  assert.ok(travelArrivalMs('far') > travelArrivalMs('unrouted'))
+  assert.equal(travelArrivalMs('arrive'), 0)
+})
+
+test('sketched journey curves start and end at the two places and cross the antimeridian the short way', () => {
+  const from = journeyPlace('A', [179, 0])
+  const to = journeyPlace('B', [-179, 0])
+  const path = travelPath(journeyLeg(from, to))
+  assert.deepEqual(path[0], [179, 0])
+  assert.ok(Math.abs(path.at(-1)![0] - 181) < 1e-9, 'end longitude unwrapped to 181, not -179')
+  assert.ok(path.every(([lng]) => lng >= 178.9 && lng <= 181.1), 'the curve never swings around the globe')
+})
+
+test('partial journey paths grow by length and end on an interpolated head', () => {
+  const path: [number, number][] = [[0, 0], [1, 0], [1, 3]]
+  assert.deepEqual(partialPath(path, 0), [[0, 0], [0, 0]])
+  assert.deepEqual(partialPath(path, 0.5), [[0, 0], [1, 0], [1, 1]])
+  assert.deepEqual(partialPath(path, 1), path)
+  assert.deepEqual(partialPath(path, 2), path)
 })

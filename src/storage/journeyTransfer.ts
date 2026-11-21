@@ -2,7 +2,7 @@ import type { JourneyConversation, JourneyLeg, JourneyState, JourneyTimeline, Pl
 import { DEFAULT_PERSONA_ID } from '../providers/config'
 import { normalizeMessages } from './messages'
 
-function isPlace(value: unknown): value is Place {
+export function isPlace(value: unknown): value is Place {
   if (!value || typeof value !== 'object') return false
   const place = value as Partial<Place>
   return typeof place.id === 'string'
@@ -113,6 +113,15 @@ function parseConversations(value: unknown): JourneyConversation[] | undefined {
   return conversations
 }
 
+export const SAVED_PLACES_LIMIT = 200
+
+/** Keeps valid, unique places; anything else in the list is dropped rather than failing the whole journey. */
+export function normalizeSavedPlaces(value: unknown): Place[] {
+  if (!Array.isArray(value)) return []
+  const seen = new Set<string>()
+  return value.filter((place): place is Place => isPlace(place) && !seen.has(place.id) && Boolean(seen.add(place.id))).slice(0, SAVED_PLACES_LIMIT)
+}
+
 export function parseJourneyJson(value: unknown): JourneyState {
   if (!value || typeof value !== 'object') throw new Error('Journey file must contain a JSON object')
   const journey = value as Partial<JourneyState>
@@ -127,6 +136,7 @@ export function parseJourneyJson(value: unknown): JourneyState {
   if (!Array.isArray(journey.userFacts) || !journey.userFacts.every((item) => typeof item === 'string')) throw new Error('Journey file has invalid facts')
   if (!Array.isArray(journey.narrativeEvents) || !journey.narrativeEvents.every((item) => item && typeof item === 'object')) throw new Error('Journey file has invalid events')
   const conversations = parseConversations(journey.conversations)
+  const savedPlaces = normalizeSavedPlaces(journey.savedPlaces)
   if (conversations && typeof journey.activeConversationId === 'string' && !conversations.some((conversation) => conversation.id === journey.activeConversationId)) {
     throw new Error('Journey file has an invalid active conversation')
   }
@@ -146,6 +156,8 @@ export function parseJourneyJson(value: unknown): JourneyState {
     storyProgress: parseTimeline({ ...journey, storyProgress: journey.storyProgress }).storyProgress ?? null,
     legs: parseLegs(journey.legs),
     branches: parseBranches(journey.branches),
+    // Left out when empty so files from before this field round-trip unchanged.
+    ...(savedPlaces.length ? { savedPlaces } : {}),
     ...(conversations ? { conversations, activeConversationId: journey.activeConversationId ?? conversations[0].id } : {}),
   }
 }
