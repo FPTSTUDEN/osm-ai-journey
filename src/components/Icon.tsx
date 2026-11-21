@@ -12,6 +12,7 @@ const PATHS = {
   send: 'M5 12h13M12.5 6l6 6-6 6',
   stop: 'M7 7h10v10H7z',
   bookmark: 'M6.5 3.5h11v17L12 16.5l-5.5 4z',
+  layers: 'M12 3.5 21 8l-9 4.5L3 8zM3 12l9 4.5 9-4.5M3 16l9 4.5 9-4.5',
 } as const
 
 export type IconName = keyof typeof PATHS

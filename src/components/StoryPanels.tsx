@@ -19,6 +19,8 @@ import { MapResizeHandle } from './MapResizeHandle'
 import { PlaceHighlightPanel } from './PlaceHighlightPanel'
 import { filterForQuery } from '../providers/placeFilters'
 import type { PlaceHighlight } from '../hooks/usePlaceHighlight'
+import type { MapLookState } from '../hooks/useMapLook'
+import { MapLayersButton } from './MapLookControls'
 import { SheetHandle } from './SheetHandle'
 import type { ArrivalCardState } from './ArrivalCard'
 
@@ -74,6 +76,7 @@ type Props = {
   highlight: PlaceHighlight
   savedPlaces: Place[]
   onToggleSavedPlace: (place: Place) => void
+  mapLook: MapLookState
 }
 
 function photoToPlace(photo: PlacePhoto, fallback: Place): Place {
@@ -117,6 +120,7 @@ export function StoryPanels({
   highlight,
   savedPlaces,
   onToggleSavedPlace,
+  mapLook,
 }: Props) {
   const { storyMode, storyPanels, fieldNotesOpen, setFieldNotesOpen, mapExpanded, setMapExpanded, toggleStoryPanel, closeStoryPanel, toggleMode, dockButtons } = panels
   const mapOpen = storyPanels.includes('map')
@@ -221,6 +225,7 @@ export function StoryPanels({
             <div className="map-header">
               <div className="map-header-title"><p className="eyebrow">Map</p><h3 id="map-panel-heading">{selectedPlace?.name ?? 'Explore'}</h3></div>
               <label className="dock-search"><Icon name="search" size={15} /><input value={search.query} onChange={(event) => search.updateQuery(event.target.value)} placeholder="Search places" /></label>
+              <MapLayersButton mapLook={mapLook} />
               <button className="map-size-button" type="button" onClick={() => setMapExpanded(!mapExpanded)} aria-pressed={mapExpanded} aria-label={mapExpanded ? 'Shrink map' : 'Expand map'} title={mapExpanded ? 'Shrink map' : 'Expand map'}><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">{mapExpanded ? <path d="M6.5 2.5v4h-4M9.5 13.5v-4h4M6.5 6.5 2 2M9.5 9.5 14 14" /> : <path d="M2.5 6.5v-4h4M13.5 9.5v4h-4M2.5 2.5 7 7M13.5 13.5 9 9" />}</svg></button>
               <button className="close-button" type="button" onClick={() => { if (storyMode) closeStoryPanel('map'); else toggleMode() }} aria-label={storyMode ? 'Close map panel' : 'Return to story'}>×</button>
             </div>
@@ -259,7 +264,7 @@ export function StoryPanels({
             {search.query && search.onlineQuery === search.query.trim() && search.onlineState === 'ready' && search.onlineResults.length === 0 && <div className="online-search">No online places matched. <button onClick={() => void search.searchOnline()}>Try another search</button></div>}
             {search.query && search.mapStatus === 'unavailable' && <div className="search-state">Loaded map data is unavailable. <button onClick={() => void search.searchOnline()}>Search online</button></div>}
             {journeyReady
-              ? <Suspense fallback={<div className="map-loading">Loading map…</div>}><MapCanvas motionEnabled={motionEnabled} selectedPlace={mapPlace} initialViewport={mapViewport} onViewportChange={setMapViewport} route={route} localArchive={localArchive} legs={legs} flyToLegsSignal={flyToLegsSignal} offlineZone={offlineZone.zone} zoneEditing={offlineZone.editing} onZoneBoundsChange={(bounds) => { if (offlineZone.zone) void offlineZone.replaceZone({ ...offlineZone.zone, bounds }) }} onPlaceSelected={onChoosePlace} onPlacesLoaded={search.setPlaces} onMapStatusChange={search.setMapStatus} savedPlaces={savedPlaces} highlights={highlight.filter ? highlight.allMatches : undefined} highlightFocusId={highlight.focusId} onHighlightHover={highlight.setFocusId} onBoundsChange={highlight.setBounds} /></Suspense>
+              ? <Suspense fallback={<div className="map-loading">Loading map…</div>}><MapCanvas motionEnabled={motionEnabled} selectedPlace={mapPlace} initialViewport={mapViewport} onViewportChange={setMapViewport} route={route} localArchive={localArchive} legs={legs} flyToLegsSignal={flyToLegsSignal} offlineZone={offlineZone.zone} zoneEditing={offlineZone.editing} onZoneBoundsChange={(bounds) => { if (offlineZone.zone) void offlineZone.replaceZone({ ...offlineZone.zone, bounds }) }} onPlaceSelected={onChoosePlace} onPlacesLoaded={search.setPlaces} onMapStatusChange={search.setMapStatus} savedPlaces={savedPlaces} highlights={highlight.filter ? highlight.allMatches : undefined} highlightFocusId={highlight.focusId} onHighlightHover={highlight.setFocusId} onBoundsChange={highlight.setBounds} look={mapLook.look} dayPhase={mapLook.phase} /></Suspense>
               : <div className="map-loading">Restoring journey…</div>}
             {journeyReady && search.mapStatus === 'ready' && !search.query && <PlaceHighlightPanel highlight={highlight} savedIds={savedIds} onToggleSaved={onToggleSavedPlace} originName={selectedPlace?.name ?? null} liveDataEnabled={settings.liveDataEnabled} onChoosePlace={onChoosePlace} />}
             <ZoneControls zone={offlineZone.zone} progress={offlineZone.progress} editing={offlineZone.editing} cachePrompt={offlineZone.cachePrompt} onCache={() => void cacheZone()} onCancel={offlineZone.cancelCache} onToggleEditing={offlineZone.setEditing} onMaxZoomChange={(maxZoom) => { if (offlineZone.zone) void offlineZone.replaceZone({ ...offlineZone.zone, maxZoom }) }} onBoundsChange={(bounds) => { if (offlineZone.zone) void offlineZone.replaceZone({ ...offlineZone.zone, bounds }) }} />
