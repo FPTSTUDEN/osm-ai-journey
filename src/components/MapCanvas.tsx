@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import * as maplibregl from 'maplibre-gl'
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import type { DataDrivenPropertyValueSpecification, ExpressionSpecification, GeoJSONFeature, Map as MapLibreMap, MapMouseEvent, Marker, StyleSpecification } from 'maplibre-gl'
@@ -11,6 +11,8 @@ import { getInitialMapViewport } from './mapViewport'
 import { easeInOut, partialPath, travelKind, travelPath, travelTimeline } from './journeyMotion'
 import type { JourneyLeg, MapViewport, Place, WalkingRoute } from '../types/domain'
 import type { MapBounds } from '../providers/placeFilters'
+import type { DayPhase, MapLook } from '../providers/mapLook'
+import { forgetStyleState, setBuildings3d, setExploredGlow, setFlowingRoutes, setGlobe, setHillshade, setPalette, setTimeTint, setVignette } from './mapLookEffects'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
 maplibregl.setWorkerUrl(maplibreWorkerUrl)
@@ -41,7 +43,14 @@ type MapCanvasProps = {
   onHighlightHover?: (placeId: string | null) => void
   /** Visible area after each move, as [west, south, east, north]. */
   onBoundsChange?: (bounds: MapBounds) => void
+  /** Map look effects, each on or off (Settings → Map look). */
+  look: MapLook
+  dayPhase: DayPhase
 }
+
+/** Camera tilt on arrival when 3D buildings are on. */
+const ARRIVAL_PITCH = 50
+const FLOW_LAYER_ID = 'look-flow-line'
 
 /** Overlay layers whose features stand for a known `Place` (looked up by the feature's `placeId`), not raw map data. */
 type OverlayKind = 'highlight' | 'saved'
@@ -146,11 +155,11 @@ function pulseMarker(element: HTMLElement | undefined, motionEnabled: boolean) {
   element.classList.add('marker-arrive')
 }
 
-export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelected, onPlacesLoaded, onMapStatusChange, selectedPlace, initialViewport, onViewportChange, route, localArchive, legs, flyToLegsSignal, offlineZone, zoneEditing, onZoneBoundsChange, savedPlaces, highlights, highlightFocusId = null, onHighlightHover, onBoundsChange }: MapCanvasProps) {
+export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelected, onPlacesLoaded, onMapStatusChange, selectedPlace, initialViewport, onViewportChange, route, localArchive, legs, flyToLegsSignal, offlineZone, zoneEditing, onZoneBoundsChange, savedPlaces, highlights, highlightFocusId = null, onHighlightHover, onBoundsChange, look, dayPhase }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
   const markerRef = useRef<Marker | null>(null)
-  const flyTargetRef = useRef<{ center: [number, number]; zoom: number } | null>(null)
+  const flyTargetRef = useRef<{ center: [number, number]; zoom: number; pitch?: number } | null>(null)
   const zoneMarkersRef = useRef<Marker[]>([])
   const activeArchiveKeyRef = useRef<string | null>(null)
   const onPlaceSelectedRef = useRef(onPlaceSelected)
@@ -167,6 +176,10 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
   const onHighlightHoverRef = useRef(onHighlightHover)
   const onBoundsChangeRef = useRef(onBoundsChange)
   const highlightFocusRef = useRef(highlightFocusId)
+  const lookRef = useRef(look)
+  // Bumped on every style load (first load and offline archive switches): look effects re-apply to the new style.
+  const [styleGeneration, setStyleGeneration] = useState(0)
+  const styleReadyRef = useRef(false)
 
   onPlaceSelectedRef.current = onPlaceSelected
   onPlacesLoadedRef.current = onPlacesLoaded
@@ -177,6 +190,10 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
   onHighlightHoverRef.current = onHighlightHover
   onBoundsChangeRef.current = onBoundsChange
   highlightFocusRef.current = highlightFocusId
+  lookRef.current = look
+
+  /** Tilt for arrival fly-ins: only with 3D buildings, motion on, and the online style (archives have no heights). */
+  const arrivalPitch = () => lookRef.current.buildings3d && motionEnabledRef.current && !activeArchiveKeyRef.current ? ARRIVAL_PITCH : undefined
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -316,6 +333,15 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
     })
     // `moveend`, not `move`: `move` fires every frame and re-rendered the whole app while panning.
     map.on('moveend', () => { flyTargetRef.current = null; saveViewport() })
+    map.on('style.load', () => {
+      forgetStyleState(map)
+      styleReadyRef.current = true
+      setStyleGeneration((value) => value + 1)
+    })
+    // The arrival tilt levels out once the user pans away.
+    map.on('dragend', () => {
+      if (map.getPitch() > 1 && lookRef.current.buildings3d) map.easeTo({ pitch: 0, duration: motionEnabledRef.current ? 600 : 0 })
+    })
     map.on('idle', collectLoadedPlaces)
     map.on('click', handleClick)
     map.on('error', () => {
@@ -351,7 +377,8 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
       .addTo(map)
     pulseMarker(markerRef.current.getElement(), motionEnabledRef.current)
 
-    const target = { center: selectedPlace.coordinates, zoom: Math.max(map.getZoom(), 14) }
+    const pitch = arrivalPitch()
+    const target = { center: selectedPlace.coordinates, zoom: Math.max(map.getZoom(), pitch === undefined ? 14 : 15.5), ...(pitch === undefined ? {} : { pitch }) }
     map.flyTo({ ...target, duration: motionEnabledRef.current ? 1000 : 0 })
     flyTargetRef.current = target
   }, [selectedPlace])
@@ -392,6 +419,7 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
       if (map.getLayer(lineId)) map.removeLayer(lineId)
       if (map.getSource(sourceId)) map.removeSource(sourceId)
       if (map.getLayer('walking-route-line')) map.setPaintProperty('walking-route-line', 'line-opacity', 0.9)
+      if (map.getLayer(FLOW_LAYER_ID)) map.setPaintProperty(FLOW_LAYER_ID, 'line-opacity', 0.85)
       refreshLegsRef.current()
     }
     const finish = () => {
@@ -400,7 +428,8 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
       restore()
       pulseMarker(markerElement, motionEnabledRef.current)
       if (mapRef.current !== map) return
-      const target = { center: leg.to.coordinates, zoom: Math.max(map.getZoom(), 14) }
+      const pitch = arrivalPitch()
+      const target = { center: leg.to.coordinates, zoom: Math.max(map.getZoom(), pitch === undefined ? 14 : 15.5), ...(pitch === undefined ? {} : { pitch }) }
       map.flyTo({ ...target, duration: settleMs })
       flyTargetRef.current = target
     }
@@ -423,6 +452,7 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
     markerElement?.classList.add('journey-marker-hidden')
     refreshLegsRef.current()
     if (map.getLayer('walking-route-line')) map.setPaintProperty('walking-route-line', 'line-opacity', 0)
+    if (map.getLayer(FLOW_LAYER_ID)) map.setPaintProperty(FLOW_LAYER_ID, 'line-opacity', 0)
     map.addLayer({ id: lineId, type: 'line', source: sourceId, filter: ['==', ['get', 'part'], 'line'], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#d5ef9a', 'line-width': kind === 'routed' ? 4.5 : 3, 'line-opacity': 0.95, ...(kind === 'routed' ? {} : { 'line-dasharray': [1.2, 1.6] }) } })
     map.addLayer({ id: headId, type: 'circle', source: sourceId, filter: ['==', ['get', 'part'], 'head'], paint: { 'circle-radius': 6, 'circle-color': '#d5ef9a', 'circle-stroke-color': '#12201c', 'circle-stroke-width': 2 } })
 
@@ -431,7 +461,8 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
     const container = map.getContainer()
     const padding = Math.max(16, Math.min(70, Math.round(Math.min(container.clientWidth, container.clientHeight) * 0.15)))
     const bounds = path.reduce((result, coordinate) => result.extend(coordinate), new maplibregl.LngLatBounds(path[0], path[0]))
-    map.fitBounds(bounds, { padding, maxZoom: 16, duration: fitMs })
+    // Drawn top-down: a tilted camera from the last arrival would distort the line.
+    map.fitBounds(bounds, { padding, maxZoom: 16, duration: fitMs, pitch: 0, bearing: 0 })
     timers.push(window.setTimeout(() => {
       const start = performance.now()
       const step = (now: number) => {
@@ -453,10 +484,12 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
     if (localArchive) {
       const sourceKey = localArchive.pmtiles.source.getKey()
       pmtilesProtocol.add(localArchive.pmtiles)
+      styleReadyRef.current = false
       map.setStyle(localArchiveStyle(localArchive), { diff: false })
       map.fitBounds(localArchive.bounds, { padding: 32, duration: 0 })
       activeArchiveKeyRef.current = sourceKey
     } else if (activeArchiveKeyRef.current) {
+      styleReadyRef.current = false
       map.setStyle(OPENFREEMAP_STYLE, { diff: false })
       pmtilesProtocol.tiles.delete(activeArchiveKeyRef.current)
       activeArchiveKeyRef.current = null
@@ -476,7 +509,7 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
     }
     const removeOverlay = () => {
       clearMarkers()
-      if (!map.isStyleLoaded()) return
+      if (!styleReadyRef.current) return
       if (map.getLayer(lineId)) map.removeLayer(lineId)
       if (map.getLayer(fillId)) map.removeLayer(fillId)
       if (map.getSource(sourceId)) map.removeSource(sourceId)
@@ -487,7 +520,7 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
         return
       }
       const [west, south, east, north] = offlineZone.bounds
-      if (map.isStyleLoaded()) {
+      if (styleReadyRef.current) {
         const data = {
           type: 'Feature' as const,
           properties: {},
@@ -546,13 +579,11 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
       })
     }
 
-    map.on('style.load', drawZone)
     drawZone()
     return () => {
-      map.off('style.load', drawZone)
       removeOverlay()
     }
-  }, [zoneBoundsKey, offlineZone?.maxZoom, zoneEditing, localArchive])
+  }, [zoneBoundsKey, offlineZone?.maxZoom, zoneEditing, localArchive, styleGeneration])
 
   useEffect(() => {
     const map = mapRef.current
@@ -577,13 +608,9 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
         map.fitBounds(bounds, { padding: 48, maxZoom: 14, duration: motionEnabledRef.current ? 1000 : 0 })
       }
     }
-    if (map.isStyleLoaded()) drawRoute()
-    else map.once('load', drawRoute)
-    return () => {
-      map.off('load', drawRoute)
-      removeRoute()
-    }
-  }, [route, localArchive])
+    if (styleReadyRef.current) drawRoute()
+    return removeRoute
+  }, [route, localArchive, styleGeneration])
 
   // Journey legs overlay: one source, three layers (solid muted, solid active, dashed unrouted).
   useEffect(() => {
@@ -607,13 +634,12 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
       const source = map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined
       source?.setData(legFeatureCollection(legs ?? [], travelRef.current.hiddenLegId))
     }
-    if (map.isStyleLoaded()) apply()
-    else map.once('load', apply)
+    if (styleReadyRef.current) apply()
     return () => {
       for (const id of ['journey-legs-muted', 'journey-legs-active', 'journey-legs-unrouted', 'journey-legs-visited']) if (map.getLayer(id)) map.removeLayer(id)
       if (map.getSource(sourceId)) map.removeSource(sourceId)
     }
-  }, [legs, localArchive])
+  }, [legs, localArchive, styleGeneration])
 
   // "Want to go" places: amber ring with a dot, and the name from zoom 13.
   useEffect(() => {
@@ -634,15 +660,13 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
       if (font) layers.push({ id: 'saved-places-label', type: 'symbol', source: SAVED_SOURCE, minzoom: 13, layout: { 'text-field': ['get', 'name'], 'text-font': font, 'text-size': 11, 'text-offset': [0, 1.2], 'text-anchor': 'top', 'text-optional': true, 'text-max-width': 9 }, paint: { 'text-color': SAVED_COLOR, 'text-halo-color': '#12201c', 'text-halo-width': 1.4 } })
       for (const layer of layers) if (!map.getLayer(layer.id)) map.addLayer(layer)
     }
-    if (map.isStyleLoaded()) apply()
-    else map.once('style.load', apply)
+    if (styleReadyRef.current) apply()
     return () => {
-      map.off('style.load', apply)
-      if (mapRef.current !== map || !map.getStyle()) return
+      if (mapRef.current !== map || !styleReadyRef.current) return
       for (const id of SAVED_LAYERS) if (map.getLayer(id)) map.removeLayer(id)
       if (map.getSource(SAVED_SOURCE)) map.removeSource(SAVED_SOURCE)
     }
-  }, [savedPlaces, localArchive])
+  }, [savedPlaces, localArchive, styleGeneration])
 
   // Category highlights: a soft ring and dot per match, its name from zoom 13, and the style's other POI icons faded.
   useEffect(() => {
@@ -672,11 +696,9 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
         map.setPaintProperty(layer.id, 'text-opacity', DIMMED_OPACITY)
       }
     }
-    if (map.isStyleLoaded()) apply()
-    else map.once('style.load', apply)
+    if (styleReadyRef.current) apply()
     return () => {
-      map.off('style.load', apply)
-      if (mapRef.current !== map || !map.getStyle()) return
+      if (mapRef.current !== map || !styleReadyRef.current) return
       for (const id of HIGHLIGHT_LAYERS) if (map.getLayer(id)) map.removeLayer(id)
       if (map.getSource(HIGHLIGHT_SOURCE)) map.removeSource(HIGHLIGHT_SOURCE)
       for (const [id, original] of dimmed) {
@@ -685,7 +707,7 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
         map.setPaintProperty(id, 'text-opacity', original.text ?? 1)
       }
     }
-  }, [highlights, localArchive])
+  }, [highlights, localArchive, styleGeneration])
 
   // Focus (hovered list item) only changes feature properties, so redraw the data without touching the layers.
   useEffect(() => {
@@ -693,6 +715,51 @@ export const MapCanvas = memo(function MapCanvas({ motionEnabled, onPlaceSelecte
     const source = map?.getSource(HIGHLIGHT_SOURCE) as maplibregl.GeoJSONSource | undefined
     if (source && highlights) source.setData(overlayCollection(highlights, 'highlight', highlightFocusId))
   }, [highlightFocusId, highlights])
+
+  // ─── Map look (each effect on its own; see mapLookEffects.ts) ───
+  const onlineStyle = !localArchive
+  const palette = look.palette && onlineStyle
+  const withStyle = (apply: (map: MapLibreMap) => void) => {
+    const map = mapRef.current
+    if (!map || !styleReadyRef.current) return
+    try { apply(map) } catch { /* the style is being replaced; the next style.load re-applies */ }
+  }
+  useEffect(() => withStyle((map) => setPalette(map, palette)), [palette, styleGeneration])
+  useEffect(() => withStyle((map) => {
+    setBuildings3d(map, look.buildings3d && onlineStyle, palette)
+    if (!look.buildings3d && map.getPitch() > 1) map.easeTo({ pitch: 0, duration: motionEnabledRef.current ? 500 : 0 })
+  }), [look.buildings3d, onlineStyle, palette, styleGeneration])
+  useEffect(() => withStyle((map) => setGlobe(map, look.globe, palette)), [look.globe, palette, styleGeneration])
+  useEffect(() => withStyle((map) => setHillshade(map, look.hillshade, palette)), [look.hillshade, palette, styleGeneration])
+  useEffect(() => { if (mapRef.current) setVignette(mapRef.current, look.vignette) }, [look.vignette])
+  useEffect(() => { if (mapRef.current) setTimeTint(mapRef.current, look.timeTint ? dayPhase : null) }, [dayPhase, look.timeTint])
+
+  const glowPlaces = useMemo(() => {
+    if (!look.exploredGlow) return null
+    const byId = new Map<string, [number, number]>()
+    for (const leg of legs ?? []) for (const place of [leg.from, leg.to]) if (place) byId.set(place.id, place.coordinates)
+    if (selectedPlace) byId.set(selectedPlace.id, selectedPlace.coordinates)
+    return [...byId.values()]
+  }, [legs, look.exploredGlow, selectedPlace])
+  useEffect(() => withStyle((map) => setExploredGlow(map, glowPlaces)), [glowPlaces, styleGeneration])
+
+  // Declared after the route and legs effects, so the flow line is added (or moved) above the route it follows.
+  const flowLines = useMemo(() => {
+    if (!look.flowingRoutes || !motionEnabled) return null
+    if (route && route.coordinates.length > 1) return [route.coordinates]
+    const active = legs?.at(-1)
+    return active?.routed && active.geometry && active.geometry.length > 1 ? [active.geometry] : null
+  }, [legs, look.flowingRoutes, motionEnabled, route])
+  useEffect(() => {
+    let stop = () => {}
+    withStyle((map) => {
+      stop = setFlowingRoutes(map, flowLines)
+      if (!flowLines || !map.getLayer(FLOW_LAYER_ID)) return
+      map.moveLayer(FLOW_LAYER_ID)
+      if (travelRef.current.hiddenLegId) map.setPaintProperty(FLOW_LAYER_ID, 'line-opacity', 0)
+    })
+    return () => stop()
+  }, [flowLines, styleGeneration])
 
   // Fit-to-journey: recompute bounds from the routed geometry when the signal changes.
   useEffect(() => {

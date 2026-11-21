@@ -1,3 +1,5 @@
+import type { MapLookState } from '../hooks/useMapLook'
+import { MapLookControls } from './MapLookControls'
 import type { RefObject } from 'react'
 import type { PersonaProfile, UserSettings } from '../types/domain'
 import { DEFAULT_PERSONA_ID } from '../providers/config'
@@ -8,6 +10,7 @@ type MemoryKind = 'people' | 'entities' | 'facts'
 type JourneyItem = Record<MemoryKind, string>
 
 type SettingsDrawerProps = {
+  mapLook: MapLookState
   settings: UserSettings
   onSettingsChange: (updates: Partial<UserSettings>) => void
   onProviderChange: (provider: UserSettings['llmProvider']) => void
@@ -70,6 +73,7 @@ const MEMORY_LABELS: Record<MemoryKind, string> = {
 export function SettingsDrawer({
   settings,
   onSettingsChange,
+  mapLook,
   onProviderChange,
   onClose,
   companionArtInputRef,
@@ -167,6 +171,12 @@ export function SettingsDrawer({
       </fieldset>
       <label className="toggle-row"><span>Calculate walking routes by default</span><input type="checkbox" checked={settings.calculateWalkingRoutes} onChange={(event) => onSettingsChange({ calculateWalkingRoutes: event.target.checked })} /></label>
       <label className="toggle-row"><span>Enable optional live data</span><input type="checkbox" checked={settings.liveDataEnabled} onChange={(event) => onSettingsChange({ liveDataEnabled: event.target.checked })} /></label>
+      <section className="map-look-settings" aria-labelledby="map-look-title">
+        <p className="memory-label">Map</p>
+        <h3 id="map-look-title">Map look</h3>
+        <p className="settings-note">Each effect is separate. The Layers button on the map has the same switches.</p>
+        <MapLookControls mapLook={mapLook} />
+      </section>
       <section className="storage-overview" aria-labelledby="storage-overview-title">
         <div className="storage-overview-heading"><div><p className="storage-label">Browser storage</p><h3 id="storage-overview-title">Storage overview</h3></div><button type="button" onClick={onRefreshStorageOverview}>Refresh</button></div>
         {storageError && <p className="connection-error" role="alert">{storageError}</p>}

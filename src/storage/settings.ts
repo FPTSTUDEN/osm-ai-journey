@@ -1,5 +1,6 @@
 import { DEFAULT_PERSONA, DEFAULT_PERSONA_ID, DEFAULT_SETTINGS } from '../providers/config'
 import type { PersonaProfile, UserSettings } from '../types/domain'
+import { normalizeMapLookChoices } from '../providers/mapLook'
 
 const SETTINGS_KEY = 'osm-ai-journey.settings.v1'
 
@@ -46,6 +47,7 @@ export function loadSettings(availableSpriteIds: readonly string[] = [DEFAULT_PE
       storyPresentationMode: normalizeStoryPresentationMode(saved.storyPresentationMode),
       motionPreference: normalizeMotionPreference(saved.motionPreference),
       mapPanelWidth: normalizeMapPanelWidth(saved.mapPanelWidth),
+      mapLook: normalizeMapLookChoices(saved.mapLook),
       personaProfiles: normalizePersonaProfiles(saved.personaProfiles, saved, availableSpriteIds),
     }
   } catch {

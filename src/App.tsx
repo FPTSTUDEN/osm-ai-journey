@@ -15,6 +15,7 @@ import { useJourney, newJourneyEvent } from './hooks/useJourney'
 import { useChat } from './hooks/useChat'
 import { useEntrySpeakers } from './hooks/useEntrySpeakers'
 import { usePlaceHighlight } from './hooks/usePlaceHighlight'
+import { useMapLook } from './hooks/useMapLook'
 import { placeFilterById } from './providers/placeFilters'
 import { DEFAULT_PERSONA, DEFAULT_PERSONA_ID } from './providers/config'
 import { PERSONA_SPRITES } from './providers/bundledPersonaSprites'
@@ -93,6 +94,7 @@ function App() {
   const presentationMode = settings.storyPresentationMode ?? 'novel'
   const storyOpening = storyMode && !selectedPlace && !messages.some((entry) => entry.role === 'user')
   const localPmtiles = useLocalPmtiles()
+  const mapLook = useMapLook(settings, setSettings, motionEnabled, Boolean(localPmtiles.archive))
   const [arrivalCard, setArrivalCard] = useState<ArrivalCardState | null>(null)
   // The scene label at the top waits while a move is animating and while the chapter card is up.
   const [sceneLabelHeld, setSceneLabelHeld] = useState(false)
@@ -371,6 +373,7 @@ function App() {
           highlight={placeHighlight}
           savedPlaces={savedPlaces}
           onToggleSavedPlace={toggleSavedPlace}
+          mapLook={mapLook}
           onMapWidthChange={(mapPanelWidth) => setSettings((current) => ({ ...current, mapPanelWidth }))}
           localArchive={localPmtiles.archive}
         />
@@ -408,6 +411,7 @@ function App() {
         open={showSettings}
         onClose={() => setShowSettings(false)}
         appSettings={appSettings}
+        mapLook={mapLook}
         journeyActions={journeyActions}
         importInputRef={importInputRef}
         companionArtInputRef={companionArtInputRef}

@@ -1,3 +1,5 @@
+import type { MapLookChoices } from '../providers/mapLook'
+
 export type Coordinates = [number, number]
 
 export type MapViewport = {
@@ -63,6 +65,8 @@ export type UserSettings = {
   motionPreference?: MotionPreference
   /** Map column width in px set with the divider; undefined uses the layout default. */
   mapPanelWidth?: number
+  /** Map effects the user switched on or off explicitly; the rest use their defaults (see providers/mapLook.ts). */
+  mapLook?: MapLookChoices
   personaProfiles?: PersonaProfile[]
   llmProvider: 'ollama' | 'openai' | 'lmstudio' | 'vllm' | 'custom'
   llmBaseUrl: string

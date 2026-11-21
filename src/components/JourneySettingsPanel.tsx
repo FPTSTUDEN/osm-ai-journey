@@ -1,3 +1,4 @@
+import type { MapLookState } from '../hooks/useMapLook'
 import type { RefObject } from 'react'
 import { SettingsDrawer } from './SettingsDrawer'
 import type { useAppSettings } from '../hooks/useAppSettings'
@@ -22,6 +23,7 @@ type Props = {
   onPersonaCreate: () => void
   onPersonaDelete: () => void
   localPmtiles: ReturnType<typeof useLocalPmtiles>
+  mapLook: MapLookState
   conversationSummary: string
   summaryState: 'idle' | 'loading'
   destinationCount: number
@@ -29,7 +31,7 @@ type Props = {
   memory: { people: string[]; entities: string[]; facts: string[] }
 }
 
-export function JourneySettingsPanel({ open, onClose, appSettings, journeyActions, importInputRef, companionArtInputRef, personaProfiles, activePersona, activePersonaId, hasCustomPersonaArt, personaArtUrl, onPersonaSelect, onPersonaUpdate, onPersonaCreate, onPersonaDelete, localPmtiles, conversationSummary, summaryState, destinationCount, eventCount, memory }: Props) {
+export function JourneySettingsPanel({ open, onClose, appSettings, journeyActions, importInputRef, companionArtInputRef, personaProfiles, activePersona, activePersonaId, hasCustomPersonaArt, personaArtUrl, onPersonaSelect, onPersonaUpdate, onPersonaCreate, onPersonaDelete, localPmtiles, mapLook, conversationSummary, summaryState, destinationCount, eventCount, memory }: Props) {
   if (!open) return null
   return <SettingsDrawer
     settings={appSettings.settings}
@@ -79,6 +81,7 @@ export function JourneySettingsPanel({ open, onClose, appSettings, journeyAction
     onDeleteJourney={() => void journeyActions.deleteJourney()}
     settingsError={appSettings.settingsError}
     localPmtilesFileName={localPmtiles.archive?.fileName ?? null}
+    mapLook={mapLook}
     localPmtilesError={localPmtiles.error}
     localPmtilesLoading={localPmtiles.loading}
     onSelectLocalPmtiles={(file) => void localPmtiles.selectFile(file)}
